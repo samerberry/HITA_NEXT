@@ -1,5 +1,5 @@
 /**
- * WidgetBackgroundPage.ets — 桌面服务卡片自定义背景。
+ * WidgetBackgroundPage.ets — 桌面服务卡片自定义背景半模态面板。
  *
  * 用户在与卡片同比例的取景框中拖动、双指缩放，自行决定图片在 2×2 与 2×4 卡片中显示的部分；
  * 保存时按各自比例烘焙，卡片端不再拉伸或二次裁切。未保存的选图只存在缓存草稿中。
@@ -9,10 +9,12 @@ import { deviceInfo } from '@kit.BasicServicesKit';
 import { HeaderBackButton } from '../common/components/HeaderBackButton';
 import { HeaderFadeMask } from '../common/components/HeaderFadeMask';
 import { ImmersiveHeader } from '../common/components/ImmersiveHeader';
+import { CompatibleLightModifier } from '../common/theme/CompatibleLightModifier';
 import { CompatibleMaterialModifier } from '../common/theme/CompatibleMaterialModifier';
+import { CompatibleSheetMaterial } from '../common/theme/CompatibleSheetMaterial';
 import { HeaderFade } from '../common/theme/HeaderFade';
 import { HitaColors } from '../common/theme/HitaColors';
-import { NAV_BAR_INSET_FALLBACK, STATUS_BAR_INSET_FALLBACK } from '../common/theme/StatusBarInset';
+import { NAV_BAR_INSET_FALLBACK } from '../common/theme/StatusBarInset';
 import { CourseControlHost } from '../feature/timetable/views/CourseControlHost';
 import { CourseModeSegment } from '../feature/timetable/views/CourseModeSegment';
 import { ImmersiveFollowButton } from '../feature/widget/ImmersiveWidgetBackgroundControls';
@@ -43,11 +45,15 @@ const WIDE_PREVIEW_MAX: number = 560;
 // 实测卡片高度约 146 vp；预览的圆角和示例文字按此比例缩放。
 const CARD_NOMINAL_HEIGHT: number = 146;
 
-@Entry
 @Component
-struct WidgetBackgroundPage {
-  @StorageProp('hita_status_bar_vp') statusBarInset: number = STATUS_BAR_INSET_FALLBACK;
+export struct WidgetBackgroundPage {
   @StorageProp('hita_nav_bar_vp') navBarInset: number = NAV_BAR_INSET_FALLBACK;
+  onBackgroundChanged: (enabled: boolean) => void = (_enabled: boolean) => {};
+  onDirtyChanged: (dirty: boolean) => void = (_dirty: boolean) => {};
+  onBusyChanged: (busy: boolean) => void = (_busy: boolean) => {};
+  onConfirmDismissReady: (confirm: (dismiss: () => void, springBack: () => void) => void) => void =
+    (_confirm: (dismiss: () => void, springBack: () => void) => void) => {};
+  onClose: () => void = () => {};
   @State sourcePath: string = '';
   @State sourceUri: string = '';
   @State sourceWidth: number = 0;
@@ -65,6 +71,7 @@ struct WidgetBackgroundPage {
   // A pressed immersive control lifts its row so the enlarged material is not painted over.
   @State sizeControlPressing: boolean = false;
   private leaving: boolean = false;
+  private confirmingLeave: boolean = false;
   private adjustmentsScroller: Scroller = new Scroller();
   private panStart: WidgetBackgroundFrame = new WidgetBackgroundFrame();
   private pinchStart: WidgetBackgroundFrame = new WidgetBackgroundFrame();
@@ -77,6 +84,8 @@ struct WidgetBackgroundPage {
   private panLastY: number = 0;
 
   aboutToAppear(): void {
+    this.onConfirmDismissReady((dismiss: () => void, springBack: () => void) =>
+      this.confirmLeave(dismiss, springBack));
     const ctx: common.Context = this.getUIContext().getHostContext() as common.Context;
     try {
       const systemRadius: number = ctx.resourceManager.getNumberByName('ohos_id_corner_radius_card');
@@ -104,24 +113,28 @@ struct WidgetBackgroundPage {
     WidgetBackgroundStore.clearDrafts(this.getUIContext().getHostContext() as common.Context);
   }
 
-  onBackPress(): boolean {
+  private goBack(): void {
     if (this.busy) {
-      return true;
+      return;
     }
     if (this.dirty && !this.leaving) {
       this.confirmLeave();
-      return true;
+      return;
     }
-    return false;
+    this.leaving = true;
+    this.onClose();
   }
 
-  private goBack(): void {
-    if (!this.onBackPress()) {
-      this.getUIContext().getRouter().back();
+  private confirmLeave(dismiss: () => void = () => this.onClose(), springBack: () => void = () => {}): void {
+    if (this.busy || this.leaving) {
+      springBack();
+      return;
     }
-  }
-
-  private confirmLeave(): void {
+    if (this.confirmingLeave) {
+      springBack();
+      return;
+    }
+    this.confirmingLeave = true;
     this.getUIContext().getPromptAction().showDialog({
       title: '放弃未保存的背景？',
       message: '当前取景和蒙版调整还没有应用到桌面卡片。',
@@ -130,12 +143,30 @@ struct WidgetBackgroundPage {
         { text: '放弃', color: HitaColors.error }
       ]
     }).then((ret) => {
+      this.confirmingLeave = false;
       if (ret.index === 1) {
         this.leaving = true;
-        setTimeout(() => this.getUIContext().getRouter().back(), 0);
+        setTimeout(() => dismiss(), 0);
+      } else {
+        springBack();
       }
     }).catch(() => {
+      this.confirmingLeave = false;
+      springBack();
     });
+  }
+
+  private markDirty(): void {
+    if (this.dirty) {
+      return;
+    }
+    this.dirty = true;
+    this.onDirtyChanged(true);
+  }
+
+  private markClean(): void {
+    this.dirty = false;
+    this.onDirtyChanged(false);
   }
 
   private frameWidth(): number {
@@ -182,7 +213,7 @@ struct WidgetBackgroundPage {
     } else {
       this.compactFrame = frame;
     }
-    this.dirty = true;
+    this.markDirty();
   }
 
   private placement(): WidgetBackgroundPlacement {
@@ -239,6 +270,7 @@ struct WidgetBackgroundPage {
       return;
     }
     this.busy = true;
+    this.onBusyChanged(true);
     try {
       const ctx = this.getUIContext().getHostContext() as common.UIAbilityContext;
       const draft = await WidgetBackgroundStore.pickDraft(ctx);
@@ -251,11 +283,12 @@ struct WidgetBackgroundPage {
       this.sourceHeight = draft.height;
       this.compactFrame = WidgetBackgroundModel.coverFrame();
       this.wideFrame = WidgetBackgroundModel.coverFrame();
-      this.dirty = true;
+      this.markDirty();
     } catch (_) {
       this.getUIContext().getPromptAction().showToast({ message: '无法读取这张图片，请换一张试试' });
     } finally {
       this.busy = false;
+      this.onBusyChanged(false);
     }
   }
 
@@ -264,19 +297,22 @@ struct WidgetBackgroundPage {
       return;
     }
     this.busy = true;
+    this.onBusyChanged(true);
     try {
       const ctx = this.getUIContext().getHostContext() as common.Context;
       await WidgetBackgroundStore.save(ctx, this.sourcePath, this.sourceWidth, this.sourceHeight,
         this.compactFrame, this.wideFrame, this.veil);
-      this.dirty = false;
+      this.markClean();
+      this.onBackgroundChanged(true);
       this.leaving = true;
       NextClassWidgetService.scheduleRefresh();
       this.getUIContext().getPromptAction().showToast({ message: '已应用到桌面服务卡片' });
-      this.getUIContext().getRouter().back();
+      this.onClose();
     } catch (_) {
       this.getUIContext().getPromptAction().showToast({ message: '保存失败，请重试' });
     } finally {
       this.busy = false;
+      this.onBusyChanged(false);
     }
   }
 
@@ -298,10 +334,11 @@ struct WidgetBackgroundPage {
       setTimeout(() => {
         WidgetBackgroundStore.remove(this.getUIContext().getHostContext() as common.Context);
         NextClassWidgetService.scheduleRefresh();
-        this.dirty = false;
+        this.markClean();
+        this.onBackgroundChanged(false);
         this.leaving = true;
         this.getUIContext().getPromptAction().showToast({ message: '已恢复默认背景' });
-        this.getUIContext().getRouter().back();
+        this.onClose();
       }, 0);
     }).catch(() => {
     });
@@ -318,7 +355,7 @@ struct WidgetBackgroundPage {
       }
       .width('100%')
       .height('100%')
-      .padding({ top: HEADER_HEIGHT, left: 16, right: 16 })
+      .padding({ top: HEADER_HEIGHT })
       .onAreaChange((_old: Area, area: Area) => {
         const width: number = Number(area.width) - 32;
         if (width > 0 && Math.abs(width - this.contentWidth) > 0.5) {
@@ -364,8 +401,8 @@ struct WidgetBackgroundPage {
     }
     .width('100%')
     .height('100%')
-    .padding({ top: this.statusBarInset })
-    .backgroundColor(PAGE_BG)
+    .backgroundColor(CompatibleSheetMaterial.bodyColor(PAGE_BG))
+    .attributeModifier(new CompatibleLightModifier(24, CompatibleSheetMaterial.isEnabled(), true))
   }
 
   @Builder
@@ -374,15 +411,10 @@ struct WidgetBackgroundPage {
       SymbolGlyph($r('sys.symbol.picture'))
         .fontSize(40)
         .fontColor([HitaColors.primary])
-      Text('为桌面服务卡片选择一张背景图')
+      Text('选择背景图')
         .fontSize(16)
         .fontWeight(FontWeight.Medium)
         .fontColor(TEXT_PRIMARY)
-      Text('选好后可拖动、双指缩放，自行决定卡片中显示的部分。')
-        .fontSize(13)
-        .lineHeight(19)
-        .fontColor(TEXT_SECONDARY)
-        .textAlign(TextAlign.Center)
       if (this.usesApi26ImmersiveControls()) {
         // API 26 renders the button material only inside the native title host the course editor uses.
         Column() {
@@ -413,23 +445,25 @@ struct WidgetBackgroundPage {
     .width('100%')
     .padding({ left: 20, right: 20, top: 32, bottom: 32 })
     .margin({ top: 12 })
-    .backgroundColor(CARD_BG)
-    .borderRadius(16)
     .alignItems(HorizontalAlign.Center)
   }
 
   @Builder
   editor() {
-    this.sizeSelector()
-
     Column() {
-      this.previewFrame()
+      this.sizeSelector()
+
+      Column() {
+        this.previewFrame()
+      }
+      .width('100%')
+      // 两种尺寸共用同一高度，切换时下方控件不跳动。
+      .height(this.previewAreaHeight())
+      .justifyContent(FlexAlign.Center)
+      .alignItems(HorizontalAlign.Center)
     }
     .width('100%')
-    // 两种尺寸共用同一高度，切换时下方控件不跳动。
-    .height(this.previewAreaHeight())
-    .justifyContent(FlexAlign.Center)
-    .alignItems(HorizontalAlign.Center)
+    .padding({ left: 16, right: 16 })
 
     Stack({ alignContent: Alignment.Top }) {
       Scroll(this.adjustmentsScroller) {
@@ -438,6 +472,7 @@ struct WidgetBackgroundPage {
           Blank().height(this.navBarInset + 20)
         }
         .width('100%')
+        .padding({ left: 16, right: 16 })
       }
       .width('100%')
       .height('100%')
@@ -654,7 +689,7 @@ struct WidgetBackgroundPage {
 
         .onChange((value: number) => {
           this.veil = Math.round(value);
-          this.dirty = true;
+          this.markDirty();
         })
     }
     .width('100%')

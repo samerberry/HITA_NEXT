@@ -82,7 +82,7 @@ test('card uses the documented background attributes; More expands into two sing
   const menu = home.slice(home.indexOf('  desktopWidgetSettings() {'), home.indexOf('  appearanceSettings() {'));
   assert.match(menu, /this\.widgetMenuExpanded = !this\.widgetMenuExpanded/);
   assert.ok(menu.indexOf("'设置桌面服务卡片'") < menu.indexOf("'自定义背景'"));
-  assert.match(menu, /pushUrl\(\{ url: 'pages\/WidgetBackgroundPage' \}\)/);
+  assert.match(menu, /this\.openWidgetBackgroundSheet\(\)/);
   assert.match(menu, /this\.openDesktopWidgetManager\(\)/);
   assert.doesNotMatch(read('pages/WidgetBackgroundPage.ets'), /bindSheet/);
 });
@@ -123,4 +123,16 @@ test('background editor uses a size segment and gates immersive materials and li
   assert.match(controls, /fontColor\(this\.primary \? \$r\('sys\.color\.font_on_primary'\) : HitaColors\.primary\)/);
   assert.doesNotMatch(controls, /hita_immersive_hero_tint|Color\.White/);
   assert.match(controls, /\.onClick\(\(\) => this\.onPress\(\)\)/);
+});
+
+test('empty state is unboxed and the adjustment fade spans the sheet width', () => {
+  const page = read('pages/WidgetBackgroundPage.ets');
+  const empty = page.slice(page.indexOf('  emptyState() {'), page.indexOf('  @Builder\n  editor()'));
+  assert.match(empty, /Text\('选择背景图'\)/);
+  assert.doesNotMatch(empty, /为桌面服务卡片选择一张背景图|选好后可拖动、双指缩放/);
+  assert.doesNotMatch(empty, /\.backgroundColor\(CARD_BG\)|\.borderRadius\(16\)/);
+
+  const editor = page.slice(page.indexOf('  editor() {'), page.indexOf('  @Builder\n  sizeSelector()'));
+  assert.match(editor, /this\.sizeSelector\(\)[\s\S]*?\.padding\(\{ left: 16, right: 16 \}\)\s*Stack\(\{ alignContent: Alignment\.Top \}\)/);
+  assert.match(editor, /Scroll\(this\.adjustmentsScroller\)[\s\S]*?\.padding\(\{ left: 16, right: 16 \}\)[\s\S]*?HeaderFadeMask\(\{ maskOpacity: this\.adjustmentsFadeOpacity[\s\S]*?\.width\('100%'\)\s*\.layoutWeight\(1\)/);
 });

@@ -13,7 +13,6 @@
     "pages/TimetableManagerPage",
     "pages/TimetableDetailPage",
     "pages/ImportTimetablePage",
-    "pages/WebBrowserPage",
-    "pages/WidgetBackgroundPage"
+    "pages/WebBrowserPage"
   ]
 }

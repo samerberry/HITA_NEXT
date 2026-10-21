@@ -53,6 +53,7 @@ import { TimetableVideoBackground } from '../feature/timetable/views/TimetableVi
 import { TimetableBackgroundStore } from '../feature/timetable/data/TimetableBackgroundStore';
 import { WidgetBackgroundStore } from '../feature/widget/WidgetBackgroundStore';
 import { NextClassWidgetService } from '../feature/widget/NextClassWidgetService';
+import { WidgetBackgroundPage } from './WidgetBackgroundPage';
 import { TimetableWallpaperSampler } from '../feature/timetable/data/TimetableWallpaperSampler';
 import { TimetableDisplayOptions } from '../feature/timetable/data/TimetableDisplayOptions';
 import { TimetableDisplayStore } from '../feature/timetable/data/TimetableDisplayStore';
@@ -144,6 +145,12 @@ struct Home {
   @State appearanceExpanded: boolean = false;
   @State widgetMenuExpanded: boolean = false;
   @State widgetBackgroundSet: boolean = false;
+  @State widgetBackgroundSheetOpen: boolean = false;
+  @State widgetBackgroundDirty: boolean = false;
+  @State widgetBackgroundBusy: boolean = false;
+  private widgetBackgroundConfirmDismiss: ((dismiss: () => void, springBack: () => void) => void) | undefined =
+    undefined;
+  private widgetBackgroundSpringBack: (() => void) | undefined = undefined;
   @State todayItems: EasEventItem[] = [];
   @State timelineText: string = '暂无今日日程';
   @State @Watch('updateTimetableSystemBars') currentTab: number = 0;
@@ -1248,7 +1255,7 @@ struct Home {
   private canOpenSheet(): boolean {
     return !this.skippingCourse && this.pageVisible && !this.tabTransitionRunning && !this.activeSheetVisible &&
       !this.sessionSheetOpen && !this.loginSheetOpen && !this.courseSheetOpen &&
-      !this.calendarExportSheetOpen && !this.timetableDisplayOpen;
+      !this.calendarExportSheetOpen && !this.timetableDisplayOpen && !this.widgetBackgroundSheetOpen;
   }
 
   private closeActiveSheet(): void {
@@ -1256,6 +1263,39 @@ struct Home {
     this.sheetRequestGeneration++;
     this.sessionSheetLoading = false;
     this.activeSheetVisible = false;
+  }
+
+  private openWidgetBackgroundSheet(): void {
+    if (!this.canOpenSheet()) {
+      return;
+    }
+    this.widgetBackgroundDirty = false;
+    this.widgetBackgroundBusy = false;
+    this.widgetBackgroundSheetOpen = true;
+    this.activeSheetVisible = true;
+  }
+
+  private springBackWidgetBackgroundSheet(): void {
+    const springBack: (() => void) | undefined = this.widgetBackgroundSpringBack;
+    this.widgetBackgroundSpringBack = undefined;
+    springBack?.();
+  }
+
+  private confirmWidgetBackgroundDismiss(dismiss: () => void): void {
+    if (this.widgetBackgroundBusy) {
+      this.springBackWidgetBackgroundSheet();
+      return;
+    }
+    if (!this.widgetBackgroundDirty) {
+      this.widgetBackgroundSpringBack = undefined;
+      dismiss();
+      return;
+    }
+    if (this.widgetBackgroundConfirmDismiss === undefined) {
+      this.springBackWidgetBackgroundSheet();
+      return;
+    }
+    this.widgetBackgroundConfirmDismiss(dismiss, () => this.springBackWidgetBackgroundSheet());
   }
 
   private requestCalendarExport(): void {
@@ -1806,7 +1846,11 @@ struct Home {
       this.selectedNav = index;
     })
     .bindSheet($$this.activeSheetVisible, this.activeSheet(), CompatibleSheetMaterial.options({
-      height: this.loginSheetOpen ? SheetSize.LARGE : SheetSize.FIT_CONTENT,
+      height: this.widgetBackgroundSheetOpen ? SheetSize.LARGE :
+        (this.loginSheetOpen ? SheetSize.LARGE : SheetSize.FIT_CONTENT),
+      // The first detent is the initial selection, so start expanded and allow collapsing to medium.
+      detents: this.widgetBackgroundSheetOpen ? [SheetSize.LARGE, SheetSize.MEDIUM] : undefined,
+      scrollSizeMode: this.widgetBackgroundSheetOpen ? ScrollSizeMode.CONTINUOUS : undefined,
       dragBar: true,
       // Every sheet owns its header control; the system close bubble overlaps
       // the web login toolbar's trailing actions.
@@ -1814,6 +1858,13 @@ struct Home {
       preferType: SheetType.BOTTOM,
       backgroundColor: COLOR_SURFACE,
       maskColor: $r('app.color.hita_sheet_mask'),
+      shouldDismiss: this.widgetBackgroundSheetOpen ? (sheetDismiss: SheetDismiss) => {
+        this.confirmWidgetBackgroundDismiss(() => sheetDismiss.dismiss());
+      } : undefined,
+      onWillSpringBackWhenDismiss: this.widgetBackgroundSheetOpen ? (springBack: SpringBackAction) => {
+        // Defer the rebound until confirmation is declined; successful dismissals close directly.
+        this.widgetBackgroundSpringBack = () => springBack.springBack();
+      } : undefined,
       onWillDisappear: () => {
         this.closeActiveSheet();
       },
@@ -1822,6 +1873,11 @@ struct Home {
         this.activeSheetVisible = false;
         this.sessionSheetOpen = false;
         this.loginSheetOpen = false;
+        this.widgetBackgroundSheetOpen = false;
+        this.widgetBackgroundDirty = false;
+        this.widgetBackgroundBusy = false;
+        this.widgetBackgroundConfirmDismiss = undefined;
+        this.widgetBackgroundSpringBack = undefined;
         this.courseSheetOpen = false;
         this.timetableDisplayOpen = false;
         this.selectedCourse = undefined;
@@ -1830,7 +1886,7 @@ struct Home {
         this.finishCourseSheetDismissal();
       }
     }, this.loginSheetOpen || this.sessionSheetOpen || this.courseSheetOpen || this.timetableDisplayOpen ||
-      this.calendarExportSheetOpen, !this.timetableDisplayOpen));
+      this.calendarExportSheetOpen || this.widgetBackgroundSheetOpen, !this.timetableDisplayOpen));
   }
 
   @Builder
@@ -1855,7 +1911,7 @@ struct Home {
 
   @Builder
   activeSheet() {
-    SheetContent({ fillHeight: this.loginSheetOpen }) {
+    SheetContent({ fillHeight: this.loginSheetOpen || this.widgetBackgroundSheetOpen }) {
       if (this.loginSheetOpen) {
         EasLoginPage({
           campusCode: this.loginCampusCode,
@@ -1875,6 +1931,26 @@ struct Home {
           .width('100%')
           .height('100%')
           .attributeModifier(new CompatibleLightModifier(24, CompatibleSheetMaterial.isEnabled(), true));
+      } else if (this.widgetBackgroundSheetOpen) {
+        WidgetBackgroundPage({
+          onBackgroundChanged: (enabled: boolean) => {
+            this.widgetBackgroundSet = enabled;
+          },
+          onDirtyChanged: (dirty: boolean) => {
+            this.widgetBackgroundDirty = dirty;
+          },
+          onBusyChanged: (busy: boolean) => {
+            this.widgetBackgroundBusy = busy;
+          },
+          onConfirmDismissReady: (confirm: (dismiss: () => void, springBack: () => void) => void) => {
+            this.widgetBackgroundConfirmDismiss = confirm;
+          },
+          onClose: () => {
+            this.closeActiveSheet();
+          }
+        })
+          .width('100%')
+          .height('100%');
       } else if (this.timetableDisplayOpen) {
         TimetableDisplaySettings({
           options: this.timetableDisplay,
@@ -2978,7 +3054,7 @@ struct Home {
           .height(44)
           .padding({ left: 16, right: 16 })
           .onClick(() => {
-            this.getUIContext().getRouter().pushUrl({ url: 'pages/WidgetBackgroundPage' });
+            this.openWidgetBackgroundSheet();
           });
         }
         .width('100%')
