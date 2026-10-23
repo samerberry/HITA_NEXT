@@ -4,7 +4,8 @@
  * 数据源：NOTICES_URL 指向的 JSON 文件（格式 {"notices":[...]}）。
  * kind: version(版本提醒) / service(服务公告) / incident(故障通知)
  * severity: critical(重要，红底置顶) / info(普通)
- * 拉取成功后写偏好缓存；离线时回落缓存。生效过滤：时间窗 + 受影响版本下限，
+ * 拉取成功后写偏好缓存；离线时回落缓存。生效过滤：时间窗 + 版本上下限
+ * （min_app_version / max_app_version、affected_min_version / affected_max_version），
  * critical 排前。
  */
 import { bundleManager } from '@kit.AbilityKit';
@@ -28,7 +29,9 @@ export class AppNotice {
   title: string = '公告';
   body: string = '';
   minAppVersion: number = -1;
+  maxAppVersion: number = -1;
   affectedMinVersion: number = -1;
+  affectedMaxVersion: number = -1;
   startsAt: number = -1;
   endsAt: number = -1;
 
@@ -140,15 +143,18 @@ export class AppNoticeCenter {
     }
   }
 
-  /** 命中当前时间窗且版本范围的公告，critical 排前。 */
+  /** 命中当前时间窗且版本在上下限范围内的公告，critical 排前。 */
   static activeNotices(notices: AppNotice[], now: number = Date.now()): AppNotice[] {
     const currentVersion: number = AppNoticeCenter.versionCode();
     const out: AppNotice[] = notices.filter((notice: AppNotice): boolean => {
       const started: boolean = notice.startsAt < 0 ? true : now >= notice.startsAt;
       const ended: boolean = notice.endsAt < 0 ? true : now <= notice.endsAt;
       const supported: boolean = notice.minAppVersion < 0 ? true : currentVersion >= notice.minAppVersion;
+      const withinMax: boolean = notice.maxAppVersion < 0 ? true : currentVersion <= notice.maxAppVersion;
       const affected: boolean = notice.affectedMinVersion < 0 ? true : currentVersion >= notice.affectedMinVersion;
-      return started && ended && supported && affected;
+      const withinAffectedMax: boolean =
+        notice.affectedMaxVersion < 0 ? true : currentVersion <= notice.affectedMaxVersion;
+      return started && ended && supported && withinMax && affected && withinAffectedMax;
     });
     out.sort((a: AppNotice, b: AppNotice): number => {
       const av: number = a.isCritical() ? 0 : 1;
@@ -210,8 +216,12 @@ export class AppNoticeCenter {
     notice.body = AppNoticeCenter.textOf(obj['body']);
     notice.minAppVersion = AppNoticeCenter.numOr(
       AppNoticeCenter.firstOf(obj, 'min_app_version', 'minAppVersion'), -1);
+    notice.maxAppVersion = AppNoticeCenter.numOr(
+      AppNoticeCenter.firstOf(obj, 'max_app_version', 'maxAppVersion'), -1);
     notice.affectedMinVersion = AppNoticeCenter.numOr(
       AppNoticeCenter.firstOf(obj, 'affected_min_version', 'affectedMinVersion'), -1);
+    notice.affectedMaxVersion = AppNoticeCenter.numOr(
+      AppNoticeCenter.firstOf(obj, 'affected_max_version', 'affectedMaxVersion'), -1);
     notice.startsAt = AppNoticeCenter.numOr(
       AppNoticeCenter.firstOf(obj, 'starts_at', 'startsAt'), -1);
     notice.endsAt = AppNoticeCenter.numOr(
