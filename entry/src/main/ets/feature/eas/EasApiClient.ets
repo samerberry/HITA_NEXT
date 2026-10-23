@@ -8,10 +8,14 @@
  * 请求路径由 EasDataProvider 配置。
  */
 import { http } from '@kit.NetworkKit';
+import { hilog } from '@kit.PerformanceAnalysisKit';
 import { EasCampusConfig, EasCampusUrls, EasUserAgent } from './webLogin/EasWebLoginConfig';
-import { EasSession } from './EasSession';
+import { EasCampus, EasSession } from './EasSession';
 import { EasSessionStore } from './EasSessionStore';
-import { EasSessionResponse, isExpiredEasResponse } from './EasSessionStatus';
+import { EasSessionResponse, isExpiredEasResponse, isShenzhenGatewayLoginRedirect } from './EasSessionStatus';
+
+const TAG: string = 'HitaEasApi';
+const DOMAIN: number = 0x0000;
 
 export enum EasHttpMethod {
   GET = 'GET',
@@ -40,13 +44,19 @@ export class EasApiClientOptions {
 }
 
 /**
- * 失效重登回调由外部注入：返回 true 表示已重登成功（调用方自行重试），
- * false 表示放弃。对应 sessionGeneration +1 的重登协议。
+ * 失效重登回调：返回 true 表示已把新一代会话凭据写回传入的 session（调用方重试一次），
+ * false 表示放弃，由调用方标记过期。对应 sessionGeneration +1 的重登协议。
  */
-export type EasReloginHandler = (reason: string) => Promise<boolean>;
+export type EasReloginHandler = (session: EasSession, reason: string) => Promise<boolean>;
 
 export class EasApiClient {
+  /** 应用启动后由静默续期服务注册；未注册时认证失效直接标记过期。 */
+  private static defaultReloginHandler: EasReloginHandler | undefined = undefined;
   private reloginHandler: EasReloginHandler | undefined = undefined;
+
+  static setDefaultReloginHandler(handler: EasReloginHandler | undefined): void {
+    EasApiClient.defaultReloginHandler = handler;
+  }
 
   setReloginHandler(handler: EasReloginHandler): void {
     this.reloginHandler = handler;
@@ -54,14 +64,14 @@ export class EasApiClient {
 
   /**
    * 发起数据请求：合并校区 Cookie 到请求头，遇到明确的认证失效响应
-   * 触发重登回调。
+   * 先尝试重登并重试一次，仍失效才标记过期。
    */
   async request(session: EasSession, cfg: EasCampusConfig, path: string,
     options: EasApiClientOptions): Promise<EasApiResponse> {
-    const base: string = this.dataBaseUrl(session, cfg);
-    const url: string = EasApiClient.joinUrl(base, path);
     const attempts: number = 2;
     for (let i = 0; i < attempts; i++) {
+      // 重登可能换到深圳另一数据基址，每次尝试都按当前会话取地址。
+      const url: string = EasApiClient.joinUrl(this.dataBaseUrl(session, cfg), path);
       const header: Map<string, string> = new Map<string, string>();
       options.extraHeaders.forEach((value: string, key: string) => {
         header.set(key, value);
@@ -84,16 +94,27 @@ export class EasApiClient {
           header.set('Content-Type', 'application/x-www-form-urlencoded; charset=UTF-8');
         }
       }
-      const resp: EasApiResponse = await EasApiClient.doHttp(url, options.method, header, options.body,
-        options.timeoutMs, options.useCache);
-      if (isExpiredEasResponse(resp)) {
-        await EasSessionStore.getInstance().markExpired(session);
-        if (this.reloginHandler !== undefined && i + 1 < attempts) {
-          const ok: boolean = await this.reloginHandler('session invalid on ' + path);
-          if (ok) {
-            continue; // 重登成功后重试一次
-          }
+      // 重登后的重试不能读缓存，否则可能拿回刚才那张失效页，把新会话又标成过期。
+      const useCache: boolean = options.useCache && i === 0;
+      // 深圳 aTrust 网关失效时的重定向只能在第一跳识别；其他重定向照常跟随。
+      const gatewayChecked: boolean = session.campus === EasCampus.SHENZHEN;
+      let resp: EasApiResponse = await EasApiClient.doHttp(url, options.method, header, options.body,
+        options.timeoutMs, useCache, options.followRedirects && !gatewayChecked);
+      if (gatewayChecked && resp.statusCode >= 300 && resp.statusCode < 400) {
+        const gatewayLogin: boolean = isShenzhenGatewayLoginRedirect(resp);
+        hilog.info(DOMAIN, TAG, 'Shenzhen redirect status=%{public}d gatewayLogin=%{public}s target=%{public}s',
+          resp.statusCode, String(gatewayLogin), EasApiClient.redirectTarget(resp.location));
+        if (!gatewayLogin && options.followRedirects) {
+          resp = await EasApiClient.doHttp(url, options.method, header, options.body,
+            options.timeoutMs, useCache, true);
         }
+      }
+      if (isExpiredEasResponse(resp)) {
+        const relogin: EasReloginHandler | undefined = this.reloginHandler ?? EasApiClient.defaultReloginHandler;
+        if (relogin !== undefined && i + 1 < attempts && await relogin(session, 'session invalid on ' + path)) {
+          continue; // 重登成功后用新凭据重试一次
+        }
+        await EasSessionStore.getInstance().markExpired(session);
       }
       return resp;
     }
@@ -121,6 +142,12 @@ export class EasApiClient {
       return EasUserAgent.SHENZHEN_DESKTOP;
     }
     return EasUserAgentFallback.value;
+  }
+
+  /** 只记录重定向目标的主机和路径，不记录可能带票据的查询串。 */
+  private static redirectTarget(location: string): string {
+    const end: number = location.search(/[?#]/);
+    return end >= 0 ? location.substring(0, end) : location;
   }
 
   static joinUrl(base: string, path: string): string {

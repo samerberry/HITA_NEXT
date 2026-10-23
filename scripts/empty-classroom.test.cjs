@@ -12,8 +12,8 @@ function load(file, mocks = {}, cache = new Map()) {
   if (file.endsWith('EmptyClassroomPage.ets')) {
     source = source.slice(0, source.indexOf('\n  build()')) + '\n}';
     source = source.replace(/^@(Entry|Component)\r?\n/gm, '')
-      .replace(/@(State|StorageProp)(\([^)]*\))?\s+/g, '')
-      .replace('struct EmptyClassroomPage', 'export class EmptyClassroomPage');
+      .replace(/@(State|Prop|StorageProp)(\([^)]*\))?\s+/g, '')
+      .replace(/(?:export\s+)?struct EmptyClassroomPage/, 'export class EmptyClassroomPage');
   }
   const mod = { exports: {} };
   cache.set(file, mod);

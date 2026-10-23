@@ -98,6 +98,7 @@ function summaryHarness() {
     courseDeleteEffects = { resume() {} };
     getUIContext() { return { getHostContext: () => ({}), setKeyboardAvoidMode() {} }; }
     startClock() {}
+    checkTimetableUpdate() {}
     updateTodayHighlights() {}
     drawTimetableNow() {}
     static defaultCanvasColor() { return 1; }

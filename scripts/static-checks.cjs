@@ -30,7 +30,7 @@ const problems = [];
 const files = walk(ETS, '.ets').concat(walk(ETS, '.ts'));
 
 // ---- 1) imports/exports ----
-const expRe = /export\s+(?:class|const|function|enum|interface|struct|abstract\s+class)\s+([A-Za-z0-9_$]+)/g;
+const expRe = /export\s+(?:class|const|function|enum|interface|struct|type|abstract\s+class)\s+([A-Za-z0-9_$]+)/g;
 const reEx = /export\s*\{([^}]*)\}/g;
 const imRe = /import\s*\{([^}]*)\}\s*from\s*['"]([^'"]+)['"]/g;
 const exportCache = new Map();

@@ -208,7 +208,7 @@ test('function-centre secondary pages use the same transparent header', () => {
   const pages = ['NoticesPage', 'ScorePage', 'ExamPage',
     'ImportTimetablePage', 'TimetableManagerPage', 'TimetableDetailPage', 'PortalsPage'];
   for (const page of pages) {
-    const source = read(`pages/${page}.ets`);
+    const source = read(page === 'ImportTimetablePage' ? 'pages/ImportTimetablePanel.ets' : `pages/${page}.ets`);
     const build = source.slice(source.indexOf('  build()'));
     assert.match(build, /HeaderFadeMask\(\{[\s\S]*?headerHeight: HEADER_HEIGHT/, page);
     assert.match(build, /Row\(\s*(?:\{[^{}\n]*\}\s*)?\)\s*\{\s*HeaderBackButton\(\{[\s\S]*?\.height\(HEADER_HEIGHT\)[\s\S]*?\.hitTestBehavior\(HitTestMode\.Transparent\)/, page);
@@ -224,9 +224,9 @@ test('score results scroll beneath the header and clear its fade when refreshing
   assert.match(build, /top: HEADER_HEIGHT, bottom: 16 \+ this\.navBarInset/);
   assert.match(build, /\.onDidScroll\(\(\) => \{\s*this\.fadeOpacity = HeaderFade\.opacity\(this\.pageScroller\.currentOffset\(\)\.yOffset\)/);
   assert.ok(build.indexOf('Scroll(this.pageScroller)') < build.indexOf('HeaderFadeMask('));
-  assert.ok(build.indexOf('HeaderFadeMask(') < build.indexOf('ImmersiveHeader({ barHeight: HEADER_HEIGHT })'));
+  assert.ok(build.indexOf('HeaderFadeMask(') < build.indexOf('ImmersiveHeader({ barHeight: HEADER_HEIGHT'));
   assert.match(source, /private resetResult\(\): void \{[^}]*this\.fadeOpacity = 0;/);
-  assert.match(build, /\.padding\(\{ top: this\.statusBarInset \}\)/);
+  assert.match(build, /\.padding\(\{ top: this\.presentedAsSheet \? 0 : this\.statusBarInset \}\)/);
 });
 
 test('timetable today column is a single tint that stops at the date header', () => {

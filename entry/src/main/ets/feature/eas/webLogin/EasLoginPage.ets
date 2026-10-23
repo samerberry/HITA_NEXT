@@ -75,7 +75,7 @@ export struct EasLoginPage {
       const ctx: common.Context = this.getUIContext().getHostContext() as common.Context;
       EasSessionStore.getInstance().init(ctx).then(() => {
         if (!this.pageActive || generation !== this.callbackGeneration) {
-          return Promise.resolve();
+          return Promise.resolve(false);
         }
         return EasSessionStore.getInstance().save(session);
       }).then(() => {

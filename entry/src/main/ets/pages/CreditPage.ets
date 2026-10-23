@@ -6,6 +6,8 @@ import { ImmersiveHeader } from '../common/components/ImmersiveHeader';
 import { HeaderFadeMask } from '../common/components/HeaderFadeMask';
 import { HeaderFade } from '../common/theme/HeaderFade';
 import { CompatibleMaterialModifier } from '../common/theme/CompatibleMaterialModifier';
+import { CompatibleLightModifier } from '../common/theme/CompatibleLightModifier';
+import { CompatibleSheetMaterial } from '../common/theme/CompatibleSheetMaterial';
 import { NAV_BAR_INSET_FALLBACK, STATUS_BAR_INSET_FALLBACK } from '../common/theme/StatusBarInset';
 import { EasCampus, EasSession } from '../feature/eas/EasSession';
 import { EasSessionStore } from '../feature/eas/EasSessionStore';
@@ -23,7 +25,9 @@ const HEADER_HEIGHT: number = 60;
 
 @Entry
 @Component
-struct CreditPage {
+export struct CreditPage {
+  @Prop presentedAsSheet: boolean = false;
+  onClose: () => void = () => {};
   @State official: boolean = false;
   @State loading: boolean = true;
   @State ready: boolean = false;
@@ -42,6 +46,7 @@ struct CreditPage {
   @StorageProp('hita_status_bar_vp') statusBarInset: number = STATUS_BAR_INSET_FALLBACK;
   @StorageProp('hita_nav_bar_vp') navBarInset: number = NAV_BAR_INSET_FALLBACK;
   private generation: number = 0;
+  private sheetLoadStarted: boolean = false;
   private session: EasSession | undefined = undefined;
   private service: CreditService = new CreditService();
   private goalStore: CreditGoalStore = new CreditGoalStore();
@@ -50,10 +55,20 @@ struct CreditPage {
   private pageScroller: Scroller = new Scroller();
   private goalDialog: CustomDialogController | undefined = undefined;
 
-  async onPageShow(): Promise<void> { await this.load(); }
+  async aboutToAppear(): Promise<void> {
+    if (this.presentedAsSheet && !this.sheetLoadStarted) await this.onPageShow();
+  }
 
-  onPageHide(): void { this.generation++; this.goalDialog?.close(); }
-  aboutToDisappear(): void { this.generation++; this.goalDialog?.close(); }
+  async onPageShow(): Promise<void> {
+    if (this.presentedAsSheet) {
+      if (this.sheetLoadStarted) return;
+      this.sheetLoadStarted = true;
+    }
+    await this.load();
+  }
+
+  onPageHide(): void { this.generation++; this.sheetLoadStarted = false; this.goalDialog?.close(); }
+  aboutToDisappear(): void { this.generation++; this.sheetLoadStarted = false; this.goalDialog?.close(); }
 
   private reset(): void {
     this.loading = true;
@@ -498,20 +513,30 @@ struct CreditPage {
           .padding({ left: 24, right: 24, top: HEADER_HEIGHT + 48, bottom: this.navBarInset })
       }
       HeaderFadeMask({ maskOpacity: this.fadeOpacity, headerHeight: HEADER_HEIGHT })
-      ImmersiveHeader({ barHeight: HEADER_HEIGHT }) {
+      ImmersiveHeader({ barHeight: HEADER_HEIGHT, materialEnabled: !this.presentedAsSheet ||
+        CompatibleSheetMaterial.isEnabled() }) {
         Row({ space: 12 }) {
-          HeaderBackButton({ onBack: () => this.getUIContext().getRouter().back() })
+          HeaderBackButton({ onBack: () => {
+            if (this.presentedAsSheet) this.onClose();
+            else this.getUIContext().getRouter().back();
+          } })
           Text(this.official ? '培养方案完成度' : '学分统计').fontSize(20).fontWeight(FontWeight.Bold)
             .fontColor($r('app.color.hita_text')).layoutWeight(1).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
           Button({ type: ButtonType.Circle }) {
             SymbolGlyph($r('sys.symbol.arrow_clockwise')).fontSize(20)
               .fontColor([CompatibleMaterialModifier.foreground('#FFFFFF')])
           }.width(36).height(36).backgroundColor($r('app.color.hita_primary_fill'))
-            .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_primary_fill')))
+            .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_primary_fill'), false,
+              !this.presentedAsSheet || CompatibleSheetMaterial.isEnabled()))
             .enabled(!this.loading).accessibilityText('刷新学分').onClick(() => this.load())
         }.width('100%').height(HEADER_HEIGHT).padding({ left: 16, right: 16 })
           .hitTestBehavior(HitTestMode.Transparent)
       }
-    }.width('100%').height('100%').padding({ top: this.statusBarInset }).backgroundColor($r('app.color.hita_page'))
+    }.width('100%').height('100%')
+      .padding({ top: this.presentedAsSheet ? 0 : this.statusBarInset })
+      .backgroundColor(this.presentedAsSheet ? CompatibleSheetMaterial.bodyColor($r('app.color.hita_page')) :
+        $r('app.color.hita_page'))
+      .attributeModifier(new CompatibleLightModifier(24, this.presentedAsSheet &&
+        CompatibleSheetMaterial.isEnabled(), true))
   }
 }

@@ -310,6 +310,21 @@ export class EasTermSubject {
 }
 
 /** 事件/课程实例（EventItem.kt 直迁）。 */
+/** 上次导入或更新时教务端的一节课：名称与起止时间定位课次，signature 记录会单独变化的字段。 */
+export class EasImportBaseEntry {
+  name: string = '';
+  from: number = 0;
+  to: number = 0;
+  signature: string = '';
+
+  constructor(name: string, from: number, to: number, signature: string) {
+    this.name = name;
+    this.from = from;
+    this.to = to;
+    this.signature = signature;
+  }
+}
+
 export class EasEventItem {
   id: string = newId();
   type: EasEventType = EasEventType.CLASS;

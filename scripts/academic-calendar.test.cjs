@@ -11,12 +11,13 @@ function load(file, mocks = {}, cache = new Map()) {
   file = path.resolve(root, file);
   if (cache.has(file)) return cache.get(file).exports;
   let source = fs.readFileSync(file, 'utf8');
-  if (file.endsWith('ImportTimetablePage.ets')) {
+  if (file.endsWith('ImportTimetablePanel.ets')) {
     const helpers = source.slice(source.indexOf('\n  private static dateText'));
     source = source.slice(0, source.indexOf('\n  build()')) + helpers;
     source = source.replace(/^@(Entry|Component)\r?\n/gm, '')
-      .replace(/@(State|StorageProp)(\([^)]*\))?\s+/g, '')
-      .replace('struct ImportTimetablePage', 'export class ImportTimetablePage');
+      .replace(/@(State|StorageProp|Prop)(\([^)]*\))?\s+/g, '')
+      .replace(/^import .*Compatible(LightModifier|SheetMaterial).*\r?\n/gm, '')
+      .replace('struct ImportTimetablePanel', 'export class ImportTimetablePanel');
   }
   const mod = { exports: {} };
   cache.set(file, mod);
@@ -323,7 +324,7 @@ test('database startup no longer rewrites saved dates to a hard-coded autumn Mon
 
 test('import page ignores late calendar responses after changing the selected term', async () => {
   const pending = [];
-  const { ImportTimetablePage } = load('pages/ImportTimetablePage.ets', {
+  const { ImportTimetablePanel } = load('pages/ImportTimetablePanel.ets', {
     '../common/db/RdbHelper': { RdbHelper: { getInstance: () => ({ init: async () => {} }) } },
     '../feature/eas/EasTimetableImporter': { EasTimetableImporter: {
       loadStartDate: async (db, provider, session, term) =>
@@ -331,7 +332,7 @@ test('import page ignores late calendar responses after changing the selected te
       scheduleStructure: () => []
     } }
   });
-  const page = new ImportTimetablePage();
+  const page = new ImportTimetablePanel();
   page.getUIContext = () => ({ getHostContext: () => ({}) });
   page.session = Object.assign(new EasSession(), { campus: EasCampus.WEIHAI });
   page.terms = [term(), term('2')];
@@ -350,8 +351,8 @@ test('import page ignores late calendar responses after changing the selected te
 });
 
 test('manual date selection uses Monday, and cannot race an in-flight calendar request', () => {
-  const { ImportTimetablePage } = load('pages/ImportTimetablePage.ets');
-  const page = new ImportTimetablePage();
+  const { ImportTimetablePanel } = load('pages/ImportTimetablePanel.ets');
+  const page = new ImportTimetablePanel();
   const pickers = [];
   page.getUIContext = () => ({ showDatePickerDialog: picker => pickers.push(picker) });
   page.detailsLoading = true;

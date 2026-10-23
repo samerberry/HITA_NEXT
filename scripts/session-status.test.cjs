@@ -394,6 +394,75 @@ test('late old request cannot expire a new login or recreate a logged-out sessio
   } finally { EasApiClient.doHttp = previousHttp; EasSessionStore.instance = previousStore; }
 });
 
+const gatewayLogin = 'https://trust.hitsz.edu.cn/portal/shortcut.html?redirect=https%3A%2F%2Fjw-hitsz-edu-cn.hitsz.edu.cn%2F';
+const redirect = (location, statusCode = 302) => ({ statusCode, body: '', location });
+
+test('a Shenzhen redirect to the aTrust login entry is expiry; other redirects and a plain 405 are not', () => {
+  for (const value of [redirect(gatewayLogin), redirect(gatewayLogin.replace('.cn/', '.cn:443/'), 303),
+    redirect('https://trust.hitsz.edu.cn/controller/v1/public/verify?t=fixture', 307),
+    redirect('https://TRUST.hitsz.edu.cn/passport/v1/auth/cas?x=1')]) {
+    assert.equal(isExpiredEasResponse(value), true, value.location);
+  }
+  for (const value of [response('<html>405 Not Allowed</html>', 405), response('', 302),
+    redirect('https://jw-hitsz-edu-cn.hitsz.edu.cn/authentication/main'),
+    redirect('https://trust.hitsz.edu.cn/portal/'),
+    redirect('https://trust.hitsz.edu.cn.evil.example/portal/shortcut.html'),
+    redirect('http://trust.hitsz.edu.cn/portal/shortcut.html'),
+    { statusCode: 200, body: terms('xnxq'), location: gatewayLogin }]) {
+    assert.equal(isExpiredEasResponse(value), false, value.location ?? value.body);
+  }
+});
+
+test('Shenzhen requests stop at the gateway login redirect and persist expiry instead of a 405', async () => {
+  const previousStore = EasSessionStore.instance;
+  const previousHttp = EasApiClient.doHttp;
+  try {
+    const { store } = storedSessions(); EasSessionStore.instance = store;
+    const saved = session(Campus.SHENZHEN); await store.save(saved);
+    const calls = [];
+    EasApiClient.doHttp = async (url, method, header, body, timeout, useCache, follow) => {
+      calls.push(follow);
+      return follow === false ? redirect(gatewayLogin) : response('<html>405 Not Allowed</html>', 405);
+    };
+    const result = await new EasApiClient().request(saved, easWebLoginConfigFor(saved.campus, '1'),
+      '/component/queryXnxq', new EasApiClientOptions());
+    assert.equal(result.location, gatewayLogin);
+    assert.deepEqual(calls, [false], 'the gateway redirect itself is the evidence');
+    assert.equal((await store.load(saved.campus)).loginExpired, true);
+  } finally { EasApiClient.doHttp = previousHttp; EasSessionStore.instance = previousStore; }
+});
+
+test('other Shenzhen redirects are still followed, and other campuses follow redirects as before', async () => {
+  const previousStore = EasSessionStore.instance;
+  const previousHttp = EasApiClient.doHttp;
+  try {
+    const { store } = storedSessions(); EasSessionStore.instance = store;
+    for (const campus of Object.values(Campus)) {
+      const saved = session(campus); await store.save(saved);
+      const calls = [];
+      EasApiClient.doHttp = async (url, method, header, body, timeout, useCache, follow) => {
+        calls.push(follow);
+        return follow === false ? redirect(EasCampusUrls.SHENZHEN_PROXY_BASE + '/Xsxk/query/1') :
+          response('<html>405 Not Allowed</html>', 405);
+      };
+      const result = await new EasApiClient().request(saved, easWebLoginConfigFor(campus, '1'),
+        '/fixture-business', new EasApiClientOptions());
+      assert.equal(result.statusCode, 405);
+      assert.deepEqual(calls, campus === Campus.SHENZHEN ? [false, true] : [true]);
+      assert.equal((await store.load(campus)).loginExpired, false);
+    }
+  } finally { EasApiClient.doHttp = previousHttp; EasSessionStore.instance = previousStore; }
+});
+
+test('Shenzhen term reads report the gateway login redirect as an expired session', async () => {
+  const saved = session(Campus.SHENZHEN);
+  saved.webCookies.set('SESSION', 'synthetic-proxy-session');
+  const provider = new Provider({ request: async () => redirect(gatewayLogin) });
+  await assert.rejects(provider.getAllTerms(saved), /深圳教务会话已失效，请重新登录/);
+  const plain = new Provider({ request: async () => response('<html>405 Not Allowed</html>', 405) });
+  await assert.rejects(plain.getAllTerms(saved), /未获取到深圳学期列表/);
+});
+
 test('login and expiry writes are serialized so a fresh login always clears the old flag', async () => {
   for (const expiryFirst of [true, false]) {
     const { store } = storedSessions();

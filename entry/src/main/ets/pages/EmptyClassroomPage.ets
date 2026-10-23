@@ -3,6 +3,8 @@ import { common } from '@kit.AbilityKit';
 import { HeaderBackButton } from '../common/components/HeaderBackButton';
 import { ImmersiveHeader } from '../common/components/ImmersiveHeader';
 import { CompatibleMaterialModifier } from '../common/theme/CompatibleMaterialModifier';
+import { CompatibleLightModifier } from '../common/theme/CompatibleLightModifier';
+import { CompatibleSheetMaterial } from '../common/theme/CompatibleSheetMaterial';
 import { STATUS_BAR_INSET_FALLBACK, NAV_BAR_INSET_FALLBACK } from '../common/theme/StatusBarInset';
 import { RdbHelper } from '../common/db/RdbHelper';
 import { EasTimePeriodInDay, EasTimetable } from '../common/model/timetable/TimetableModels';
@@ -26,7 +28,9 @@ const PRIMARY: ResourceColor = $r('app.color.hita_primary');
 
 @Entry
 @Component
-struct EmptyClassroomPage {
+export struct EmptyClassroomPage {
+  @Prop presentedAsSheet: boolean = false;
+  onClose: () => void = () => {};
   @State terms: EasTermItem[] = [];
   @State buildings: ClassroomBuilding[] = [];
   @State termIndex: number = 0;
@@ -51,19 +55,29 @@ struct EmptyClassroomPage {
   private cache: EmptyClassroomCache = new EmptyClassroomCache();
   private generation: number = 0;
   private returningFromLogin: boolean = false;
+  private sheetLoadStarted: boolean = false;
+
+  async aboutToAppear(): Promise<void> {
+    if (this.presentedAsSheet && !this.sheetLoadStarted) await this.onPageShow();
+  }
 
   async onPageShow(): Promise<void> {
+    if (this.presentedAsSheet) {
+      if (this.sheetLoadStarted) return;
+      this.sheetLoadStarted = true;
+    }
     await this.loadOptions(this.returningFromLogin);
     this.returningFromLogin = false;
   }
 
   onPageHide(): void {
     this.generation++;
+    this.sheetLoadStarted = false;
     this.sheetVisible = false;
   }
 
   aboutToDisappear(): void {
-    this.generation++;
+    this.onPageHide();
   }
 
   private clearResults(): void {
@@ -327,9 +341,13 @@ struct EmptyClassroomPage {
 
   build() {
     Column({ space: 8 }) {
-      ImmersiveHeader({ barHeight: 60 }) {
+      ImmersiveHeader({ barHeight: 60, materialEnabled: !this.presentedAsSheet ||
+        CompatibleSheetMaterial.isEnabled() }) {
         Row({ space: 12 }) {
-          HeaderBackButton({ onBack: () => this.getUIContext().getRouter().back() })
+        HeaderBackButton({ onBack: () => {
+          if (this.presentedAsSheet) this.onClose();
+          else this.getUIContext().getRouter().back();
+        } })
           Text('空教室查询').fontSize(20).fontWeight(FontWeight.Bold).fontColor(TEXT).layoutWeight(1)
             .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
           Button({ type: ButtonType.Circle }) {
@@ -341,7 +359,8 @@ struct EmptyClassroomPage {
             }
           }
           .width(44).height(44).backgroundColor(Color.Transparent)
-          .attributeModifier(new CompatibleMaterialModifier(Color.Transparent))
+          .attributeModifier(new CompatibleMaterialModifier(Color.Transparent, false,
+            !this.presentedAsSheet || CompatibleSheetMaterial.isEnabled()))
           .accessibilityText('刷新空教室').enabled(!this.loading && !this.querying)
           .onClick(async () => { await this.loadOptions(); })
         }.width('100%').height(60).padding({ left: 4, right: 4 })
@@ -371,13 +390,17 @@ struct EmptyClassroomPage {
           Text('该教学楼本周暂无教室数据').fontSize(14).fontColor(SECONDARY)
         }
       }.layoutWeight(1).width('100%')
-    }.padding({ top: this.statusBarInset, left: 12, right: 12 })
-      .width('100%').height('100%').backgroundColor($r('app.color.hita_page'))
+    }.padding({ top: this.presentedAsSheet ? 0 : this.statusBarInset, left: 12, right: 12 })
+      .width('100%').height('100%')
+      .backgroundColor(this.presentedAsSheet ? CompatibleSheetMaterial.bodyColor($r('app.color.hita_page')) :
+        $r('app.color.hita_page'))
       .bindSheet(this.sheetVisible, this.classroomSheet(), {
         height: '80%', dragBar: true, showClose: false, preferType: SheetType.BOTTOM,
         backgroundColor: $r('app.color.hita_surface'), maskColor: $r('app.color.hita_sheet_mask'),
         onDisappear: () => { this.sheetVisible = false; }
       })
+      .attributeModifier(new CompatibleLightModifier(24, this.presentedAsSheet &&
+        CompatibleSheetMaterial.isEnabled(), true))
   }
 
   @Builder

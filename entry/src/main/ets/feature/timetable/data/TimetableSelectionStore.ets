@@ -1,10 +1,13 @@
 /** Persists the timetable selected for the main timetable/today views. */
 import { preferences } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
+import { fileIo } from '@kit.CoreFileKit';
+import { hilog } from '@kit.PerformanceAnalysisKit';
 import { TimetableTheme } from '../../../common/theme/TimetableTheme';
 import { ScheduleChangeSignal } from '../../../common/util/ScheduleChangeSignal';
 
 const STORE_NAME: string = 'hitanext_store';
+const MIRROR_FILE: string = 'active_timetable_id.txt';
 const ACTIVE_TIMETABLE_KEY: string = 'active_timetable_id';
 const TEXT_COLOR_KEY: string = 'timetable_text_color';
 const CUSTOM_TEXT_COLOR_KEY: string = 'timetable_text_color_custom';
@@ -12,6 +15,7 @@ const CUSTOM_TEXT_COLOR_KEY: string = 'timetable_text_color_custom';
 export class TimetableSelectionStore {
   private static instance: TimetableSelectionStore | undefined = undefined;
   private store: preferences.Preferences | undefined = undefined;
+  private mirror: string = '';
 
   static getInstance(): TimetableSelectionStore {
     if (TimetableSelectionStore.instance === undefined) {
@@ -25,6 +29,15 @@ export class TimetableSelectionStore {
       this.store = await preferences.getPreferences(context, { name: STORE_NAME });
     } catch (e) {
       this.store = undefined;
+    }
+    if (this.mirror.length === 0) {
+      try {
+        this.mirror = TimetableSelectionStore.mirrorPath(context);
+        // Older versions kept the selection only in preferences; seed the card's copy once per launch.
+        this.writeMirror(await this.load());
+      } catch (e) {
+        this.mirror = '';
+      }
     }
   }
 
@@ -41,16 +54,17 @@ export class TimetableSelectionStore {
   }
 
   /**
-   * Reads the selection from disk for the service card process. Preferences are cached per process, so a
-   * cached instance there never sees later selections saved by the app. Do not call this in the app
-   * process: it would detach the instance other stores share.
+   * Reads the selection for the service card. The card may share the app process, so it must never evict
+   * the shared preferences cache: a detached instance held by other stores would later flush the old
+   * selection back to disk. The id is mirrored to a plain file that every write keeps current.
    */
   static async loadLatest(context: common.Context): Promise<string> {
     try {
-      preferences.removePreferencesFromCacheSync(context, { name: STORE_NAME });
-      const store: preferences.Preferences = await preferences.getPreferences(context, { name: STORE_NAME });
-      const raw: preferences.ValueType = await store.get(ACTIVE_TIMETABLE_KEY, '');
-      return raw === undefined || raw === null ? '' : String(raw);
+      const path: string = TimetableSelectionStore.mirrorPath(context);
+      if (!fileIo.accessSync(path)) {
+        return '';
+      }
+      return fileIo.readTextSync(path).trim();
     } catch (e) {
       return '';
     }
@@ -63,6 +77,7 @@ export class TimetableSelectionStore {
     try {
       await this.store.put(ACTIVE_TIMETABLE_KEY, id);
       await this.store.flush();
+      this.writeMirror(id);
       ScheduleChangeSignal.notify();
     } catch (e) {
     }
@@ -75,8 +90,34 @@ export class TimetableSelectionStore {
     try {
       await this.store.delete(ACTIVE_TIMETABLE_KEY);
       await this.store.flush();
+      this.writeMirror('');
       ScheduleChangeSignal.notify();
     } catch (e) {
+    }
+  }
+
+  /** Application-level files dir: the same path from the app and the form extension. */
+  private static mirrorPath(context: common.Context): string {
+    return context.getApplicationContext().filesDir + '/' + MIRROR_FILE;
+  }
+
+  private writeMirror(id: string): void {
+    if (this.mirror.length === 0) {
+      return;
+    }
+    try {
+      // Write then rename so the card never reads a half-written id.
+      const temp: string = this.mirror + '.tmp';
+      const file: fileIo.File = fileIo.openSync(temp,
+        fileIo.OpenMode.CREATE | fileIo.OpenMode.WRITE_ONLY | fileIo.OpenMode.TRUNC);
+      try {
+        fileIo.writeSync(file.fd, id);
+      } finally {
+        fileIo.closeSync(file);
+      }
+      fileIo.renameSync(temp, this.mirror);
+    } catch (e) {
+      hilog.warn(0x0000, 'HitaSelection', 'mirror write failed: %{public}s', String(e));
     }
   }
 

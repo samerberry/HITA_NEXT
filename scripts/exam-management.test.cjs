@@ -24,7 +24,7 @@ function load(file, mocks = {}, cache = new Map()) {
     source = source.slice(0, source.indexOf('\n  build()')) + '\n}\n';
     source = source.replace(/^@(Entry|Component)\r?\n/gm, '')
       .replace(/@(State|Prop|StorageProp)(\([^)]*\))?\s+/g, '')
-      .replace('struct ExamPage', 'export class ExamPage')
+      .replace(/(?:export\s+)?struct ExamPage/, 'export class ExamPage')
       .replace('export struct EventEditorForm', 'export class EventEditorForm');
   }
   const mod = { exports: {} };

@@ -214,7 +214,7 @@ export class EasDataProvider {
       fields.set('xnxq', term.getCode());
       resp = await this.postForm(session, path, fields, 20000);
     }
-    if (resp.statusCode === 401 || resp.statusCode === 403 ||
+    if (resp.statusCode === 401 || resp.statusCode === 403 || isExpiredEasResponse(resp) ||
       EasDataProvider.isLoginResponse(resp.body)) {
       throw new Error('教务会话已失效，请重新登录');
     }
@@ -425,7 +425,8 @@ export class EasDataProvider {
       const resp: EasApiResponse = await this.api.request(session, cfg, paths[i], opts);
       hilog.info(DOMAIN, TAG, 'shenzhen terms path=%{public}s status=%{public}d len=%{public}d',
         paths[i], resp.statusCode, resp.body.length);
-      if (resp.statusCode === 401 || resp.statusCode === 403 || EasDataProvider.isLoginResponse(resp.body)) {
+      if (resp.statusCode === 401 || resp.statusCode === 403 || isExpiredEasResponse(resp) ||
+        EasDataProvider.isLoginResponse(resp.body)) {
         throw new Error('深圳教务会话已失效，请重新登录');
       }
       if (EasDataProvider.isHttpOk(resp)) {
@@ -476,7 +477,7 @@ export class EasDataProvider {
         session, EasDataProvider.shenzhenSelectionBody(session, term), 30000);
       const subjectResp: EasApiResponse = await this.api.request(session, cfg,
         EasShenzhenEndpoints.selectedSubjectsPath, subjectOpts);
-      if (subjectResp.statusCode === 401 || subjectResp.statusCode === 403 ||
+      if (subjectResp.statusCode === 401 || subjectResp.statusCode === 403 || isExpiredEasResponse(subjectResp) ||
         EasDataProvider.isLoginResponse(subjectResp.body)) {
         throw new Error('深圳教务会话已失效，请重新登录');
       }
@@ -496,7 +497,7 @@ export class EasDataProvider {
       EasShenzhenEndpoints.timetablePath, timetableOpts);
     hilog.info(DOMAIN, TAG, 'shenzhen timetable term=%{public}s status=%{public}d len=%{public}d',
       term.getCode(), timetableResp.statusCode, timetableResp.body.length);
-    if (timetableResp.statusCode === 401 || timetableResp.statusCode === 403 ||
+    if (timetableResp.statusCode === 401 || timetableResp.statusCode === 403 || isExpiredEasResponse(timetableResp) ||
       EasDataProvider.isLoginResponse(timetableResp.body)) {
       throw new Error('深圳教务会话已失效，请重新登录');
     }
@@ -720,7 +721,8 @@ export class EasDataProvider {
     opts.extraHeaders.set('X-Requested-With', 'XMLHttpRequest');
     const resp: EasApiResponse = await this.api.request(session, cfg,
       EasShenzhenEndpoints.scoresPath, opts);
-    if (resp.statusCode === 401 || resp.statusCode === 403 || EasDataProvider.isLoginResponse(resp.body)) {
+    if (resp.statusCode === 401 || resp.statusCode === 403 || isExpiredEasResponse(resp) ||
+      EasDataProvider.isLoginResponse(resp.body)) {
       throw new Error('深圳教务会话已失效，请重新登录');
     }
     if (resp.statusCode === 0) {

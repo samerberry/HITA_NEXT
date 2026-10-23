@@ -85,20 +85,32 @@ export class EasSessionStore {
     return undefined;
   }
 
-  /** 仅在网页登录成功后调用；与失效标记串行，避免旧请求覆盖新登录。 */
-  async save(session: EasSession): Promise<void> {
-    return this.enqueue(async () => {
+  /**
+   * 仅在网页登录成功后调用；与失效标记串行，避免旧请求覆盖新登录。
+   * 静默续期传入 replacing：只有存储中仍是发起续期的那一代会话时才写入，
+   * 且不改变当前校区选择。返回是否已写入。
+   */
+  async save(session: EasSession, replacing?: EasSession): Promise<boolean> {
+    let saved: boolean = false;
+    await this.enqueue(async () => {
       if (this.store === undefined) return;
       try {
         const previous = await this.load(session.campus);
+        if (replacing !== undefined && (previous === undefined ||
+          previous.sessionGeneration !== replacing.sessionGeneration ||
+          previous.getStudentType() !== replacing.getStudentType())) return;
         session.sessionGeneration = Math.max(Date.now(), (previous?.sessionGeneration ?? 0) + 1);
         session.loginExpired = false;
         await this.store.put(this.keyOf(session.campus), session.encode());
-        await this.store.put(LAST_CAMPUS_KEY, session.campus.toString());
+        if (replacing === undefined) {
+          await this.store.put(LAST_CAMPUS_KEY, session.campus.toString());
+        }
         await this.store.flush();
         this.notifyChanged();
+        saved = true;
       } catch (_) {}
     });
+    return saved;
   }
 
   /** 只修改发起该请求的同一会话；保留身份资料、凭据和当前校区选择。 */

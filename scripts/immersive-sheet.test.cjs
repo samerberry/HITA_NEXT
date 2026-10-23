@@ -136,13 +136,28 @@ test('Home retains one sheet lifecycle for authentication, timetable and calenda
   const home = read('ets/pages/Home.ets');
   assert.equal((home.match(/\.bindSheet\(/g) || []).length, 1);
   assert.match(home, /\.bindSheet\(\$\$this.activeSheetVisible, this.activeSheet\(\), CompatibleSheetMaterial.options\(\{/);
-  assert.match(home, /\}, this.loginSheetOpen \|\| this.sessionSheetOpen \|\| this.courseSheetOpen \|\| this.timetableDisplayOpen \|\|\s*this.calendarExportSheetOpen, !this.timetableDisplayOpen\)\)/);
+  assert.match(home, /\}, this.loginSheetOpen \|\| this.sessionSheetOpen \|\| this.courseSheetOpen \|\| this.timetableDisplayOpen \|\|\s*this.calendarExportSheetOpen \|\| this.widgetBackgroundSheetOpen \|\| this.importTimetableSheetOpen \|\|\s*this.academicPanelOpen,\s*!this.timetableDisplayOpen\)\)/);
   assert.match(home, /showClose: false/);
-  assert.match(home, /height: this.loginSheetOpen \? SheetSize.LARGE : SheetSize.FIT_CONTENT/);
+  assert.match(home, /height: this.widgetBackgroundSheetOpen \|\| this.importTimetableSheetOpen \|\| this.academicPanelOpen \? SheetSize.LARGE :\s*\(this.loginSheetOpen \? SheetSize.LARGE : SheetSize.FIT_CONTENT\)/);
   assert.match(home, /onWillDisappear: \(\) => \{\s*this.closeActiveSheet\(\)/);
   const detail = read('ets/pages/TimetableDetailPage.ets');
   assert.match(detail, /\.bindSheet\(\$\$this\.sheetVisible, this\.eventSheetContent\(\), CompatibleSheetMaterial.options\(\{/);
   assert.match(detail, /\}, this\.eventSheetMode === 2\)\)/);
+});
+
+test('more opens the reusable timetable importer as an expanded sheet while preserving its standalone route', () => {
+  const home = read('ets/pages/Home.ets');
+  const more = home.slice(home.indexOf('  tabMine()'), home.indexOf('  userCard()'));
+  assert.match(more, /'导入课表',[\s\S]*?this\.openImportTimetableSheet\(\)/);
+  assert.match(home, /private openImportTimetableSheet\(\): void \{\s*if \(!this\.canOpenSheet\(\)\) \{\s*return;\s*\}\s*this\.importTimetableSheetOpen = true;\s*this\.activeSheetVisible = true;/);
+  assert.match(home, /ImportTimetablePanel\(\{\s*presentedAsSheet: true,[\s\S]*?onClose: \(\) => this\.closeActiveSheet\(\),[\s\S]*?onImported: \(\) => \{ void this\.refreshSummaries\(\); \}/);
+  const panel = read('ets/pages/ImportTimetablePanel.ets');
+  assert.match(panel, /\.padding\(\{ top: this\.presentedAsSheet \? 0 : this\.statusBarInset \}\)/);
+  assert.match(panel, /CompatibleSheetMaterial\.bodyColor\(PAGE_BG\)/);
+  assert.match(panel, /new CompatibleLightModifier\(24, this\.presentedAsSheet &&\s*CompatibleSheetMaterial\.isEnabled\(\), true\)/);
+  assert.match(panel, /ImmersiveHeader\(\{ barHeight: HEADER_HEIGHT, materialEnabled: !this\.presentedAsSheet \|\|\s*CompatibleSheetMaterial\.isEnabled\(\) \}\)/);
+  assert.match(panel, /new CompatibleMaterialModifier\(\$r\('app\.color\.hita_selected_ebf4fc'\), false,\s*!this\.presentedAsSheet \|\| CompatibleSheetMaterial\.isEnabled\(\)\)/);
+  assert.match(read('ets/pages/ImportTimetablePage.ets'), /ImportTimetablePanel\(\{ presentedAsSheet: false \}\)/);
 });
 
 test('calendar confirmation uses the guarded sheet material without changing export or cancel controls', () => {

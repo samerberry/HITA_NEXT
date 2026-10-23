@@ -5,6 +5,7 @@ import { RdbHelper } from '../../common/db/RdbHelper';
 import {
   EasEventItem,
   EasEventType,
+  EasImportBaseEntry,
   EasSubjectType,
   EasTermSubject,
   EasTimePeriodInDay,
@@ -19,9 +20,30 @@ import { EasCourseItem, EasTermItem } from './model/EasModels';
 import { EasApiClient } from './EasApiClient';
 import { EasUserMessages } from './EasUserMessages';
 import { EasLegacyCourseCatalogParser, LegacyCourseAttributes } from './data/EasLegacyCourseCatalogParser';
+import { TimetableChangeGroup, TimetableMergePlan, TimetableUpdateDiff } from '../timetable/data/TimetableUpdateDiff';
+import { TimetableUpdateStore } from '../timetable/data/TimetableUpdateStore';
 
 const DOMAIN: number = 0x0000;
 const TAG: string = 'HitaEasImport';
+
+/** 一次导入将要写入的完整内容；写库前即可用于比较。 */
+export class EasImportPlan {
+  timetable: EasTimetable = new EasTimetable();
+  subjects: EasTermSubject[] = [];
+  events: EasEventItem[] = [];
+  replaceCourses: boolean = false;
+}
+
+/** 教务端相对上次导入的变化，以及合并到本地课表的改动，等待用户确认。 */
+export class EasTimetableUpdate {
+  timetable: EasTimetable = new EasTimetable();
+  plan: EasImportPlan = new EasImportPlan();
+  merge: TimetableMergePlan = new TimetableMergePlan();
+  /** 新增课程用到、本地还没有的科目。 */
+  newSubjects: EasTermSubject[] = [];
+  changes: TimetableChangeGroup[] = [];
+  fingerprint: string = '';
+}
 
 export class EasImportResult {
   success: boolean = false;
@@ -101,17 +123,11 @@ export class EasTimetableImporter {
         result.message = '未能获取开学日期，请在导入课表中手动选择';
         return result;
       }
-      const courses: EasCourseItem[] = await provider.getTimetableOfTerm(session, term);
+      const courses: EasCourseItem[] = await EasTimetableImporter.fetchCourses(provider, session, term);
       result.courseCount = courses.length;
       if (courses.length === 0) {
         result.message = '课表为空，未导入';
         return result;
-      }
-      if (session.campus !== EasCampus.SHENZHEN) {
-        const fetched: LegacyCatalogFetch = await provider.getLegacyCourseAttributes(session, term);
-        const matched: number = EasTimetableImporter.applyLegacyAttributes(courses, fetched.rows, term);
-        hilog.info(DOMAIN, TAG, 'course attributes %{public}s matched=%{public}d/%{public}d',
-          fetched.diag, matched, courses.length);
       }
       let schedule: EasTimePeriodInDay[] = scheduleOverride !== undefined && scheduleOverride.length > 0 ?
         scheduleOverride : EasTimetableImporter.scheduleStructure(session.campus);
@@ -125,8 +141,9 @@ export class EasTimetableImporter {
           hilog.warn(DOMAIN, TAG, 'using fallback Shenzhen schedule %{public}s', String(e));
         }
       }
-      const timetable: EasTimetable = await EasTimetableImporter.saveCourses(rdb, session, term, courses, schedule,
+      const plan: EasImportPlan = await EasTimetableImporter.saveCourses(rdb, session, term, courses, schedule,
         start.startTime);
+      const timetable: EasTimetable = plan.timetable;
       result.timetable = timetable;
       const readback: EasEventItem[] = await rdb.getEventsOfTimetable(timetable.id);
       result.eventCount = readback.length;
@@ -136,6 +153,8 @@ export class EasTimetableImporter {
         result.message = '课表保存失败，请重试';
         return result;
       }
+      // 刚导入的教务版本不需要再提醒更新。
+      await EasTimetableImporter.rememberRemote(context, timetable.id, plan.events);
       result.success = true;
       result.message = '已导入 ' + readback.length.toString() + ' 个课次';
       if (start.fromSaved) {
@@ -153,8 +172,155 @@ export class EasTimetableImporter {
     }
   }
 
+  /**
+   * 读取教务端该学期的最新课表并与本地课表比较，不写库。沿用本地课表的开学日期和
+   * 节次结构；教务内容与上次导入或上次提醒时相同就不再提醒，即使本地翘过课、改过课。
+   * minIntervalMs 大于 0 时，距上次实际检查这张课表不足该时长就跳过（跨重启有效）。
+   */
+  static async checkForUpdate(context: common.Context, timetable: EasTimetable,
+    minIntervalMs: number = 0): Promise<EasTimetableUpdate | undefined> {
+    const source: string[] | undefined = EasTimetableImporter.sourceOf(timetable);
+    if (source === undefined) {
+      return undefined;
+    }
+    await EasSessionStore.getInstance().init(context);
+    const campus: EasCampus = source[0] === EasCampus.BENBU.toString() ? EasCampus.BENBU :
+      source[0] === EasCampus.WEIHAI.toString() ? EasCampus.WEIHAI : EasCampus.SHENZHEN;
+    const session: EasSession | undefined = await EasSessionStore.getInstance().load(campus);
+    if (session === undefined || !session.isLogin() || session.loginExpired ||
+      (campus === EasCampus.BENBU && session.getStudentType() === '2')) {
+      return undefined;
+    }
+    const store: TimetableUpdateStore = TimetableUpdateStore.getInstance();
+    await store.init(context);
+    const now: number = Date.now();
+    const elapsed: number = now - await store.loadCheckedAt(timetable.id);
+    // 时钟被往回调过时上次时间在未来，视为已到期，不能因此长期不检查。
+    if (minIntervalMs > 0 && elapsed >= 0 && elapsed < minIntervalMs) {
+      return undefined;
+    }
+    // 联网前记下时间：网络失败也算一次检查，避免反复请求。
+    await store.saveCheckedAt(timetable.id, now);
+    const rdb: RdbHelper = RdbHelper.getInstance();
+    await rdb.init(context);
+    const provider: EasDataProvider = new EasDataProvider(new EasApiClient());
+    const terms: EasTermItem[] = await provider.getAllTerms(session);
+    const term: EasTermItem | undefined = terms.find((item: EasTermItem): boolean => item.getCode() === source[1]);
+    if (term === undefined) {
+      return undefined;
+    }
+    const courses: EasCourseItem[] = await EasTimetableImporter.fetchCourses(provider, session, term);
+    if (courses.length === 0) {
+      // 教务暂时返回空课表时不提议清空本地课程。
+      return undefined;
+    }
+    const plan: EasImportPlan = await EasTimetableImporter.buildImport(rdb, session, term, courses,
+      timetable.scheduleStructure, timetable.startTime);
+    if (!plan.replaceCourses || plan.timetable.id !== timetable.id) {
+      return undefined;
+    }
+    const fingerprint: string = TimetableUpdateDiff.fingerprint(plan.events);
+    const recorded: EasImportBaseEntry[] = await rdb.getImportBase(timetable.id);
+    if (recorded.length === 0) {
+      // 旧版本导入的课表还没有基准：以教务现状为基准且不提醒，免得把用户的修改当成教务变化。
+      // 先于“已提醒版本”判断，否则版本没变时永远记不下基准，之后的真实变化会被吞掉。
+      await rdb.saveImportBase(timetable.id, TimetableUpdateDiff.baseOf(plan.events));
+      await store.saveSeen(timetable.id, fingerprint);
+      hilog.info(DOMAIN, TAG, 'timetable update base initialized term=%{public}s', term.getCode());
+      return undefined;
+    }
+    if (await store.loadSeen(timetable.id) === fingerprint) {
+      return undefined;
+    }
+    const local: EasEventItem[] = await rdb.getEventsOfTimetable(timetable.id);
+    const merge: TimetableMergePlan = TimetableUpdateDiff.merge(plan.timetable.startTime, local,
+      TimetableUpdateDiff.baseMap(recorded), plan.events);
+    hilog.info(DOMAIN, TAG, 'timetable update check term=%{public}s changes=%{public}d',
+      term.getCode(), merge.changes.length);
+    if (merge.changes.length === 0) {
+      // 教务端的变化都落在用户翘过、改过的课上：没有要改的，只记下这一教务版本。
+      await rdb.saveImportBase(timetable.id, merge.base);
+      await store.saveSeen(timetable.id, fingerprint);
+      return undefined;
+    }
+    const existing: Set<string> = new Set<string>((await rdb.getSubjectsOfTimetable(timetable.id))
+      .map((subject: EasTermSubject): string => subject.id));
+    const update: EasTimetableUpdate = new EasTimetableUpdate();
+    update.timetable = timetable;
+    update.plan = plan;
+    update.merge = merge;
+    update.newSubjects = plan.subjects.filter((subject: EasTermSubject): boolean => !existing.has(subject.id) &&
+      merge.inserts.some((event: EasEventItem): boolean => event.subjectId === subject.id));
+    update.changes = merge.changes;
+    update.fingerprint = fingerprint;
+    return update;
+  }
+
+  /** 用户确认后只把清单里的变化落到本课表；翘过、改过、添加的课和其他日程保持不变。 */
+  static async applyUpdate(context: common.Context, update: EasTimetableUpdate): Promise<void> {
+    const rdb: RdbHelper = RdbHelper.getInstance();
+    await rdb.init(context);
+    await rdb.applyTimetableMerge(update.timetable.id, update.newSubjects, update.merge.inserts,
+      update.merge.updates, update.merge.deletes, update.merge.base);
+    await EasTimetableImporter.rememberRemote(context, update.timetable.id, update.plan.events);
+  }
+
+  /** 用户选择暂不更新：同一教务版本不再提醒。 */
+  static async dismissUpdate(context: common.Context, update: EasTimetableUpdate): Promise<void> {
+    const store: TimetableUpdateStore = TimetableUpdateStore.getInstance();
+    await store.init(context);
+    await store.saveSeen(update.timetable.id, update.fingerprint);
+  }
+
+  /** 教务导入的课表编码为“校区:学期代码”；其他来源（ICS、手建）没有教务对应。 */
+  static isEasTimetable(timetable: EasTimetable): boolean {
+    return EasTimetableImporter.sourceOf(timetable) !== undefined;
+  }
+
+  private static sourceOf(timetable: EasTimetable): string[] | undefined {
+    const separator: number = timetable.code.indexOf(':');
+    if (separator <= 0 || separator === timetable.code.length - 1) {
+      return undefined;
+    }
+    const campus: string = timetable.code.substring(0, separator);
+    if (campus !== EasCampus.SHENZHEN.toString() && campus !== EasCampus.BENBU.toString() &&
+      campus !== EasCampus.WEIHAI.toString()) {
+      return undefined;
+    }
+    return [campus, timetable.code.substring(separator + 1)];
+  }
+
+  private static async rememberRemote(context: common.Context, timetableId: string,
+    events: EasEventItem[]): Promise<void> {
+    const store: TimetableUpdateStore = TimetableUpdateStore.getInstance();
+    await store.init(context);
+    await store.saveSeen(timetableId, TimetableUpdateDiff.fingerprint(events));
+  }
+
+  /** 课表课程；旧校区再按课程名补全性质、考核方式与学分。 */
+  private static async fetchCourses(provider: EasDataProvider, session: EasSession,
+    term: EasTermItem): Promise<EasCourseItem[]> {
+    const courses: EasCourseItem[] = await provider.getTimetableOfTerm(session, term);
+    if (courses.length > 0 && session.campus !== EasCampus.SHENZHEN) {
+      const fetched: LegacyCatalogFetch = await provider.getLegacyCourseAttributes(session, term);
+      const matched: number = EasTimetableImporter.applyLegacyAttributes(courses, fetched.rows, term);
+      hilog.info(DOMAIN, TAG, 'course attributes %{public}s matched=%{public}d/%{public}d',
+        fetched.diag, matched, courses.length);
+    }
+    return courses;
+  }
+
   private static async saveCourses(rdb: RdbHelper, session: EasSession, term: EasTermItem,
-    courses: EasCourseItem[], schedule: EasTimePeriodInDay[], startTimeMs: number): Promise<EasTimetable> {
+    courses: EasCourseItem[], schedule: EasTimePeriodInDay[], startTimeMs: number): Promise<EasImportPlan> {
+    const plan: EasImportPlan = await EasTimetableImporter.buildImport(rdb, session, term, courses, schedule,
+      startTimeMs);
+    await rdb.saveImportedTimetable(plan.timetable, plan.subjects, plan.events, plan.replaceCourses,
+      TimetableUpdateDiff.baseOf(plan.events));
+    return plan;
+  }
+
+  private static async buildImport(rdb: RdbHelper, session: EasSession, term: EasTermItem,
+    courses: EasCourseItem[], schedule: EasTimePeriodInDay[], startTimeMs: number): Promise<EasImportPlan> {
     const code: string = session.campus.toString() + ':' + term.getCode();
     let timetable: EasTimetable | undefined = await rdb.getTimetableByEasCode(code);
     const replaceCourses: boolean = timetable !== undefined;
@@ -261,7 +427,7 @@ export class EasTimetableImporter {
         savedEventCount++;
       }
     }
-    hilog.info(DOMAIN, TAG, 'local save courses=%{public}d valid=%{public}d events=%{public}d',
+    hilog.info(DOMAIN, TAG, 'import plan courses=%{public}d valid=%{public}d events=%{public}d',
       courses.length, validCourseCount, savedEventCount);
     if (courses.length > 0 && validCourseCount === 0) {
       throw new Error('课表已获取，但课程节次无法解析');
@@ -281,8 +447,12 @@ export class EasTimetableImporter {
       end.setDate(end.getDate() + 7);
       timetable.endTime = end.getTime() - 1;
     }
-    await rdb.saveImportedTimetable(timetable, subjects, allEvents, replaceCourses);
-    return timetable;
+    const plan: EasImportPlan = new EasImportPlan();
+    plan.timetable = timetable;
+    plan.subjects = subjects;
+    plan.events = allEvents;
+    plan.replaceCourses = replaceCourses;
+    return plan;
   }
 
   /**

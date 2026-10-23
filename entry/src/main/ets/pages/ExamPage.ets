@@ -10,6 +10,8 @@ import { common } from '@kit.AbilityKit';
 import { HeaderBackButton } from '../common/components/HeaderBackButton';
 import { ImmersiveHeader } from '../common/components/ImmersiveHeader';
 import { CompatibleMaterialModifier } from '../common/theme/CompatibleMaterialModifier';
+import { CompatibleLightModifier } from '../common/theme/CompatibleLightModifier';
+import { CompatibleSheetMaterial } from '../common/theme/CompatibleSheetMaterial';
 import { HeaderFadeMask } from '../common/components/HeaderFadeMask';
 import { HeaderFade } from '../common/theme/HeaderFade';
 import { CirclePaintModifier } from '../common/theme/CirclePaintModifier';
@@ -40,7 +42,9 @@ const DEFAULT_EXAM_COLOR: number = 0xFFB24B63;
 
 @Entry
 @Component
-struct ExamPage {
+export struct ExamPage {
+  @Prop presentedAsSheet: boolean = false;
+  onClose: () => void = () => {};
   @State exams: EasEventItem[] = [];
   @State upcoming: EasEventItem[] = [];
   @State past: EasEventItem[] = [];
@@ -77,8 +81,17 @@ struct ExamPage {
   private deleteEffects: DeleteEffectController = new DeleteEffectController();
   private deleteSheetDismissed: (() => void) | undefined = undefined;
   private deleteSheetTimer: number = -1;
+  private sheetLoadStarted: boolean = false;
+
+  async aboutToAppear(): Promise<void> {
+    if (this.presentedAsSheet && !this.sheetLoadStarted) await this.onPageShow();
+  }
 
   async onPageShow(): Promise<void> {
+    if (this.presentedAsSheet) {
+      if (this.sheetLoadStarted) return;
+      this.sheetLoadStarted = true;
+    }
     const generation: number = ++this.pageGeneration;
     this.preparingQuery = true;
     this.fadeOpacity = 0;
@@ -102,6 +115,7 @@ struct ExamPage {
   }
 
   onPageHide(): void {
+    this.sheetLoadStarted = false;
     this.pageGeneration++;
     this.deleteEffects.pause();
     this.finishDeleteSheetDismissal();
@@ -654,7 +668,8 @@ struct ExamPage {
         headerHeight: HEADER_HEIGHT
       })
 
-      ImmersiveHeader({ barHeight: HEADER_HEIGHT }) {
+      ImmersiveHeader({ barHeight: HEADER_HEIGHT, materialEnabled: !this.presentedAsSheet ||
+        CompatibleSheetMaterial.isEnabled() }) {
         Row() {
           HeaderBackButton({
             onBack: () => this.navigateBack()
@@ -689,8 +704,8 @@ struct ExamPage {
     }
     .width('100%')
     .height('100%')
-    .padding({ top: this.statusBarInset })
-    .backgroundColor(PAGE_BG)
+    .padding({ top: this.presentedAsSheet ? 0 : this.statusBarInset })
+    .backgroundColor(this.presentedAsSheet ? CompatibleSheetMaterial.bodyColor(PAGE_BG) : PAGE_BG)
     .bindSheet(this.sheetVisible, this.examSheetContent(), {
       height: this.examSheetMode === 2 ? '78%' : SheetSize.FIT_CONTENT,
       dragBar: true,
@@ -704,6 +719,8 @@ struct ExamPage {
         this.finishDeleteSheetDismissal();
       }
     })
+    .attributeModifier(new CompatibleLightModifier(24, this.presentedAsSheet &&
+      CompatibleSheetMaterial.isEnabled(), true))
   }
 
   @Builder
@@ -1076,6 +1093,10 @@ struct ExamPage {
   }
 
   navigateBack(): void {
-    this.getUIContext().getRouter().back();
+    if (this.presentedAsSheet) {
+      this.onClose();
+    } else {
+      this.getUIContext().getRouter().back();
+    }
   }
 }

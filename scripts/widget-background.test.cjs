@@ -84,11 +84,11 @@ test('card uses the documented background attributes; More expands into two sing
   assert.ok(menu.indexOf("'设置桌面服务卡片'") < menu.indexOf("'自定义背景'"));
   assert.match(menu, /this\.openWidgetBackgroundSheet\(\)/);
   assert.match(menu, /this\.openDesktopWidgetManager\(\)/);
-  assert.doesNotMatch(read('pages/WidgetBackgroundPage.ets'), /bindSheet/);
+  assert.doesNotMatch(read('feature/widget/WidgetBackgroundPage.ets'), /bindSheet/);
 });
 
 test('background editor uses a size segment and gates immersive materials and light to API 26', () => {
-  const page = read('pages/WidgetBackgroundPage.ets');
+  const page = read('feature/widget/WidgetBackgroundPage.ets');
   // The size segment is the course editor's 具体时间/按节次 control, so both behave identically on every API.
   assert.match(page, /CourseModeSegment\(\{\s*labels: \['2×2 卡片', '2×4 卡片'\]/);
   assert.match(page, /onControlPressingChanged: \(pressing: boolean\) => \{ this\.sizeControlPressing = pressing; \}/);
@@ -126,7 +126,7 @@ test('background editor uses a size segment and gates immersive materials and li
 });
 
 test('empty state is unboxed and the adjustment fade spans the sheet width', () => {
-  const page = read('pages/WidgetBackgroundPage.ets');
+  const page = read('feature/widget/WidgetBackgroundPage.ets');
   const empty = page.slice(page.indexOf('  emptyState() {'), page.indexOf('  @Builder\n  editor()'));
   assert.match(empty, /Text\('选择背景图'\)/);
   assert.doesNotMatch(empty, /为桌面服务卡片选择一张背景图|选好后可拖动、双指缩放/);

@@ -41,7 +41,7 @@ function load(file, overrides = {}, cache = new Map()) {
 }
 
 const { RdbHelper } = load('common/db/RdbHelper.ets');
-const { EasTimetable, EasTimePeriodInDay, EasTermSubject, EasEventItem, EasEventType } =
+const { EasTimetable, EasTimePeriodInDay, EasTermSubject, EasEventItem, EasEventType, EasImportBaseEntry } =
   load('common/model/timetable/TimetableModels.ets');
 const { EasTimetableImporter } = load('feature/eas/EasTimetableImporter.ets');
 const { EasSession, EasCampus } = load('feature/eas/EasSession.ets');
@@ -79,7 +79,8 @@ function database() {
   const sql = new DatabaseSync(':memory:');
   const source = read('common/db/RdbHelper.ets');
   const schemas = source.slice(source.indexOf('const CREATE_TIMETABLE:'), source.indexOf('export class RdbHelper'));
-  for (const schema of new Function(compile(schemas + '\nreturn [CREATE_TIMETABLE, CREATE_SUBJECT, CREATE_EVENTS];'))()) {
+  for (const schema of new Function(compile(schemas +
+    '\nreturn [CREATE_TIMETABLE, CREATE_SUBJECT, CREATE_EVENTS, CREATE_IMPORT_BASE];'))()) {
     sql.exec(schema);
   }
   const ops = {
@@ -226,6 +227,75 @@ test('new imports cannot leave partial records, overwrite another term, or repor
     f.rejectCommit();
     await assert.rejects(f.db.saveImportedTimetable(table(), [subject()], [event('new')], true), /commit failed/);
     assert.deepEqual(f.snapshot(), before);
+  } finally { f.sql.close(); }
+});
+
+const baseRows = sql => sql.prepare('SELECT timetableId, name, fromTime, toTime, signature FROM import_base ' +
+  'ORDER BY timetableId, fromTime, name').all().map(row => ({ ...row }));
+const entry = (item, signature = 'sig') => new EasImportBaseEntry(item.name, item.from, item.to, signature);
+
+test('merge updates write only the listed classes and roll back as a whole', async () => {
+  const f = database();
+  try {
+    await seed(f.db);
+    await f.db.saveImportBase('a', [entry(event('old-one')), entry(event('old-two', EasEventType.CLASS, 'a', day))]);
+    await f.db.saveImportBase('b', [entry(event('other-table', EasEventType.CLASS, 'b'))]);
+    const before = f.snapshot();
+    const baseBefore = baseRows(f.sql);
+    const inserted = Object.assign(event('new-one', EasEventType.CLASS, 'a', 30 * day), { subjectId: 'chem' });
+    const updated = Object.assign(event('old-one'), { place: 'B202', teacher: 'New teacher' });
+    const removed = event('old-two', EasEventType.CLASS, 'a', day);
+    const nextBase = [entry(updated, 'next'), entry(inserted, 'next')];
+    const apply = () => f.db.applyTimetableMerge('a', [Object.assign(subject('chem'), { name: 'Chemistry' })],
+      [inserted], [updated], [removed], nextBase);
+    f.sql.exec("CREATE TRIGGER fail_base BEFORE INSERT ON import_base WHEN NEW.signature = 'next' " +
+      "BEGIN SELECT RAISE(ABORT, 'disk full'); END");
+    await assert.rejects(apply(), /disk full/);
+    assert.deepEqual(f.snapshot(), before);
+    assert.deepEqual(baseRows(f.sql), baseBefore);
+    f.sql.exec('DROP TRIGGER fail_base');
+    await apply();
+    const after = f.snapshot();
+    const rowOf = id => after[2].find(row => row.id === id);
+    assert.equal(rowOf('old-one').place, 'B202');
+    assert.equal(rowOf('old-one').rowid, before[2].find(row => row.id === 'old-one').rowid, 'updated in place');
+    assert.equal(rowOf('old-two'), undefined);
+    assert.ok(rowOf('new-one'));
+    for (const id of ['exam', 'memo', 'other-table']) {
+      assert.deepEqual(rowOf(id), before[2].find(row => row.id === id));
+    }
+    assert.deepEqual(after[1].map(row => row.id), ['chem', 'math', 'other-subject']);
+    assert.equal(after[1].find(row => row.id === 'math').color, subject().color, 'existing subjects keep user settings');
+    assert.equal(after[0].find(row => row.id === 'a').endTime, start + 35 * day - 1, 'a later class extends the term');
+    assert.deepEqual(baseRows(f.sql).filter(row => row.timetableId === 'a').map(row => row.signature), ['next', 'next']);
+    assert.deepEqual(baseRows(f.sql).filter(row => row.timetableId === 'b'), baseBefore.filter(row => row.timetableId === 'b'));
+    await assert.rejects(f.db.applyTimetableMerge('a', [], [event('exam-like', EasEventType.EXAM)], [], [], []),
+      /Invalid timetable merge/);
+    await assert.rejects(f.db.applyTimetableMerge('missing', [], [], [], [], []), /no longer exists/);
+  } finally { f.sql.close(); }
+});
+
+test('imports record the school base, and deleting or shifting a term keeps its base in step', async () => {
+  const f = database();
+  try {
+    await seed(f.db);
+    const incoming = [event('new-one'), event('new-two', EasEventType.CLASS, 'a', 7 * day)];
+    await f.db.saveImportedTimetable(table(), [subject()], incoming, true, incoming.map(item => entry(item)));
+    await f.db.saveImportBase('b', [entry(event('other-table', EasEventType.CLASS, 'b'))]);
+    assert.deepEqual((await f.db.getImportBase('a')).map(item => item.name), ['new-one', 'new-two']);
+
+    // A one-week shift moves every row onto the old slot of the next one; no row may collide midway.
+    const old = table();
+    const term = f.sql.prepare("SELECT startTime, endTime FROM timetable WHERE id='a'").get();
+    await f.db.shiftTimetableStart('a', term.startTime, term.endTime, EasTimetable.mondayMsOf(old.startTime) + 7 * day);
+    const shifted = await f.db.getImportBase('a');
+    assert.deepEqual(shifted.map(item => item.from), incoming.map(item => item.from + 7 * day));
+    const events = f.snapshot()[2].filter(row => row.id.startsWith('new-'));
+    assert.deepEqual(events.map(row => row.fromTime), shifted.map(item => item.from), 'base and classes stay aligned');
+
+    await f.db.deleteTimetablesCascade(['a']);
+    assert.deepEqual(await f.db.getImportBase('a'), []);
+    assert.equal((await f.db.getImportBase('b')).length, 1);
   } finally { f.sql.close(); }
 });
 

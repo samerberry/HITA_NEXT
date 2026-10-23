@@ -79,6 +79,16 @@ export class EasSession {
     return this.campus === EasCampus.BENBU;
   }
 
+  /** 换上另一次网页登录得到的会话凭据和代数；身份资料与自有后端 token 保持不变。 */
+  adoptWebLogin(source: EasSession): void {
+    this.webCookies = EasSession.copyMap(source.webCookies);
+    this.webBaseUrl = source.webBaseUrl;
+    this.electronicExpToken = source.electronicExpToken;
+    this.sjjxCookies = EasSession.copyMap(source.sjjxCookies);
+    this.sessionGeneration = source.sessionGeneration;
+    this.loginExpired = source.loginExpired;
+  }
+
   // ---------------------------------------------------------------------
   // 静态判定助手（对应 EASToken.Companion）
   // ---------------------------------------------------------------------
@@ -193,6 +203,14 @@ export class EasSession {
     } catch (e) {
       return undefined;
     }
+  }
+
+  static copyMap(m: Map<string, string>): Map<string, string> {
+    const out: Map<string, string> = new Map<string, string>();
+    m.forEach((value: string, key: string) => {
+      out.set(key, value);
+    });
+    return out;
   }
 
   /** 编码成 {k,v}[]（JSON 安全）。 */

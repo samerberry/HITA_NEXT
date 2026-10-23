@@ -257,7 +257,7 @@ test('every shared back button is hosted in a supported native title region', ()
       assert.match(source, /headerContent\(\) \{\s*Row\(\) \{\s*HeaderBackButton/);
       continue;
     }
-    const hosted = (source.match(/ImmersiveHeader\(\{[^\n]+\}\) \{\s*Row\([^\n]*\) \{\s*HeaderBackButton\(\{/g) || []).length;
+    const hosted = (source.match(/ImmersiveHeader\(\{[^}]{0,400}\}\) \{\s*Row\([^\n]*\) \{\s*HeaderBackButton\(\{/g) || []).length;
     assert.equal(hosted, backs, file);
   }
   assert.match(read('common/components/HeaderBackButton.ets'), /attributeModifier\(new CompatibleMaterialModifier/);

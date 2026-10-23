@@ -274,6 +274,21 @@ export function isMfaPage(url: string): boolean {
   return containsIgnoreCase(pathOf(url), '/authserver/reauthcheck/');
 }
 
+/** 静默续期停在这些页面即放弃：需要用户输入账号密码或完成二次认证。 */
+export function isCredentialPromptPage(url: string): boolean {
+  return isAuthenticationPage(url) || isMfaPage(url);
+}
+
+/**
+ * 静默续期不把这些页面上的登录表单当作需要用户介入：深圳教务入口自带本地账号表单，
+ * 控制器会点击“统一身份认证登录”；本部实验教学与电子实验系统只是登录后的可选会话。
+ */
+export function ignoresLoginFormDuringRenewal(url: string): boolean {
+  const host: string = hostOf(url);
+  return host === hostOf(EasCampusUrls.SHENZHEN_DIRECT_BASE) || isShenzhenProxyJwPage(url) ||
+    host === hostOf(EasCampusUrls.SJJX_BASE) || host === hostOf(EasCampusUrls.EELABINFO_URL);
+}
+
 /** Only the configured EAS host may supply a Benbu session, not CAS or a portal. */
 export function isBenbuEasPage(url: string, studentType: string): boolean {
   const base: string = studentType === '2' ? EasCampusUrls.GRADUATE_BASE : EasCampusUrls.JWTS_BASE;

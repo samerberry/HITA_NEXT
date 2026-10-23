@@ -1,6 +1,8 @@
 export interface EasSessionResponse {
   statusCode: number;
   body: string;
+  /** 未跟随重定向时的 Location 头。 */
+  location?: string;
 }
 
 export enum EasSessionStatus {
@@ -36,9 +38,27 @@ function isBenbuVerificationRedirect(html: string): boolean {
   return false;
 }
 
+/**
+ * 深圳 aTrust 网关会话失效时，把业务请求重定向到自己的登录入口（门户 shortcut 页或
+ * 准入校验）。跟随重定向后只剩 POST 到门户页的 405，所以必须在重定向这一跳上识别。
+ */
+export function isShenzhenGatewayLoginRedirect(response: EasSessionResponse): boolean {
+  if (response.statusCode < 300 || response.statusCode >= 400 || response.location === undefined) {
+    return false;
+  }
+  const target: RegExpExecArray | null =
+    /^https:\/\/([^\/:?#]+)(?::443)?(\/[^?#]*)?/i.exec(response.location.trim());
+  if (target === null || target[1].toLowerCase() !== 'trust.hitsz.edu.cn') {
+    return false;
+  }
+  const path: string = (target[2] ?? '/').toLowerCase();
+  return path === '/portal/shortcut.html' || path.startsWith('/controller/v1/public/verify') ||
+    path.startsWith('/passport/');
+}
+
 /** A saved cookie is not proof of a live session; require an authentication failure from the server. */
 export function isExpiredEasResponse(response: EasSessionResponse): boolean {
-  if (response.statusCode === 401) {
+  if (response.statusCode === 401 || isShenzhenGatewayLoginRedirect(response)) {
     return true;
   }
   if (response.statusCode === 0 || response.statusCode >= 500) {

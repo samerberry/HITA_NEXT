@@ -13,8 +13,8 @@ function load(file) {
   if (file.endsWith('ScorePage.ets')) {
     source = source.slice(0, source.indexOf('\n  @Builder')) + '\n}';
     source = source.replace(/^@(Entry|Component)\r?\n/gm, '')
-      .replace(/@(State|StorageProp)(\([^)]*\))?\s+/g, '')
-      .replace(/struct (ScorePage)/, 'export class $1');
+      .replace(/@(State|Prop|StorageProp)(\([^)]*\))?\s+/g, '')
+      .replace(/(?:export\s+)?struct (ScorePage)/, 'export class $1');
   }
   const mod = { exports: {} }; cache.set(file, mod);
   const req = name => {

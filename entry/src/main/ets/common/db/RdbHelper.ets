@@ -14,6 +14,7 @@ import { relationalStore } from '@kit.ArkData';
 import {
   EasEventItem,
   EasEventType,
+  EasImportBaseEntry,
   EasSubjectColor,
   EasSubjectType,
   EasTermSubject,
@@ -47,6 +48,15 @@ const CREATE_EVENTS: string =
   'subjectId TEXT NOT NULL, timetableId TEXT NOT NULL, fromTime INTEGER NOT NULL, toTime INTEGER NOT NULL, ' +
   'fromNumber INTEGER NOT NULL, lastNumber INTEGER NOT NULL, createdAt INTEGER NOT NULL, ' +
   'color INTEGER NOT NULL DEFAULT 0)';
+
+/**
+ * 每张教务课表上次导入或更新时的教务版本，用来区分教务端变化与用户自己的修改。
+ * 不设唯一约束：调整开学日期时整表平移，逐行检查唯一性会在中途误报冲突。
+ */
+const CREATE_IMPORT_BASE: string =
+  'CREATE TABLE IF NOT EXISTS import_base (' +
+  'timetableId TEXT NOT NULL, name TEXT NOT NULL, fromTime INTEGER NOT NULL, toTime INTEGER NOT NULL, ' +
+  'signature TEXT NOT NULL)';
 
 export class RdbHelper {
   private static instance: RdbHelper | undefined = undefined;
@@ -92,6 +102,7 @@ export class RdbHelper {
     await this.execSql(CREATE_TIMETABLE);
     await this.execSql(CREATE_SUBJECT);
     await this.execSql(CREATE_EVENTS);
+    await this.execSql(CREATE_IMPORT_BASE);
     await this.ensureEventColorColumn();
     await this.repairLegacyWeihaiTimetables();
     await this.repairLegacyBenbuTimetables();
@@ -339,9 +350,12 @@ export class RdbHelper {
     };
   }
 
-  /** Publish a complete import together; re-importing courses must retain exams and other events. */
+  /**
+   * Publish a complete import together; re-importing courses must retain exams and other events.
+   * The school version of the imported classes becomes the base for later merge updates.
+   */
   async saveImportedTimetable(timetable: EasTimetable, subjects: EasTermSubject[], events: EasEventItem[],
-    replaceCourses: boolean): Promise<void> {
+    replaceCourses: boolean, base: EasImportBaseEntry[] = []): Promise<void> {
     if (timetable.id.length === 0 || !Number.isFinite(timetable.startTime) ||
       !Number.isFinite(timetable.endTime) || timetable.endTime <= timetable.startTime || events.length === 0 ||
       subjects.some((subject: EasTermSubject): boolean => subject.timetableId !== timetable.id) ||
@@ -369,6 +383,9 @@ export class RdbHelper {
           throw new Error('Event insert failed');
         }
       }
+      if (base.length > 0) {
+        await RdbHelper.replaceImportBase(transaction, timetable.id, base);
+      }
       // Retained exams or reminders can extend beyond the imported teaching weeks.
       const last: relationalStore.ResultSet = await transaction.query(
         new relationalStore.RdbPredicates('events').equalTo('timetableId', timetable.id)
@@ -386,6 +403,98 @@ export class RdbHelper {
     timetable.endTime = finalEnd;
   }
 
+  /** 上次导入或更新时的教务版本；旧版本导入、还没有记录时为空。 */
+  async getImportBase(timetableId: string): Promise<EasImportBaseEntry[]> {
+    const rows: relationalStore.ResultSet = await this.s().query(
+      new relationalStore.RdbPredicates('import_base').equalTo('timetableId', timetableId),
+      ['name', 'fromTime', 'toTime', 'signature']);
+    const out: EasImportBaseEntry[] = [];
+    try {
+      while (rows.goToNextRow()) {
+        out.push(new EasImportBaseEntry(rows.getString(rows.getColumnIndex('name')),
+          rows.getLong(rows.getColumnIndex('fromTime')), rows.getLong(rows.getColumnIndex('toTime')),
+          rows.getString(rows.getColumnIndex('signature'))));
+      }
+    } finally {
+      rows.close();
+    }
+    return out;
+  }
+
+  async saveImportBase(timetableId: string, base: EasImportBaseEntry[]): Promise<void> {
+    await this.writeTransaction(async (transaction: relationalStore.Transaction): Promise<void> => {
+      await RdbHelper.replaceImportBase(transaction, timetableId, base);
+    });
+  }
+
+  /**
+   * 合并更新：逐条新增、修改、删除课程并记录新的教务基准，整体在一个事务里完成。
+   * 只动合并结果点名的课次；用户翘过、改过、添加的课，考试等其他日程和已有科目都不动。
+   */
+  async applyTimetableMerge(timetableId: string, newSubjects: EasTermSubject[], inserts: EasEventItem[],
+    updates: EasEventItem[], deletes: EasEventItem[], base: EasImportBaseEntry[]): Promise<void> {
+    if (newSubjects.some((subject: EasTermSubject): boolean => subject.timetableId !== timetableId) ||
+      inserts.concat(updates).some((event: EasEventItem): boolean => event.timetableId !== timetableId ||
+        event.type !== EasEventType.CLASS || !Number.isFinite(event.from) || !Number.isFinite(event.to) ||
+        event.to <= event.from)) {
+      throw new Error('Invalid timetable merge');
+    }
+    await this.writeTransaction(async (transaction: relationalStore.Transaction): Promise<void> => {
+      const table: relationalStore.ResultSet = await transaction.query(
+        new relationalStore.RdbPredicates('timetable').equalTo('id', timetableId), ['endTime']);
+      let currentEnd: number = 0;
+      try {
+        if (!table.goToFirstRow()) throw new Error('Timetable no longer exists');
+        currentEnd = table.getLong(table.getColumnIndex('endTime'));
+      } finally { table.close(); }
+      for (const subject of newSubjects) {
+        if (await transaction.insert('subject', RdbHelper.subjectValues(subject)) < 0) {
+          throw new Error('Subject insert failed');
+        }
+      }
+      for (const event of inserts) {
+        if (await transaction.insert('events', RdbHelper.eventValues(event)) < 0) {
+          throw new Error('Event insert failed');
+        }
+      }
+      for (const event of updates) {
+        const changed: number = await transaction.update(RdbHelper.eventValues(event),
+          new relationalStore.RdbPredicates('events').equalTo('id', event.id)
+            .equalTo('timetableId', timetableId).equalTo('type', EasEventType.CLASS));
+        if (changed !== 1) throw new Error('Course changed during update');
+      }
+      for (const event of deletes) {
+        await transaction.delete(new relationalStore.RdbPredicates('events').equalTo('id', event.id)
+          .equalTo('timetableId', timetableId).equalTo('type', EasEventType.CLASS));
+      }
+      await RdbHelper.replaceImportBase(transaction, timetableId, base);
+      const lastEnd: number = inserts.reduce((end: number, event: EasEventItem): number =>
+        Math.max(end, event.to), currentEnd);
+      if (lastEnd > currentEnd) {
+        const updated: number = await transaction.update({ 'endTime': CourseDateSelection.weekEnd(lastEnd) },
+          new relationalStore.RdbPredicates('timetable').equalTo('id', timetableId));
+        if (updated !== 1) throw new Error('Timetable update failed');
+      }
+    });
+  }
+
+  private static async replaceImportBase(transaction: relationalStore.Transaction, timetableId: string,
+    base: EasImportBaseEntry[]): Promise<void> {
+    await transaction.delete(new relationalStore.RdbPredicates('import_base').equalTo('timetableId', timetableId));
+    for (const entry of base) {
+      const row: relationalStore.ValuesBucket = {
+        'timetableId': timetableId,
+        'name': entry.name,
+        'fromTime': entry.from,
+        'toTime': entry.to,
+        'signature': entry.signature
+      };
+      if (await transaction.insert('import_base', row) < 0) {
+        throw new Error('Import base insert failed');
+      }
+    }
+  }
+
   /** Move the term and every occurrence in one transaction; reject an outdated editor. */
   async shiftTimetableStart(id: string, previousStart: number, previousEnd: number, nextStart: number): Promise<void> {
     if (id.length === 0 || !Number.isFinite(previousStart) || !Number.isFinite(previousEnd) ||
@@ -401,6 +510,9 @@ export class RdbHelper {
       if (changed !== 1) throw new Error('Timetable changed; reload before editing');
       await transaction.execute(
         'UPDATE events SET fromTime = fromTime + ?, toTime = toTime + ? WHERE timetableId = ?', [delta, delta, id]);
+      // 教务基准随课次一起平移，否则下次检查会把整学期误当作教务端变化。
+      await transaction.execute(
+        'UPDATE import_base SET fromTime = fromTime + ?, toTime = toTime + ? WHERE timetableId = ?', [delta, delta, id]);
     });
   }
 
@@ -471,6 +583,7 @@ export class RdbHelper {
     await this.writeTransaction(async (transaction: relationalStore.Transaction): Promise<void> => {
       await transaction.delete(new relationalStore.RdbPredicates('events').in('timetableId', ids));
       await transaction.delete(new relationalStore.RdbPredicates('subject').in('timetableId', ids));
+      await transaction.delete(new relationalStore.RdbPredicates('import_base').in('timetableId', ids));
       await transaction.delete(new relationalStore.RdbPredicates('timetable').in('id', ids));
     });
   }

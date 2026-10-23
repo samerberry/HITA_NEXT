@@ -6,18 +6,18 @@
  */
 import { common } from '@kit.AbilityKit';
 import { deviceInfo } from '@kit.BasicServicesKit';
-import { HeaderBackButton } from '../common/components/HeaderBackButton';
-import { HeaderFadeMask } from '../common/components/HeaderFadeMask';
-import { ImmersiveHeader } from '../common/components/ImmersiveHeader';
-import { CompatibleLightModifier } from '../common/theme/CompatibleLightModifier';
-import { CompatibleMaterialModifier } from '../common/theme/CompatibleMaterialModifier';
-import { CompatibleSheetMaterial } from '../common/theme/CompatibleSheetMaterial';
-import { HeaderFade } from '../common/theme/HeaderFade';
-import { HitaColors } from '../common/theme/HitaColors';
-import { NAV_BAR_INSET_FALLBACK } from '../common/theme/StatusBarInset';
-import { CourseControlHost } from '../feature/timetable/views/CourseControlHost';
-import { CourseModeSegment } from '../feature/timetable/views/CourseModeSegment';
-import { ImmersiveFollowButton } from '../feature/widget/ImmersiveWidgetBackgroundControls';
+import { HeaderBackButton } from '../../common/components/HeaderBackButton';
+import { HeaderFadeMask } from '../../common/components/HeaderFadeMask';
+import { ImmersiveHeader } from '../../common/components/ImmersiveHeader';
+import { CompatibleLightModifier } from '../../common/theme/CompatibleLightModifier';
+import { CompatibleMaterialModifier } from '../../common/theme/CompatibleMaterialModifier';
+import { CompatibleSheetMaterial } from '../../common/theme/CompatibleSheetMaterial';
+import { HeaderFade } from '../../common/theme/HeaderFade';
+import { HitaColors } from '../../common/theme/HitaColors';
+import { NAV_BAR_INSET_FALLBACK } from '../../common/theme/StatusBarInset';
+import { CourseControlHost } from '../timetable/views/CourseControlHost';
+import { CourseModeSegment } from '../timetable/views/CourseModeSegment';
+import { ImmersiveFollowButton } from './ImmersiveWidgetBackgroundControls';
 import {
   WIDGET_BG_COMPACT_ASPECT,
   WIDGET_BG_DEFAULT_VEIL,
@@ -29,9 +29,9 @@ import {
   WidgetBackgroundModel,
   WidgetBackgroundPlacement,
   WidgetBackgroundState
-} from '../feature/widget/WidgetBackgroundModel';
-import { WidgetBackgroundStore } from '../feature/widget/WidgetBackgroundStore';
-import { NextClassWidgetService } from '../feature/widget/NextClassWidgetService';
+} from './WidgetBackgroundModel';
+import { WidgetBackgroundStore } from './WidgetBackgroundStore';
+import { NextClassWidgetService } from './NextClassWidgetService';
 
 const HEADER_HEIGHT: number = 60;
 const PAGE_BG: ResourceColor = $r('app.color.hita_page_f6f7fa');

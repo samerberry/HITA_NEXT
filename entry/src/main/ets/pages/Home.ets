@@ -39,11 +39,13 @@ import { CurrentClassSelection } from '../common/model/timetable/CurrentClassSel
 import { DOW_FULL, EasTimeTools } from '../common/util/EasTimeTools';
 import { EasCampus, EasSession } from '../feature/eas/EasSession';
 import { EasSessionStore, EAS_SESSION_REVISION_KEY } from '../feature/eas/EasSessionStore';
+import { attachEasSilentRenewal } from '../feature/eas/webLogin/EasSilentLoginWeb';
 import { SheetContent } from '../common/components/SheetContent';
 import { EasApiClient } from '../feature/eas/EasApiClient';
 import { EasDataProvider } from '../feature/eas/EasDataProvider';
 import { EasSessionStatus } from '../feature/eas/EasSessionStatus';
-import { EasImportResult, EasTimetableImporter } from '../feature/eas/EasTimetableImporter';
+import { EasImportResult, EasTimetableImporter, EasTimetableUpdate } from '../feature/eas/EasTimetableImporter';
+import { TimetableUpdateDialog } from '../feature/timetable/views/TimetableUpdateDialog';
 import { EasUserMessages } from '../feature/eas/EasUserMessages';
 import { EasLoginPage } from '../feature/eas/webLogin/EasLoginPage';
 import { TimetableResolver } from '../feature/timetable/data/TimetableResolver';
@@ -53,7 +55,12 @@ import { TimetableVideoBackground } from '../feature/timetable/views/TimetableVi
 import { TimetableBackgroundStore } from '../feature/timetable/data/TimetableBackgroundStore';
 import { WidgetBackgroundStore } from '../feature/widget/WidgetBackgroundStore';
 import { NextClassWidgetService } from '../feature/widget/NextClassWidgetService';
-import { WidgetBackgroundPage } from './WidgetBackgroundPage';
+import { WidgetBackgroundPage } from '../feature/widget/WidgetBackgroundPage';
+import { ImportTimetablePanel } from './ImportTimetablePanel';
+import { ExamPage } from './ExamPage';
+import { ScorePage } from './ScorePage';
+import { CreditPage } from './CreditPage';
+import { EmptyClassroomPage } from './EmptyClassroomPage';
 import { TimetableWallpaperSampler } from '../feature/timetable/data/TimetableWallpaperSampler';
 import { TimetableDisplayOptions } from '../feature/timetable/data/TimetableDisplayOptions';
 import { TimetableDisplayStore } from '../feature/timetable/data/TimetableDisplayStore';
@@ -80,6 +87,8 @@ import {
 } from '../feature/timetable/views/TimetableWeekDraw';
 
 const DAY_MS: number = 24 * 60 * 60 * 1000;
+/** 打开应用或回到前台时，距上次检查同一张课表至少间隔这么久；重启应用后仍然有效。 */
+const TIMETABLE_UPDATE_INTERVAL_MS: number = 60 * 60 * 1000;
 const COLOR_PRIMARY: Resource = $r('app.color.hita_primary');
 const COLOR_SURFACE: ResourceColor = $r('app.color.hita_page');
 const COLOR_CARD: ResourceColor = $r('app.color.hita_surface');
@@ -146,6 +155,9 @@ struct Home {
   @State widgetMenuExpanded: boolean = false;
   @State widgetBackgroundSet: boolean = false;
   @State widgetBackgroundSheetOpen: boolean = false;
+  @State importTimetableSheetOpen: boolean = false;
+  @State academicPanelOpen: boolean = false;
+  @State academicPanelKind: number = 0;
   @State widgetBackgroundDirty: boolean = false;
   @State widgetBackgroundBusy: boolean = false;
   private widgetBackgroundConfirmDismiss: ((dismiss: () => void, springBack: () => void) => void) | undefined =
@@ -201,6 +213,10 @@ struct Home {
   @State timetableAnimationDuration: number = 0;
   @State timetableAnimating: boolean = false;
   private importRequested: boolean = false;
+  private timetableUpdateChecking: boolean = false;
+  private timetableUpdatePrompting: boolean = false;
+  private pendingTimetableUpdate: EasTimetableUpdate | undefined = undefined;
+  private timetableUpdateDialog: CustomDialogController | undefined = undefined;
   private clockTimer: number = -1;
   private lastReminderDispatchAt: number = 0;
   @State @Watch('updateTimetableSystemBars') private pageVisible: boolean = false;
@@ -271,6 +287,7 @@ struct Home {
     this.getUIContext().setKeyboardAvoidMode(KeyboardAvoidMode.NONE);
     const ctx: common.Context = this.getUIContext().getHostContext() as common.Context;
     await EasSessionStore.getInstance().init(ctx);
+    attachEasSilentRenewal(this.getUIContext());
     await TimetableSelectionStore.getInstance().init(ctx);
     await ClassReminderStore.getInstance().init(ctx);
     this.classReminderEnabled = await ClassReminderStore.getInstance().loadEnabled();
@@ -300,6 +317,7 @@ struct Home {
     }
     await this.refreshSummaries();
     this.startClock();
+    this.checkTimetableUpdate();
   }
 
   async onPageShow(): Promise<void> {
@@ -312,6 +330,7 @@ struct Home {
     const preserveWeek: boolean = this.returningFromCourseEditor;
     this.returningFromCourseEditor = false;
     await this.refreshSummaries(preserveWeek);
+    this.checkTimetableUpdate();
   }
 
   onPageHide(): void {
@@ -1255,7 +1274,8 @@ struct Home {
   private canOpenSheet(): boolean {
     return !this.skippingCourse && this.pageVisible && !this.tabTransitionRunning && !this.activeSheetVisible &&
       !this.sessionSheetOpen && !this.loginSheetOpen && !this.courseSheetOpen &&
-      !this.calendarExportSheetOpen && !this.timetableDisplayOpen && !this.widgetBackgroundSheetOpen;
+      !this.calendarExportSheetOpen && !this.timetableDisplayOpen && !this.widgetBackgroundSheetOpen &&
+      !this.importTimetableSheetOpen && !this.academicPanelOpen;
   }
 
   private closeActiveSheet(): void {
@@ -1272,6 +1292,23 @@ struct Home {
     this.widgetBackgroundDirty = false;
     this.widgetBackgroundBusy = false;
     this.widgetBackgroundSheetOpen = true;
+    this.activeSheetVisible = true;
+  }
+
+  private openImportTimetableSheet(): void {
+    if (!this.canOpenSheet()) {
+      return;
+    }
+    this.importTimetableSheetOpen = true;
+    this.activeSheetVisible = true;
+  }
+
+  private openAcademicPanel(kind: number): void {
+    if (!this.canOpenSheet() || kind < 1 || kind > 4) {
+      return;
+    }
+    this.academicPanelKind = kind;
+    this.academicPanelOpen = true;
     this.activeSheetVisible = true;
   }
 
@@ -1396,21 +1433,79 @@ struct Home {
     }
   }
 
+  /**
+   * 打开应用或回到前台时检查当前教务课表在教务端是否有变化。只读取不写库，
+   * 有变化时列出并由用户决定是否更新；网络或登录问题静默跳过。
+   */
+  private async checkTimetableUpdate(): Promise<void> {
+    if (this.pendingTimetableUpdate !== undefined) {
+      this.promptTimetableUpdate();
+      return;
+    }
+    const timetable: EasTimetable | undefined = this.currentTimetable;
+    const now: number = Date.now();
+    if (this.timetableUpdateChecking || this.importing || timetable === undefined ||
+      !EasTimetableImporter.isEasTimetable(timetable) || timetable.endTime < now) {
+      return;
+    }
+    this.timetableUpdateChecking = true;
+    try {
+      const ctx: common.Context = this.getUIContext().getHostContext() as common.Context;
+      const update: EasTimetableUpdate | undefined = await EasTimetableImporter.checkForUpdate(ctx, timetable,
+        TIMETABLE_UPDATE_INTERVAL_MS);
+      if (update !== undefined) {
+        this.pendingTimetableUpdate = update;
+        this.promptTimetableUpdate();
+      }
+    } catch (_) {
+      // 过期、离线等情况由教务功能页面各自提示；启动检查不打扰用户。
+    } finally {
+      this.timetableUpdateChecking = false;
+    }
+  }
+
+  /** 页面空闲时弹出变化清单；正在操作弹层或切页时留到下次显示页面。 */
+  private promptTimetableUpdate(): void {
+    const update: EasTimetableUpdate | undefined = this.pendingTimetableUpdate;
+    if (update === undefined || this.timetableUpdatePrompting || this.importing || !this.canOpenSheet()) {
+      return;
+    }
+    this.pendingTimetableUpdate = undefined;
+    if (this.currentTimetable?.id !== update.timetable.id) {
+      return;
+    }
+    this.timetableUpdatePrompting = true;
+    const ctx: common.Context = this.getUIContext().getHostContext() as common.Context;
+    this.timetableUpdateDialog = new CustomDialogController({
+      builder: TimetableUpdateDialog({
+        changes: update.changes,
+        onApply: async () => {
+          await EasTimetableImporter.applyUpdate(ctx, update);
+          this.timetableUpdatePrompting = false;
+          this.getUIContext().getPromptAction().showToast({ message: '课表已更新' });
+          await this.refreshSummaries();
+        },
+        onDismiss: async () => {
+          this.timetableUpdatePrompting = false;
+          await EasTimetableImporter.dismissUpdate(ctx, update);
+        }
+      }),
+      // 返回键关闭不算选择，下次检查仍会提醒。
+      cancel: () => {
+        this.timetableUpdatePrompting = false;
+      },
+      customStyle: true,
+      autoCancel: false,
+      alignment: DialogAlignment.Center
+    });
+    this.timetableUpdateDialog.open();
+  }
+
   /** Edited courses keep their id; the key must change with every displayed field or the row is reused stale. */
   private static todayItemKey(event: EasEventItem): string {
     return [event.id, event.type, event.name, event.place, event.teacher, event.from.toString(),
       event.to.toString(), event.fromNumber.toString(), event.lastNumber.toString(), event.color.toString()]
       .join('\u0001');
-  }
-
-  private static typeTag(type: EasEventType): string {
-    if (type === EasEventType.EXAM) {
-      return '考';
-    }
-    if (type === EasEventType.TAG) {
-      return '备';
-    }
-    return '课';
   }
 
   private static eventColor(type: EasEventType): ResourceColor {
@@ -1424,39 +1519,6 @@ struct Home {
       return COLOR_TAG;
     }
     return COLOR_OTHER;
-  }
-
-  private static eventStatus(event: EasEventItem, now: number = Date.now()): string {
-    if (now >= event.from && now <= event.to) {
-      return '进行中';
-    }
-    if (event.from > now && event.from - now <= 30 * 60 * 1000) {
-      return '即将开始';
-    }
-    if (now > event.to) {
-      return '已结束';
-    }
-    return '';
-  }
-
-  private static statusColor(status: string): ResourceColor {
-    if (status === '进行中') {
-      return COLOR_PRIMARY;
-    }
-    if (status === '即将开始') {
-      return COLOR_PRIMARY;
-    }
-    return COLOR_TEXT_HINT;
-  }
-
-  private static statusBgColor(status: string): ResourceColor {
-    if (status === '进行中') {
-      return $r('app.color.hita_selected');
-    }
-    if (status === '即将开始') {
-      return $r('app.color.hita_selected_eaf3fd');
-    }
-    return $r('app.color.hita_control_f1f4f8');
   }
 
   private static defaultCanvasColor(type: EasEventType): number {
@@ -1500,16 +1562,121 @@ struct Home {
       totalMinutes.toString() + '分钟';
   }
 
-  private static countdownText(event: EasEventItem, now: number): string {
-    return Home.durationText(event.from - now) + ' 后开始';
+  private static greeting(now: number): string {
+    const hour: number = new Date(now).getHours();
+    if (hour < 5) return '夜深了';
+    if (hour < 11) return '早上好';
+    if (hour < 13) return '中午好';
+    if (hour < 18) return '下午好';
+    return '晚上好';
   }
 
-  private static eventStatusText(event: EasEventItem, now: number): string {
-    const status: string = Home.eventStatus(event, now);
-    if (event.type === EasEventType.CLASS && status === '进行中') {
-      return status + ' · ' + Home.durationText(event.to - now) + ' 后下课';
+  private currentWeekNumber(): number {
+    return this.currentTimetable !== undefined ? this.currentTimetable.getWeekNumber(this.nowTick) : -1;
+  }
+
+  /** The class the hero card follows: the ongoing one first, then the next one today. */
+  private heroEvent(): EasEventItem | undefined {
+    return this.activeClass !== undefined ? this.activeClass : this.nextClass;
+  }
+
+  private todayHeroHeight(): number {
+    if (this.activeClass !== undefined) return 176;
+    return this.nextClass !== undefined ? 160 : 136;
+  }
+
+  private heroTag(): string {
+    if (this.activeClass !== undefined) return '上课中';
+    if (this.nextClass !== undefined) return '下一节';
+    if (!this.hasTimetable) return '今天';
+    return this.todayClassCount() > 0 ? '已下课' : '今天';
+  }
+
+  private heroIdleTitle(): string {
+    if (!this.hasTimetable) return '先导入一份课表吧';
+    if (this.todayClassCount() > 0) return '今天的课都上完了';
+    return '今天没有课';
+  }
+
+  /** Whole minutes until the hero class ends (ongoing) or starts (next). */
+  private heroMinutesLeft(): number {
+    const event: EasEventItem | undefined = this.heroEvent();
+    if (event === undefined) return 0;
+    const target: number = this.activeClass !== undefined ? event.to : event.from;
+    return Math.max(0, Math.ceil((target - this.nowTick) / 60000));
+  }
+
+  private heroCountdownSuffix(): string {
+    return this.activeClass !== undefined ? ' 后下课' : ' 后上课';
+  }
+
+  /** Summary of tomorrow's first class, shown once today is done. */
+  private tomorrowText(): string {
+    if (!this.hasTimetable) return '登录教务或手动创建课表';
+    const start: number = new Date(new Date(this.nowTick).setHours(0, 0, 0, 0)).getTime() + DAY_MS;
+    const classes: EasEventItem[] = this.timetableEvents.filter((event: EasEventItem): boolean =>
+      event.type === EasEventType.CLASS && event.from >= start && event.from < start + DAY_MS);
+    if (classes.length === 0) return '明天也没有课';
+    classes.sort((a: EasEventItem, b: EasEventItem): number => a.from - b.from);
+    return '明天 ' + classes.length.toString() + ' 节课，' + EasTimeTools.printTime(classes[0].from) +
+      ' 开始 · ' + classes[0].name;
+  }
+
+  /** The nearest exam within the next 14 days in the displayed timetable. */
+  private upcomingExam(): EasEventItem | undefined {
+    let found: EasEventItem | undefined = undefined;
+    const limit: number = this.nowTick + 14 * DAY_MS;
+    for (let i: number = 0; i < this.timetableEvents.length; i++) {
+      const event: EasEventItem = this.timetableEvents[i];
+      if (event.type === EasEventType.EXAM && event.to > this.nowTick && event.from < limit &&
+        (found === undefined || event.from < found.from)) {
+        found = event;
+      }
     }
-    return status;
+    return found;
+  }
+
+  private static examWhenText(exam: EasEventItem): string {
+    const date: Date = new Date(exam.from);
+    const text: string = (date.getMonth() + 1).toString() + '月' + date.getDate().toString() + '日 ' +
+      DOW_FULL[EasTimeTools.getDow(exam.from)] + ' ' + EasTimeTools.printTime(exam.from);
+    return exam.place.length > 0 ? text + ' · ' + exam.place : text;
+  }
+
+  private static examDistanceText(exam: EasEventItem, now: number): string {
+    if (exam.from <= now) return '进行中';
+    const today0: number = new Date(new Date(now).setHours(0, 0, 0, 0)).getTime();
+    const days: number = Math.floor((exam.from - today0) / DAY_MS);
+    if (days <= 0) return '今天';
+    if (days === 1) return '明天';
+    return days.toString() + ' 天后';
+  }
+
+  private static placeTeacher(event: EasEventItem): string {
+    const parts: string[] = [];
+    if (event.place.length > 0) parts.push(event.place);
+    if (event.teacher.length > 0) parts.push(event.teacher);
+    return parts.join(' · ');
+  }
+
+  private static todayChipText(event: EasEventItem, now: number): string {
+    if (event.containsTimestamp(now)) return '进行中';
+    if (event.to <= now) return '已结束';
+    if (event.from - now <= 30 * 60000) return Home.durationText(event.from - now) + '后';
+    if (event.type === EasEventType.EXAM) return '考试';
+    return '';
+  }
+
+  private static todayChipColor(event: EasEventItem, now: number): ResourceColor {
+    if (event.to <= now && !event.containsTimestamp(now)) return COLOR_TEXT_HINT;
+    if (event.type === EasEventType.EXAM) return COLOR_EXAM;
+    return COLOR_PRIMARY;
+  }
+
+  private static todayChipBg(event: EasEventItem, now: number): ResourceColor {
+    if (event.to <= now && !event.containsTimestamp(now)) return $r('app.color.hita_control_f1f4f8');
+    if (event.type === EasEventType.EXAM) return $r('app.color.hita_error_surface');
+    return $r('app.color.hita_selected');
   }
 
   private static campusName(campus: EasCampus): string {
@@ -1846,11 +2013,13 @@ struct Home {
       this.selectedNav = index;
     })
     .bindSheet($$this.activeSheetVisible, this.activeSheet(), CompatibleSheetMaterial.options({
-      height: this.widgetBackgroundSheetOpen ? SheetSize.LARGE :
+      height: this.widgetBackgroundSheetOpen || this.importTimetableSheetOpen || this.academicPanelOpen ? SheetSize.LARGE :
         (this.loginSheetOpen ? SheetSize.LARGE : SheetSize.FIT_CONTENT),
       // The first detent is the initial selection, so start expanded and allow collapsing to medium.
-      detents: this.widgetBackgroundSheetOpen ? [SheetSize.LARGE, SheetSize.MEDIUM] : undefined,
-      scrollSizeMode: this.widgetBackgroundSheetOpen ? ScrollSizeMode.CONTINUOUS : undefined,
+      detents: this.widgetBackgroundSheetOpen || this.importTimetableSheetOpen || this.academicPanelOpen ?
+        [SheetSize.LARGE, SheetSize.MEDIUM] : undefined,
+      scrollSizeMode: this.widgetBackgroundSheetOpen || this.importTimetableSheetOpen || this.academicPanelOpen ?
+        ScrollSizeMode.CONTINUOUS : undefined,
       dragBar: true,
       // Every sheet owns its header control; the system close bubble overlaps
       // the web login toolbar's trailing actions.
@@ -1874,6 +2043,9 @@ struct Home {
         this.sessionSheetOpen = false;
         this.loginSheetOpen = false;
         this.widgetBackgroundSheetOpen = false;
+        this.importTimetableSheetOpen = false;
+        this.academicPanelOpen = false;
+        this.academicPanelKind = 0;
         this.widgetBackgroundDirty = false;
         this.widgetBackgroundBusy = false;
         this.widgetBackgroundConfirmDismiss = undefined;
@@ -1886,7 +2058,9 @@ struct Home {
         this.finishCourseSheetDismissal();
       }
     }, this.loginSheetOpen || this.sessionSheetOpen || this.courseSheetOpen || this.timetableDisplayOpen ||
-      this.calendarExportSheetOpen || this.widgetBackgroundSheetOpen, !this.timetableDisplayOpen));
+      this.calendarExportSheetOpen || this.widgetBackgroundSheetOpen || this.importTimetableSheetOpen ||
+      this.academicPanelOpen,
+    !this.timetableDisplayOpen));
   }
 
   @Builder
@@ -1911,7 +2085,8 @@ struct Home {
 
   @Builder
   activeSheet() {
-    SheetContent({ fillHeight: this.loginSheetOpen || this.widgetBackgroundSheetOpen }) {
+    SheetContent({ fillHeight: this.loginSheetOpen || this.widgetBackgroundSheetOpen || this.importTimetableSheetOpen ||
+      this.academicPanelOpen }) {
       if (this.loginSheetOpen) {
         EasLoginPage({
           campusCode: this.loginCampusCode,
@@ -1951,6 +2126,26 @@ struct Home {
         })
           .width('100%')
           .height('100%');
+      } else if (this.importTimetableSheetOpen) {
+        ImportTimetablePanel({
+          presentedAsSheet: true,
+          onClose: () => this.closeActiveSheet(),
+          onImported: () => { void this.refreshSummaries(); }
+        })
+          .width('100%')
+          .height('100%');
+      } else if (this.academicPanelOpen && this.academicPanelKind === 1) {
+        ExamPage({ presentedAsSheet: true, onClose: () => this.closeActiveSheet() })
+          .width('100%').height('100%');
+      } else if (this.academicPanelOpen && this.academicPanelKind === 2) {
+        ScorePage({ presentedAsSheet: true, onClose: () => this.closeActiveSheet() })
+          .width('100%').height('100%');
+      } else if (this.academicPanelOpen && this.academicPanelKind === 3) {
+        CreditPage({ presentedAsSheet: true, onClose: () => this.closeActiveSheet() })
+          .width('100%').height('100%');
+      } else if (this.academicPanelOpen && this.academicPanelKind === 4) {
+        EmptyClassroomPage({ presentedAsSheet: true, onClose: () => this.closeActiveSheet() })
+          .width('100%').height('100%');
       } else if (this.timetableDisplayOpen) {
         TimetableDisplaySettings({
           options: this.timetableDisplay,
@@ -2042,37 +2237,53 @@ struct Home {
     Column() {
       this.todayHeader();
 
-      ImmersiveHeader({ barHeight: this.activeClass !== undefined ? 184 : 148 }) {
-        Row() {
-          this.todayHeroCard();
+      List({ space: 12 }) {
+        ListItem() {
+          Column() {
+            ImmersiveHeader({ barHeight: this.todayHeroHeight() }) {
+              this.todayHeroCard();
+            }
+          }
+          .width('100%')
+          .borderRadius(24)
+          .clip(true)
         }
-        .width('100%')
-        .padding({ left: 16, right: 16 })
-      }
-      this.todaySectionHeader();
 
-      if (this.todayItems.length === 0) {
-        this.emptyToday();
-      } else {
-        List({ space: 10 }) {
+        if (this.upcomingExam() !== undefined) {
+          ListItem() {
+            this.todayExamCard(this.upcomingExam() as EasEventItem);
+          }
+        }
+
+        if (!this.hasTimetable) {
+          ListItem() {
+            this.todayNoTimetable();
+          }
+        } else if (this.todayItems.length > 0) {
+          ListItem() {
+            this.todaySectionHeader();
+          }
           ForEach(this.todayItems, (event: EasEventItem) => {
             ListItem() {
               if (CompatibleSheetMaterial.isEnabled()) {
-                ImmersiveEventCard({ content: () => { this.eventRow(event, true); } })
+                ImmersiveEventCard({ content: () => { this.todayEventRow(event, true); } })
+                  .opacity(event.to <= this.nowTick ? 0.55 : 1)
               } else {
-                this.eventRow(event);
+                this.todayEventRow(event);
               }
             }
           }, (event: EasEventItem) => Home.todayItemKey(event));
         }
-        .width('100%')
-        .layoutWeight(1)
-        .padding({ left: 16, right: 16, top: 8 })
-        // Reach the screen bottom; the last card still clears the dock when scrolled to the end.
-        .contentEndOffset(this.dockPageInset() + 16)
-        .scrollBar(BarState.Off)
-        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
       }
+      .width('100%')
+      .layoutWeight(1)
+      .padding({ left: 16, right: 16 })
+      // Reach the screen bottom; the last card still clears the dock when scrolled to the end.
+      .contentStartOffset(8)
+      .contentEndOffset(this.dockPageInset() + 16)
+      .scrollBar(BarState.Off)
+      .edgeEffect(EdgeEffect.Spring)
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
     }
     .width('100%')
     .height('100%')
@@ -2080,345 +2291,295 @@ struct Home {
 
   @Builder
   todayHeader() {
-    Row() {
-      Text((new Date(this.nowTick).getMonth() + 1).toString() + '月' +
-        new Date(this.nowTick).getDate().toString() + '日')
-        .fontSize(24)
-        .fontWeight(FontWeight.Medium)
-        .fontColor(COLOR_TEXT_PRIMARY);
-      Text(DOW_FULL[EasTimeTools.getDow(this.nowTick)] +
-        (this.currentTimetable !== undefined && this.currentTimetable.getWeekNumber(this.nowTick) > 0
-          ? ' · 第' + this.currentTimetable.getWeekNumber(this.nowTick).toString() + '周' : ''))
+    Column() {
+      Text(Home.greeting(this.nowTick))
         .fontSize(13)
-        .fontColor(COLOR_TEXT_SECONDARY)
-        .margin({ left: 8, top: 7 });
+        .fontColor(COLOR_TEXT_SECONDARY);
+      Row() {
+        Text((new Date(this.nowTick).getMonth() + 1).toString() + '月' +
+          new Date(this.nowTick).getDate().toString() + '日')
+          .fontSize(28)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(COLOR_TEXT_PRIMARY);
+        Text(DOW_FULL[EasTimeTools.getDow(this.nowTick)])
+          .fontSize(15)
+          .fontColor(COLOR_TEXT_SECONDARY)
+          .margin({ left: 10, bottom: 3 });
+        Blank();
+        if (this.currentWeekNumber() > 0) {
+          Text('第 ' + this.currentWeekNumber().toString() + ' 周')
+            .fontSize(13)
+            .fontWeight(FontWeight.Medium)
+            .fontColor(COLOR_PRIMARY)
+            .backgroundColor(COLOR_NAV_ACTIVE)
+            .borderRadius(13)
+            .padding({ left: 10, right: 10, top: 4, bottom: 4 })
+            .margin({ bottom: 2 });
+        }
+      }
+      .width('100%')
+      .alignItems(VerticalAlign.Bottom)
+      .margin({ top: 2 });
     }
     .width('100%')
-    .padding({ left: 20, right: 20, top: 14 + this.statusBarInset, bottom: 2 })
-    .alignItems(VerticalAlign.Center);
+    .alignItems(HorizontalAlign.Start)
+    .padding({ left: 20, right: 20, top: 12 + this.statusBarInset, bottom: 4 });
   }
 
   @Builder
   todayHeroCard() {
     Column() {
       Row() {
-        Column() {
-          if (this.activeClass !== undefined) {
-            Text('正在进行 · ' + Home.durationText(this.activeClass.to - this.nowTick) + ' 后下课')
-              .fontSize(12)
-              .fontColor('#DCEEFF')
-              .fontWeight(FontWeight.Medium);
-            Text(this.activeClass.name)
-              .fontSize(20)
-              .fontWeight(FontWeight.Medium)
-              .fontColor('#FFFFFF')
-              .maxLines(1)
-              .textOverflow({ overflow: TextOverflow.Ellipsis })
-              .margin({ top: 5 });
-          } else if (this.nextClass !== undefined) {
-            Text('下一节课 · ' + Home.countdownText(this.nextClass, this.nowTick))
-              .fontSize(12)
-              .fontColor('#DCEEFF')
-              .fontWeight(FontWeight.Medium);
-            Text(this.nextClass.name)
-              .fontSize(20)
-              .fontWeight(FontWeight.Medium)
-              .fontColor('#FFFFFF')
-              .maxLines(1)
-              .textOverflow({ overflow: TextOverflow.Ellipsis })
-              .margin({ top: 5 });
-          } else {
-            Text('今日空闲')
-              .fontSize(20)
-              .fontWeight(FontWeight.Medium)
-              .fontColor('#FFFFFF');
-            Text('享受当下，按自己的节奏安排今天')
-              .fontSize(12)
-              .fontColor('#DCEEFF')
-              .margin({ top: 6 });
-          }
+        Text(this.heroTag())
+          .fontSize(12)
+          .fontWeight(FontWeight.Medium)
+          .fontColor('#FFFFFF')
+          .backgroundColor($r('app.color.hita_hero_chip'))
+          .borderRadius(11)
+          .padding({ left: 9, right: 9, top: 3, bottom: 3 });
+        Blank();
+        if (this.todayClassCount() > 0) {
+          Text('已上 ' + this.completedClassCount().toString() + ' / ' + this.todayClassCount().toString() + ' 节')
+            .fontSize(12)
+            .fontColor('#DCEEFF');
         }
-        .layoutWeight(1)
-        .alignItems(HorizontalAlign.Start);
       }
       .width('100%');
 
-      if (this.activeClass !== undefined) {
-        Row() {
-          SymbolGlyph($r('sys.symbol.clock'))
-            .fontSize(15)
-            .fontColor(['#DCEEFF']);
-          Text(EasTimeTools.printTime(this.activeClass.from) + ' - ' + EasTimeTools.printTime(this.activeClass.to))
-            .fontSize(13)
-            .fontColor('#FFFFFF')
-            .margin({ left: 6 });
-          Blank();
-          Text(this.activeClass.place.length > 0 ? this.activeClass.place : '上课中')
-            .fontSize(13)
-            .fontColor('#FFFFFF')
-            .backgroundColor($r('app.color.hita_hero_chip'))
-            .borderRadius(12)
-            .padding({ left: 8, right: 8, top: 3, bottom: 3 })
-            .maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis });
-        }
-        .width('100%')
-        .margin({ top: 16 });
-
-        Progress({ value: this.activeClass.getProgress(this.nowTick) * 100, total: 100, type: ProgressType.Linear })
-          .width('100%')
-          .height(5)
-          .color('#FFFFFF')
-          .backgroundColor($r('app.color.hita_hero_chip'))
+      if (this.heroEvent() !== undefined) {
+        Text((this.heroEvent() as EasEventItem).name)
+          .fontSize(22)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#FFFFFF')
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
           .margin({ top: 12 });
-        Text('今日已上 ' + this.completedClassCount().toString() + ' 节，共 ' +
-          this.todayClassCount().toString() + ' 节')
-          .fontSize(11)
-          .fontColor('#DCEBFF')
-          .margin({ top: 6 });
-      } else if (this.nextClass !== undefined) {
-        Row() {
-          SymbolGlyph($r('sys.symbol.clock'))
-            .fontSize(15)
-            .fontColor(['#DCEEFF']);
-          Text(EasTimeTools.printTime(this.nextClass.from) + ' - ' + EasTimeTools.printTime(this.nextClass.to))
-            .fontSize(14)
-            .fontWeight(FontWeight.Medium)
-            .fontColor('#FFFFFF')
-            .margin({ left: 6 });
-          Blank();
-          Text(this.nextClass.place.length > 0 ? this.nextClass.place : '待开始')
-            .fontSize(12)
-            .fontColor('#FFFFFF')
-            .backgroundColor($r('app.color.hita_hero_chip'))
-            .borderRadius(12)
-            .padding({ left: 8, right: 8, top: 3, bottom: 3 })
-            .maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis });
-        }
-        .width('100%')
-        .margin({ top: 16 });
-
-      } else {
-        Text('今天没有待开始的课程')
+        Text(Home.placeTeacher(this.heroEvent() as EasEventItem).length > 0 ?
+          Home.placeTeacher(this.heroEvent() as EasEventItem) : '地点未填写')
           .fontSize(13)
           .fontColor('#DCEEFF')
-          .margin({ top: 16 });
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .margin({ top: 4 });
+        Blank();
+        Row() {
+          Text() {
+            Span(this.heroMinutesLeft() >= 60 ? Math.floor(this.heroMinutesLeft() / 60).toString() : '')
+              .fontSize(30)
+              .fontWeight(FontWeight.Bold)
+              .fontColor('#FFFFFF');
+            Span(this.heroMinutesLeft() >= 60 ? ' 小时 ' : '')
+              .fontSize(13)
+              .fontColor('#DCEEFF');
+            Span((this.heroMinutesLeft() % 60).toString())
+              .fontSize(30)
+              .fontWeight(FontWeight.Bold)
+              .fontColor('#FFFFFF');
+            Span(' 分钟' + this.heroCountdownSuffix())
+              .fontSize(13)
+              .fontColor('#DCEEFF');
+          }
+          Blank();
+          Text(EasTimeTools.printTime((this.heroEvent() as EasEventItem).from) + ' - ' +
+            EasTimeTools.printTime((this.heroEvent() as EasEventItem).to))
+            .fontSize(13)
+            .fontColor('#FFFFFF')
+            .margin({ bottom: 5 });
+        }
+        .width('100%')
+        .alignItems(VerticalAlign.Bottom);
+        if (this.activeClass !== undefined) {
+          Progress({ value: this.activeClass.getProgress(this.nowTick) * 100, total: 100, type: ProgressType.Linear })
+            .width('100%')
+            .height(5)
+            .color('#FFFFFF')
+            .backgroundColor($r('app.color.hita_hero_chip'))
+            .margin({ top: 10 });
+        }
+      } else {
+        Text(this.heroIdleTitle())
+          .fontSize(22)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#FFFFFF')
+          .margin({ top: 12 });
+        Blank();
+        Row() {
+          SymbolGlyph($r('sys.symbol.calendar'))
+            .fontSize(15)
+            .fontColor(['#DCEEFF']);
+          Text(this.tomorrowText())
+            .fontSize(13)
+            .fontColor('#FFFFFF')
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .layoutWeight(1)
+            .margin({ left: 6 });
+        }
+        .width('100%');
       }
     }
     .width('100%')
+    .height(this.todayHeroHeight())
+    .alignItems(HorizontalAlign.Start)
     .padding({ left: 18, right: 18, top: 16, bottom: 16 })
     .backgroundColor($r('app.color.hita_primary_fill'))
     .borderRadius(24)
-    .shadow({ radius: 14, color: '#262E86E8', offsetY: 6 })
-    .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_primary_fill'), true))
-    .margin({ top: 12 });
+    .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_primary_fill'), true));
+  }
+
+  @Builder
+  todayExamCard(exam: EasEventItem) {
+    Row() {
+      Row()
+        .width(4)
+        .height(38)
+        .borderRadius(2)
+        .backgroundColor(COLOR_EXAM);
+      Column() {
+        Text(exam.name)
+          .fontSize(15)
+          .fontWeight(FontWeight.Medium)
+          .fontColor(COLOR_TEXT_PRIMARY)
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis });
+        Text(Home.examWhenText(exam))
+          .fontSize(12)
+          .fontColor(COLOR_TEXT_SECONDARY)
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .margin({ top: 4 });
+      }
+      .layoutWeight(1)
+      .alignItems(HorizontalAlign.Start)
+      .margin({ left: 12, right: 12 });
+      Text(Home.examDistanceText(exam, this.nowTick))
+        .fontSize(13)
+        .fontWeight(FontWeight.Medium)
+        .fontColor(COLOR_EXAM)
+        .backgroundColor($r('app.color.hita_error_surface'))
+        .borderRadius(13)
+        .padding({ left: 10, right: 10, top: 5, bottom: 5 });
+    }
+    .width('100%')
+    .padding({ left: 14, right: 14, top: 14, bottom: 14 })
+    .backgroundColor(COLOR_CARD)
+    .borderRadius(16)
+    .border({ width: 1, color: $r('app.color.hita_divider_edf1f7') })
+    .alignItems(VerticalAlign.Center)
+    .onClick(() => {
+      this.getUIContext().getRouter().pushUrl({ url: 'pages/ExamPage' });
+    });
   }
 
   @Builder
   todaySectionHeader() {
     Row() {
-      Column() {
-        Text('今日安排')
-          .fontSize(13)
-          .fontWeight(FontWeight.Medium)
-          .fontColor(COLOR_TEXT_SECONDARY);
-        if (this.timelineText.length > 0) {
-          Text(this.timelineText)
-            .fontSize(11)
-            .fontColor(COLOR_TEXT_HINT)
-            .margin({ top: 3 });
-        }
-      }
-      .alignItems(HorizontalAlign.Start);
-      Blank();
-    }
-    .width('100%')
-    .padding({ left: 20, right: 20, top: 16, bottom: 7 });
-  }
-
-  @Builder
-  emptyToday() {
-    Column() {
-      Blank()
-      Text('—')
-        .fontSize(48)
-        .fontColor($r('app.color.hita_divider_c9d2de'))
-        .margin({ bottom: 14 })
-      Text(this.hasTimetable ? '今日暂无日程' : '还没有可展示的课表')
-        .fontSize(17)
+      Text('今日安排')
+        .fontSize(15)
         .fontWeight(FontWeight.Medium)
-        .fontColor(COLOR_TEXT_SECONDARY)
-      Text(this.hasTimetable ? '本周其余课程见时间表' : '暂无已导入或手动创建的课表')
-        .fontSize(13)
-        .fontColor(COLOR_TEXT_HINT)
-        .margin({ top: 8, bottom: 20 })
-      Blank()
+        .fontColor(COLOR_TEXT_PRIMARY);
+      Blank();
+      Text(this.todayItems.length.toString() + ' 项')
+        .fontSize(12)
+        .fontColor(COLOR_TEXT_HINT);
     }
     .width('100%')
-    .layoutWeight(1)
-    .padding({ bottom: this.dockPageInset() })
-    .justifyContent(FlexAlign.Center)
-    .alignItems(HorizontalAlign.Center)
+    .padding({ left: 4, right: 4, top: 4 });
   }
 
   @Builder
-  eventRow(event: EasEventItem, immersive: boolean = false) {
+  todayNoTimetable() {
+    Column() {
+      Text('还没有课表')
+        .fontSize(16)
+        .fontWeight(FontWeight.Medium)
+        .fontColor(COLOR_TEXT_PRIMARY);
+      Text('登录教务导入，或在课表管理里手动创建')
+        .fontSize(13)
+        .fontColor(COLOR_TEXT_SECONDARY)
+        .margin({ top: 6, bottom: 16 });
+      this.emptyTimetableActions();
+    }
+    .width('100%')
+    .padding({ top: 28, bottom: 28 })
+    .alignItems(HorizontalAlign.Center);
+  }
+
+  @Builder
+  todayEventRow(event: EasEventItem, immersive: boolean = false) {
     Row() {
+      Row()
+        .width(4)
+        .height(38)
+        .borderRadius(2)
+        .backgroundColor(event.type === EasEventType.CLASS ?
+          Home.canvasColorCss(timetableBlockColor(event.color)) : Home.eventColor(event.type));
+
       Column() {
         Text(EasTimeTools.printTime(event.from))
-          .fontSize(11)
+          .fontSize(15)
+          .fontWeight(FontWeight.Medium)
+          .fontColor(COLOR_TEXT_PRIMARY);
+        Text(EasTimeTools.printTime(event.to))
+          .fontSize(12)
           .fontColor(COLOR_TEXT_HINT)
-          .width('100%')
-          .textAlign(TextAlign.Center);
-        Stack() {
-          Row()
-            .width(2)
-            .height(28)
-            .backgroundColor($r('app.color.hita_divider_dce4f0'));
-          Stack() {
-            if (event.containsTimestamp(this.nowTick)) {
-              Circle()
-                .width(22)
-                .height(22)
-                .attributeModifier(new CirclePaintModifier($r('app.color.hita_selected_cfe3fa')));
-              Circle()
-                .width(14)
-                .height(14)
-                .attributeModifier(new CirclePaintModifier(COLOR_PRIMARY));
-            } else {
-              Circle()
-                .width(event.to <= this.nowTick ? 18 : 12)
-                .height(event.to <= this.nowTick ? 18 : 12)
-                .attributeModifier(new CirclePaintModifier(
-                  event.to <= this.nowTick ? $r('app.color.hita_divider_c9d1dd') : Home.eventColor(event.type)));
-            }
-            if (event.to <= this.nowTick && !event.containsTimestamp(this.nowTick)) {
-              SymbolGlyph($r('sys.symbol.checkmark'))
-                .fontSize(10)
-                .fontColor(['#FFFFFF']);
-            }
+          .margin({ top: 2 });
+      }
+      .width(52)
+      .alignItems(HorizontalAlign.Start)
+      .margin({ left: 12 });
+
+      Column() {
+        Row() {
+          Text(event.name)
+            .fontSize(16)
+            .fontWeight(FontWeight.Medium)
+            .fontColor(event.type === EasEventType.EXAM ? COLOR_EXAM : COLOR_TEXT_PRIMARY)
+            .layoutWeight(1)
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis });
+          if (Home.todayChipText(event, this.nowTick).length > 0) {
+            Text(Home.todayChipText(event, this.nowTick))
+              .fontSize(11)
+              .fontColor(Home.todayChipColor(event, this.nowTick))
+              .backgroundColor(Home.todayChipBg(event, this.nowTick))
+              .borderRadius(9)
+              .padding({ left: 7, right: 7, top: 3, bottom: 3 })
+              .margin({ left: 8 });
           }
-          .width(20)
-          .height(20)
-          .alignContent(Alignment.Center);
         }
         .width('100%')
-        .height(30)
-        .alignContent(Alignment.Center);
-      }
-      .width(48)
-      .alignItems(HorizontalAlign.Center)
-      Column() {
-        if (event.to <= this.nowTick) {
-          Row() {
-            Text(event.name)
-              .fontSize(14)
-              .fontColor(COLOR_TEXT_SECONDARY)
-              .layoutWeight(1)
-              .maxLines(1)
-              .textOverflow({ overflow: TextOverflow.Ellipsis });
-            Text('已结束')
-              .fontSize(11)
-              .fontColor(COLOR_TEXT_HINT)
-              .backgroundColor($r('app.color.hita_control'))
-              .borderRadius(9)
-              .padding({ left: 7, right: 7, top: 3, bottom: 3 });
-          }
-          .width('100%');
-        } else {
-          Row() {
-            Text(event.name)
-              .fontSize(17)
-              .fontWeight(FontWeight.Medium)
-              .fontColor(event.type === EasEventType.EXAM ? COLOR_EXAM : COLOR_TEXT_PRIMARY)
-              .layoutWeight(1)
-              .maxLines(1)
-              .textOverflow({ overflow: TextOverflow.Ellipsis });
-            if (event.type !== EasEventType.CLASS) {
-              Text(Home.typeTag(event.type))
-                .fontSize(11)
-                .fontColor(Home.eventColor(event.type))
-                .width(24)
-                .height(24)
-                .textAlign(TextAlign.Center)
-                .borderRadius(12)
-                .backgroundColor(Home.statusBgColor(Home.eventStatus(event, this.nowTick)));
-            }
-          }
-          .width('100%')
-          .alignItems(VerticalAlign.Center);
-
-          Row() {
-            SymbolGlyph($r('sys.symbol.clock'))
-              .fontSize(14)
-              .fontColor([COLOR_TEXT_SECONDARY]);
-            Text(EasTimeTools.printTime(event.from) + ' - ' + EasTimeTools.printTime(event.to))
-              .fontSize(12)
-              .fontColor(COLOR_TEXT_SECONDARY)
-              .margin({ left: 5 });
-            Blank();
-            if (Home.eventStatus(event, this.nowTick).length > 0) {
-              Text(Home.eventStatusText(event, this.nowTick))
-                .fontSize(11)
-                .fontColor(Home.statusColor(Home.eventStatus(event, this.nowTick)))
-                .backgroundColor(Home.statusBgColor(Home.eventStatus(event, this.nowTick)))
-                .borderRadius(9)
-                .padding({ left: 7, right: 7, top: 3, bottom: 3 });
-            }
-          }
-          .width('100%')
-          .margin({ top: 9 });
-
-          if (event.place.length > 0 || event.teacher.length > 0) {
-            Row() {
-              if (event.place.length > 0) {
-                SymbolGlyph($r('sys.symbol.pin'))
-                  .fontSize(13)
-                  .fontColor([COLOR_TEXT_SECONDARY]);
-                Text(event.place)
-                  .fontSize(12)
-                  .fontColor(COLOR_TEXT_SECONDARY)
-                  .margin({ left: 5 })
-                  .backgroundColor($r('app.color.hita_selected'))
-                  .borderRadius(11)
-                  .padding({ left: 7, right: 7, top: 3, bottom: 3 })
-                  .maxLines(1)
-                  .textOverflow({ overflow: TextOverflow.Ellipsis });
-              }
-              if (event.teacher.length > 0) {
-                Text((event.place.length > 0 ? '  ·  ' : '') + event.teacher)
-                  .fontSize(12)
-                  .fontColor(COLOR_TEXT_SECONDARY)
-                  .maxLines(1)
-                  .textOverflow({ overflow: TextOverflow.Ellipsis })
-                  .margin({ left: event.place.length > 0 ? 5 : 0 });
-              }
-            }
+        .alignItems(VerticalAlign.Center);
+        if (Home.placeTeacher(event).length > 0) {
+          Text(Home.placeTeacher(event))
+            .fontSize(12)
+            .fontColor(COLOR_TEXT_SECONDARY)
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .margin({ top: 5 });
+        }
+        if (event.containsTimestamp(this.nowTick)) {
+          Progress({ value: event.getProgress(this.nowTick) * 100, total: 100, type: ProgressType.Linear })
             .width('100%')
+            .height(3)
+            .color(COLOR_PRIMARY)
+            .backgroundColor($r('app.color.hita_selected_e8f1fb'))
             .margin({ top: 8 });
-          }
-
-          if (event.containsTimestamp(this.nowTick)) {
-            Progress({ value: event.getProgress(this.nowTick) * 100, total: 100, type: ProgressType.Linear })
-              .width('100%')
-              .height(3)
-              .color(COLOR_PRIMARY)
-              .backgroundColor($r('app.color.hita_selected_e8f1fb'))
-              .margin({ top: 10 });
-          }
         }
       }
       .layoutWeight(1)
-      .padding({ left: 16, right: 16, top: 14, bottom: 14 })
       .alignItems(HorizontalAlign.Start)
+      .margin({ left: 12 });
     }
     .width('100%')
+    .padding({ left: 14, right: 14, top: 14, bottom: 14 })
+    .alignItems(VerticalAlign.Center)
     .backgroundColor(immersive ? Color.Transparent : COLOR_CARD)
     .borderRadius(16)
     .border({ width: event.containsTimestamp(this.nowTick) ? 1.5 : 1,
       color: event.containsTimestamp(this.nowTick) ? $r('app.color.hita_focus') : $r('app.color.hita_divider_edf1f7') })
     .clip(true)
+    .opacity(!immersive && event.to <= this.nowTick ? 0.55 : 1)
     .hitTestBehavior(immersive ? HitTestMode.Transparent : HitTestMode.Default)
     .margin({ bottom: immersive ? 0 : 2 });
   }
@@ -2834,7 +2995,7 @@ struct Home {
             this.desktopWidgetSettings();
             this.moreNavigationRow($r('sys.symbol.repeat_1'), '导入课表',
               this.importing ? '正在从教务系统同步' : '从教务系统同步当前学期', () => {
-                this.getUIContext().getRouter().pushUrl({ url: 'pages/ImportTimetablePage' });
+                this.openImportTimetableSheet();
               });
             this.moreNavigationRow($r('sys.symbol.doc_plaintext'), '导入 ICS 课表',
               '从日历文件导入课程', () => {
@@ -2855,21 +3016,19 @@ struct Home {
           Column() {
             this.moreNavigationRow($r('sys.symbol.calendar'), '考试',
               '查询教务考试或手动添加安排', () => {
-                this.getUIContext().getRouter().pushUrl({ url: 'pages/ExamPage' });
+                this.openAcademicPanel(1);
               });
             this.moreNavigationRow($r('sys.symbol.doc_plaintext'), '成绩管理',
               '按学期查询成绩、官方统计与本地均分', () => {
-                this.getUIContext().getRouter().pushUrl({ url: 'pages/ScorePage' });
+                this.openAcademicPanel(2);
               });
             this.moreNavigationRow($r('sys.symbol.graduationcap'), '学分查询',
               '培养方案完成度与分类学分统计', () => {
-                this.getUIContext().getRouter().pushUrl({ url: 'pages/CreditPage' });
+                this.openAcademicPanel(3);
               });
             this.moreNavigationRow($r('sys.symbol.magnifyingglass'), '空教室',
               '查询可用教室与空闲时段', () => {
-                this.getUIContext().getRouter().pushUrl({
-                  url: 'pages/EmptyClassroomPage'
-                });
+                this.openAcademicPanel(4);
               });
           }
           .width('100%')
@@ -2988,7 +3147,7 @@ struct Home {
             .fontColor(COLOR_TEXT_PRIMARY)
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis });
-          Text('下一节课倒计时 · 地点 · 教师')
+          Text('下一节课倒计时')
             .fontSize(12)
             .fontColor(COLOR_TEXT_SECONDARY)
             .margin({ top: 2 })

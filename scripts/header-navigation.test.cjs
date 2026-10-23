@@ -11,7 +11,7 @@ const pages = ['NoticesPage', 'ScorePage', 'ExamPage',
 
 test('all more pages use the shared navigation button, not text glyphs', () => {
   for (const page of pages) {
-    const source = read(`pages/${page}.ets`);
+    const source = read(page === 'ImportTimetablePage' ? 'pages/ImportTimetablePanel.ets' : `pages/${page}.ets`);
     assert.match(source, /import \{ HeaderBackButton \}/, page);
     assert.match(source, /HeaderBackButton\(\{/, page);
     assert.doesNotMatch(source, /Text\(['"][<‹×]['"]\)/, page);
@@ -36,7 +36,7 @@ test('the shared button keeps the reference style and accessible click target', 
 
 test('page and sheet header back buttons stay on the leading side', () => {
   for (const page of pages) {
-    const source = read(`pages/${page}.ets`);
+    const source = read(page === 'ImportTimetablePage' ? 'pages/ImportTimetablePanel.ets' : `pages/${page}.ets`);
     const header = source.slice(source.indexOf('  build()'));
     assert.match(header, /Row\(\s*(?:\{[^{}\n]*\}\s*)?\)\s*\{\s*HeaderBackButton\(\{/, page);
   }
