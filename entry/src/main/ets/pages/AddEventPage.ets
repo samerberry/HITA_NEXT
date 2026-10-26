@@ -1065,7 +1065,11 @@ export struct EventEditorForm {
           .height(38)
           .margin({ left: index === 0 ? 0 : 3, right: index === TYPE_ITEMS.length - 1 ? 0 : 3 })
           .backgroundColor(this.typeIdx === index ? $r('app.color.hita_primary_fill') : $r('app.color.hita_surface'))
-          .fontColor(this.typeIdx === index ? '#FFFFFF' : $r('app.color.hita_text_333333'))
+          .attributeModifier(new CompatibleMaterialModifier(this.typeIdx === index ?
+            $r('app.color.hita_primary_fill') : $r('app.color.hita_surface'), this.typeIdx === index,
+            !this.sheetMode || CompatibleSheetMaterial.isEnabled()))
+          .fontColor(this.typeIdx === index ? '#FFFFFF' :
+            CompatibleMaterialModifier.foreground($r('app.color.hita_text_333333')))
           .borderRadius(10)
           .onClick(() => {
             this.typeIdx = index;
@@ -1170,7 +1174,7 @@ export struct EventEditorForm {
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start)
       SymbolGlyph($r('sys.symbol.calendar'))
-        .fontSize(24)
+        .fontSize(HitaDesign.iconMd)
         .fontColor([$r('app.color.hita_primary_3390ec')])
     }
     .width('100%')
@@ -1212,7 +1216,7 @@ export struct EventEditorForm {
           .layoutWeight(1)
           .alignItems(HorizontalAlign.Start)
           SymbolGlyph($r('sys.symbol.clock'))
-            .fontSize(HitaDesign.title)
+            .fontSize(HitaDesign.iconMd)
             .fontColor([$r('app.color.hita_primary_3390ec')])
         }
         .layoutWeight(1)
@@ -1237,7 +1241,7 @@ export struct EventEditorForm {
           .layoutWeight(1)
           .alignItems(HorizontalAlign.Start)
           SymbolGlyph($r('sys.symbol.clock'))
-            .fontSize(HitaDesign.title)
+            .fontSize(HitaDesign.iconMd)
             .fontColor([$r('app.color.hita_primary_3390ec')])
         }
         .layoutWeight(1)

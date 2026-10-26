@@ -62,6 +62,14 @@ function harness({ api = 26, controllerDelay = 0, withBounds = true, localPoint,
       dockHoldTimer = -1;
       dockPressSource = 0;
       selectedNav = 0;
+      // No native bar is measured here (host width 0), so capsule tracking leaves the
+      // guard bounds that updateDockBounds sets below.
+      dockBarHostW = 0;
+      dockCapsuleX = -1;
+      dockBarTrackUntil = 0;
+      dockBarTracking = false;
+      pageVisible = true;
+      railMode() { return true; }
       getUIContext() { return { postFrameCallback: frame => setTimeout(() => frame.onFrame(), 16) }; }
       dockLight = { transfer: (from, to) => lights.push([from, to]),
         stop: () => { stoppedLights.push(clock.now); envelope.reset(); },

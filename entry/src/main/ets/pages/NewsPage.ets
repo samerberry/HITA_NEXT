@@ -175,7 +175,7 @@ struct NewsPage {
       .alignItems(HorizontalAlign.Start);
       Button({ type: ButtonType.Circle }) {
         SymbolGlyph($r('sys.symbol.arrow_clockwise'))
-          .fontSize(HitaDesign.section)
+          .fontSize(HitaDesign.iconMd)
           .fontColor([CompatibleMaterialModifier.foreground(COLOR_PRIMARY)]);
       }
       .width(40)
@@ -317,6 +317,7 @@ struct NewsPage {
           .height(36)
           .fontColor(COLOR_PRIMARY)
           .backgroundColor(COLOR_NAV_ACTIVE)
+          .attributeModifier(new CompatibleMaterialModifier(COLOR_NAV_ACTIVE))
           .borderRadius(HitaDesign.cardRadius)
           .margin({ top: 10 })
           .onClick(() => {
@@ -328,6 +329,7 @@ struct NewsPage {
             .height(36)
             .fontColor(COLOR_PRIMARY)
             .backgroundColor(COLOR_NAV_ACTIVE)
+            .attributeModifier(new CompatibleMaterialModifier(COLOR_NAV_ACTIVE))
             .borderRadius(HitaDesign.cardRadius)
             .margin({ top: 10 })
             .onClick(() => {

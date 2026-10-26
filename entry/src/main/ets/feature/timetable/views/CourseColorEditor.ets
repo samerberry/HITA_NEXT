@@ -1,3 +1,4 @@
+import { HitaDesign } from '../../../common/theme/HitaDesign';
 import { TimetableTheme } from '../../../common/theme/TimetableTheme';
 import { CirclePaintModifier } from '../../../common/theme/CirclePaintModifier';
 import { CompatibleMaterialModifier } from '../../../common/theme/CompatibleMaterialModifier';
@@ -81,7 +82,7 @@ export struct CourseColorEditor {
       Text(this.lineMode ? '调整时间网格及每天分隔线的颜色。' : this.textMode ? '调整标题、日期和时间刻度的颜色。' :
         (this.examMode ? '仅应用到这场考试；过亮颜色会自动压暗。' :
           '应用到这门课程的所有课块；过亮颜色会自动压暗。'))
-        .fontSize(13).fontColor($r('app.color.hita_text_secondary')).width('100%');
+        .fontSize(HitaDesign.caption).fontColor($r('app.color.hita_text_secondary')).width('100%');
       Row({ space: 12 }) {
         Text(this.hex()).fontColor($r('app.color.hita_text')).layoutWeight(1);
         if (this.lineMode) {
@@ -155,7 +156,7 @@ export struct CourseColorEditor {
         });
       }.width('100%').justifyContent(FlexAlign.SpaceBetween);
       if (this.error.length > 0) {
-        Text(this.error).fontColor($r('app.color.hita_error_8a2e42')).fontSize(13);
+        Text(this.error).fontColor($r('app.color.hita_error_8a2e42')).fontSize(HitaDesign.caption);
       }
       if (this.immersiveControls && CompatibleSheetMaterial.isEnabled()) {
         ImmersiveHeader({ barHeight: 56 }) {

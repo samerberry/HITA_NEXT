@@ -406,7 +406,7 @@ export struct ImportTimetablePanel {
         .layoutWeight(1)
         .alignItems(HorizontalAlign.Start);
         SymbolGlyph($r('sys.symbol.chevron_right'))
-          .fontSize(12)
+          .fontSize(HitaDesign.iconXs)
           .fontColor([TEXT_SECONDARY])
           .width(16).height(24).flexShrink(0)
           .accessibilityLevel('no');
@@ -444,7 +444,7 @@ export struct ImportTimetablePanel {
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start);
       SymbolGlyph($r('sys.symbol.calendar'))
-        .fontSize(24)
+        .fontSize(HitaDesign.iconMd)
         .fontColor([HitaColors.primary]);
     }
     .width('100%')
@@ -500,7 +500,7 @@ export struct ImportTimetablePanel {
             .alignItems(HorizontalAlign.Start)
             .margin({ left: 12 });
             SymbolGlyph($r('sys.symbol.chevron_right'))
-              .fontSize(12)
+              .fontSize(HitaDesign.iconXs)
               .fontColor([$r('app.color.hita_text_hint_a3adbb')])
               .width(16).height(24).flexShrink(0)
               .accessibilityLevel('no');

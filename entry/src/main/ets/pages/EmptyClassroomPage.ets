@@ -355,7 +355,7 @@ export struct EmptyClassroomPage {
             if (this.loading || this.querying) {
               LoadingProgress().width(22).height(22).color(PRIMARY)
             } else {
-              SymbolGlyph($r('sys.symbol.arrow_clockwise')).fontSize(HitaDesign.title)
+              SymbolGlyph($r('sys.symbol.arrow_clockwise')).fontSize(HitaDesign.iconMd)
                 .fontColor([CompatibleMaterialModifier.foreground(PRIMARY)])
             }
           }
@@ -408,7 +408,7 @@ export struct EmptyClassroomPage {
   private selector(kind: number, description: string, alignment: FlexAlign, action: () => void) {
     Row({ space: 4 }) {
       Text(this.filterLabel(kind)).fontSize(HitaDesign.caption).fontColor(TEXT).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).flexShrink(1)
-      SymbolGlyph($r('sys.symbol.chevron_down')).fontSize(HitaDesign.label).fontColor([SECONDARY])
+      SymbolGlyph($r('sys.symbol.chevron_down')).fontSize(HitaDesign.iconSm).fontColor([SECONDARY])
     }.height(52).layoutWeight(1).justifyContent(alignment).enabled(!this.loading)
       .accessibilityText(description + '，' + this.filterLabel(kind)).onClick(action)
   }

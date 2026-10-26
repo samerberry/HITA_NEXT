@@ -1,3 +1,4 @@
+import { HitaDesign } from '../../common/theme/HitaDesign';
 import { ImmersiveHeader } from '../../common/components/ImmersiveHeader';
 import { CompatibleMaterialModifier } from '../../common/theme/CompatibleMaterialModifier';
 
@@ -39,7 +40,7 @@ export struct CreditGoalDialog {
       TextInput({ text: this.value, placeholder: '目标学分' }).type(InputType.NUMBER_DECIMAL)
         .fontSize(18).height(48).onChange((value: string) => { this.value = value; this.errorText = ''; })
         .enabled(!this.saving)
-      Text(this.errorText || '设为 0 可取消目标').fontSize(13)
+      Text(this.errorText || '设为 0 可取消目标').fontSize(HitaDesign.caption)
         .fontColor(this.errorText ? $r('app.color.hita_error') : $r('app.color.hita_text_secondary')).width('100%')
       ImmersiveHeader({ barHeight: 44 }) {
         Row({ space: 12 }) {

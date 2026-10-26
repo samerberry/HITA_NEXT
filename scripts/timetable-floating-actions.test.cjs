@@ -320,6 +320,20 @@ test('supported API 23+ devices subscribe exactly once and debounce unstable gri
   }
 });
 
+test('the dock variant reports subscription and centres itself instead of falling back right', () => {
+  for (const options of [{ api: 19 }, { supported: false }, { error: 801 }, { error: 201 }]) {
+    const h = observerHarness(options);
+    let unavailable = 0;
+    assert.equal(h.observer.start(left => h.sides.push(left), () => unavailable++), false);
+    assert.equal(unavailable, 1);
+    assert.deepEqual(h.sides, []);
+  }
+  const h = observerHarness({ api: 26 });
+  assert.equal(h.observer.start(left => h.sides.push(left), () => assert.fail('available')), true);
+  assert.equal(h.observer.start(() => {}), true, 'a repeated start reports the live subscription');
+  h.observer.stop();
+});
+
 test('unknown grip cancels a pending relocation and teardown removes only its own callback', () => {
   const h = observerHarness({ offError: true }); h.start();
   const notify = h.subscriptions[0].callback;
@@ -343,8 +357,8 @@ test('UI wiring retains hidden controls, bounds both hit targets, and observes o
   assert.match(ui, /onFinish: finish/);
   assert.match(ui, /postFrameCallback/);
   assert.ok(ui.includes('height(48 + FLOATING_ACTION_GAP)'));
-  assert.ok(ui.includes('left: 18, bottom: this.bottomInset + 20'));
-  assert.ok(ui.includes('right: 18, bottom: this.bottomInset + 20'));
+  assert.ok(ui.includes('left: this.edgeMargin + this.leftInset, bottom: this.bottomInset + 20'));
+  assert.ok(ui.includes('right: this.edgeMargin + this.rightInset, bottom: this.bottomInset + 20'));
   assert.ok(ui.includes('this.active && (this.eveningVisible || this.returnVisible)'));
   assert.ok(ui.includes('eveningMounted ? Visibility.Visible : Visibility.Hidden'));
   assert.ok(ui.includes('returnMounted ? Visibility.Visible : Visibility.Hidden'));

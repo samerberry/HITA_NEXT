@@ -19,6 +19,8 @@ class DockLightFrame extends FrameCallback {
 @Component
 export struct DockLightOverlay {
   controller: DockLightController = new DockLightController();
+  /** Side rail: draw the same 212 vp track top-to-bottom instead of rotating a horizontal canvas. */
+  vertical: boolean = false;
   private canvas: CanvasRenderingContext2D = new CanvasRenderingContext2D(new RenderingContextSettings(true));
   private generation: number = 0;
   private ready: boolean = false;
@@ -51,7 +53,7 @@ export struct DockLightOverlay {
     this.envelope.reset();
     this.motion.settle();
     if (this.ready) {
-      this.canvas.clearRect(0, 0, 212, 56);
+      this.canvas.clearRect(0, 0, 212, 212);
     }
   }
 
@@ -103,9 +105,11 @@ export struct DockLightOverlay {
         return;
       }
       const nowMs: number = Date.now();
-      this.canvas.clearRect(0, 0, 212, 56);
+      this.canvas.clearRect(0, 0, 212, 212);
       const center: number = this.motion.step(nowMs);
       this.canvas.save();
+      // Map the track (x along 0-212, y across 0-56) onto the upright rail: slot 0 at the top.
+      if (this.vertical) this.canvas.setTransform(0, 1, -1, 0, 56, 0);
       this.clipCapsule();
       this.drawGlow(center, this.envelope.sample(nowMs), 45);
       this.canvas.restore();
@@ -140,8 +144,8 @@ export struct DockLightOverlay {
 
   build() {
     Canvas(this.canvas)
-      .width(212)
-      .height(56)
+      .width(this.vertical ? 56 : 212)
+      .height(this.vertical ? 212 : 56)
       .hitTestBehavior(HitTestMode.None)
       .accessibilityLevel('no-hide-descendants')
       .onReady(() => {

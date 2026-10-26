@@ -31,8 +31,13 @@ test('API 23-25 render without loading the API 26 material module or calling its
     const instance = { barHeight: value => calls.push(['height', value]) };
     if (api >= 26) instance.barFloatingStyle = value => calls.push(['native', value]);
     new mod.exports.CompatibleDockModifier(36, true, true).applyNormalAttribute(instance);
-    assert.deepEqual(calls, api >= 26 ? [['material', 36, true, true, api === 26 ? 0 : 1],
+    assert.deepEqual(calls, api >= 26 ? [['material', 36, true, true, api === 26 ? 0 : 1, false],
       ['native', 'native-style']] : []);
+    if (api >= 26) {
+      calls.length = 0;
+      new mod.exports.CompatibleDockModifier(36, false, false, true).applyNormalAttribute(instance);
+      assert.deepEqual(calls[0], ['material', 36, false, false, api === 26 ? 0 : 1, true]);
+    }
   }
 });
 
@@ -65,8 +70,8 @@ test('older dock keeps three actions, reactive selection, safe-area spacing and 
   assert.match(home, /if \(!deviceInfo\.apiAvailable\('26\.0\.0'\)\) \{\s*FrostedDock/);
   assert.match(home, /onSelect: \(index: number\) => \{\s*this\.requestDockClick\(index\)/);
   assert.match(dock, /\.onTouch\(\(event: TouchEvent\) => this\.onDockTouch\(event\)\)/);
-  assert.match(home, /\.barHeight\(deviceInfo\.apiAvailable\('26\.0\.0'\) \? 56 : 0\)/);
+  assert.match(home, /\.barHeight\(deviceInfo\.apiAvailable\('26\.0\.0'\) && !this\.railMode\(\) \? 56 : 0\)/);
   assert.match(home, /if \(deviceInfo\.apiAvailable\('26\.0\.0'\)\) \{\s*Stack[\s\S]*?this\.homeTabs\(\);[\s\S]*?DockLightOverlay/);
-  assert.match(home, /Stack\(\{ alignContent: Alignment\.Bottom \}\) \{\s*this\.homeTabs\(\);\s*this\.compatibleDock\(\);/);
+  assert.match(home, /Stack\(\{ alignContent: Alignment\.Bottom \}\) \{\s*this\.homeTabs\(\);\s*if \(this\.railMode\(\)\) \{\s*this\.dockRail\(\);\s*\} else \{\s*this\.compatibleDock\(\);/);
   assert.doesNotMatch(home, /\.overlay\(this\.compatibleDock/);
 });

@@ -6,6 +6,11 @@ export class HitaDesign {
   static readonly body: number = 16;
   static readonly caption: number = 14;
   static readonly label: number = 12;
+  static readonly iconXs: number = 12;
+  static readonly iconSm: number = 16;
+  static readonly iconMd: number = 20;
+  static readonly iconLg: number = 24;
+  static readonly iconXl: number = 32;
   static readonly inset: number = 16;
   static readonly gap: number = 12;
   static readonly sectionGap: number = 24;

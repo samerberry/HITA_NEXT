@@ -321,7 +321,7 @@ test('manager export material is on a fixed circle button, not on the glyph boun
   const page = read('pages/TimetableManagerPage.ets');
   assert.match(page, /else if \(deviceInfo\.apiAvailable\('26\.0\.0'\)\) \{\s*Button/);
   assert.match(page, /Button\(\{ type: ButtonType\.Circle \}\) \{\s*SymbolGlyph\(\$r\('sys\.symbol\.doc_plaintext'\)\)[^}]+?;\s*\}\s*\.width\(44\)\s*\.height\(44\)\s*\.padding\(0\)/);
-  assert.match(page, /else \{\s*SymbolGlyph\(\$r\('sys\.symbol\.doc_plaintext'\)\)\s*\.fontSize\(20\)\s*\.fontColor\(\[HitaColors\.primary\]\)\s*\.width\(44\)\s*\.height\(44\)/);
+  assert.match(page, /else \{\s*SymbolGlyph\(\$r\('sys\.symbol\.doc_plaintext'\)\)\s*\.fontSize\(HitaDesign\.iconMd\)\s*\.fontColor\(\[HitaColors\.primary\]\)\s*\.width\(44\)\s*\.height\(44\)/);
 });
 
 test('timetable manager actions and campus selector receive the shadow-free control material', () => {

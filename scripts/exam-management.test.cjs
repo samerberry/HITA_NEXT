@@ -141,7 +141,7 @@ test('list keeps event identity, filters courses and sorts by time across timeta
   assert.match(source, /\(it: EasEventItem\) => it\.id/);
   assert.match(source, /eventId: this\.sheetEventId/);
   assert.match(source, /onClick\(\(\) => this\.openExamDetail\(it\)\)/);
-  assert.match(source, /\.width\(18\)\s*\.height\(54\)\s*\.borderRadius\(9\)/);
+  assert.match(source, /\.width\(4\)\s*\.height\(44\)\s*\.borderRadius\(2\)/);
   const list = source.slice(source.indexOf('List({ space: 8, scroller: this.pageScroller })'), source.indexOf('.bindSheet('));
   assert.match(list, /this\.examCard\(it\)/);
   assert.doesNotMatch(list, /openEditExam|confirmDeleteExam|sys\.symbol\.trash/);

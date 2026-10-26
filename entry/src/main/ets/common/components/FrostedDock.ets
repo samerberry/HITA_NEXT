@@ -1,3 +1,5 @@
+import { HitaDesign } from '../theme/HitaDesign';
+import { DOCK_WIDTH } from '../util/DockHandedness';
 /** API 23 dock: backdrop blur and alpha-preserving foreground inversion. */
 @Component
 export struct FrostedDock {
@@ -5,6 +7,8 @@ export struct FrostedDock {
   @Prop bottomInset: number = 24;
   @Prop darkMode: boolean = false;
   @Prop hideMask: boolean = false;
+  /** Horizontal shift toward the holding hand; the parent animates it. */
+  @Prop sideOffset: number = 0;
   onSelect: (index: number) => void = () => {};
   onDockTouch: (event: TouchEvent) => void = () => {};
   onDockAreaChanged: (area: Area) => void = () => {};
@@ -15,10 +19,10 @@ export struct FrostedDock {
   item(icon: Resource, label: string, index: number) {
     Column({ space: 3 }) {
       SymbolGlyph(icon)
-        .fontSize(20)
+        .fontSize(HitaDesign.iconMd)
         .fontColor([this.selectedIndex === index ? '#FFFFFFFF' : '#B8FFFFFF'])
       Text(label)
-        .fontSize(11)
+        .fontSize(HitaDesign.label)
         .fontWeight(FontWeight.Medium)
         .fontColor(this.selectedIndex === index ? '#FFFFFFFF' : '#B8FFFFFF')
     }
@@ -63,7 +67,7 @@ export struct FrostedDock {
         // Keep the selection fill outside it so only glyph pixels invert.
         .blendMode(BlendMode.DIFFERENCE, BlendApplyType.OFFSCREEN)
       }
-      .width(212)
+      .width(DOCK_WIDTH)
       .height(56)
       .padding(4)
       .borderRadius(28)
@@ -73,6 +77,7 @@ export struct FrostedDock {
       })
       .border({ width: 0.5, color: this.darkMode ? '#33FFFFFF' : '#88FFFFFF' })
       .margin({ bottom: 12 + this.bottomInset })
+      .offset({ x: this.sideOffset, y: 0 })
       .onAreaChange((_old: Area, area: Area) => this.onDockAreaChanged(area))
       .onTouch((event: TouchEvent) => this.onDockTouch(event))
     }
@@ -87,11 +92,11 @@ export struct FrostedDock {
         return HitTestMode.Transparent;
       }
       const touch: TouchObject = event.touches[0];
-      const left: number = (this.areaWidth - 212) / 2;
+      const left: number = (this.areaWidth - DOCK_WIDTH) / 2 + this.sideOffset;
       const bottom: number = this.areaHeight - 12 - this.bottomInset;
       // Consume only capsule hits; never send a dock tap to the course/list
       // behind it, while the rest of this bottom strip stays touch-transparent.
-      return touch.x >= left && touch.x <= left + 212 && touch.y >= bottom - 56 && touch.y <= bottom
+      return touch.x >= left && touch.x <= left + DOCK_WIDTH && touch.y >= bottom - 56 && touch.y <= bottom
         ? HitTestMode.Default : HitTestMode.Transparent;
     })
   }

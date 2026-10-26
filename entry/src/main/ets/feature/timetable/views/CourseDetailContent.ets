@@ -60,7 +60,7 @@ export struct CourseDetailContent {
           Column() {
             ImmersiveHeader({ barHeight: 44, materialEnabled: CompatibleSheetMaterial.isEnabled() }) {
               Button({ type: ButtonType.Circle }) {
-                SymbolGlyph($r('sys.symbol.paintpalette')).fontSize(HitaDesign.title)
+                SymbolGlyph($r('sys.symbol.paintpalette')).fontSize(HitaDesign.iconMd)
                   .fontColor([CompatibleSheetMaterial.isEnabled() ? CompatibleMaterialModifier.foreground(COLOR_PRIMARY) :
                     COLOR_PRIMARY]);
               }
@@ -150,7 +150,7 @@ export struct CourseDetailContent {
     Row() {
       Stack() {
         SymbolGlyph(symbol)
-          .fontSize(20)
+          .fontSize(HitaDesign.iconMd)
           .fontColor([COLOR_PRIMARY]);
       }
       .width(COURSE_DETAIL_ICON_SIZE)

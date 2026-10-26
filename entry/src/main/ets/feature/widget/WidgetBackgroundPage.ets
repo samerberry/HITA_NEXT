@@ -1,3 +1,4 @@
+import { HitaDesign } from '../../common/theme/HitaDesign';
 /**
  * WidgetBackgroundPage.ets — 桌面服务卡片自定义背景半模态面板。
  *
@@ -376,7 +377,7 @@ export struct WidgetBackgroundPage {
             .textOverflow({ overflow: TextOverflow.Ellipsis })
           if (this.sourceUri.length > 0) {
             Text(this.busy ? '处理中' : '保存')
-              .fontSize(13)
+              .fontSize(HitaDesign.caption)
               .fontWeight(FontWeight.Medium)
               .fontColor(CompatibleMaterialModifier.foreground($r('app.color.hita_primary_3390ec')))
               .height(32)
@@ -409,7 +410,7 @@ export struct WidgetBackgroundPage {
   emptyState() {
     Column({ space: 12 }) {
       SymbolGlyph($r('sys.symbol.picture'))
-        .fontSize(40)
+        .fontSize(HitaDesign.iconXl)
         .fontColor([HitaColors.primary])
       Text('选择背景图')
         .fontSize(16)
@@ -437,6 +438,7 @@ export struct WidgetBackgroundPage {
           .fontSize(14)
           .fontColor(Color.White)
           .backgroundColor(HitaColors.primary)
+          .attributeModifier(new CompatibleMaterialModifier(HitaColors.primary, true))
           .enabled(!this.busy)
           .margin({ top: 8 })
           .onClick(() => { void this.pickImage(); })
@@ -634,7 +636,7 @@ export struct WidgetBackgroundPage {
           .fontColor(TEXT_PRIMARY)
           .layoutWeight(1)
         Text(Math.round(this.currentFrame().scale * 100).toString() + '%')
-          .fontSize(13)
+          .fontSize(HitaDesign.caption)
           .fontColor(TEXT_SECONDARY)
       }
       .width('100%')
@@ -677,7 +679,7 @@ export struct WidgetBackgroundPage {
           .fontColor(TEXT_PRIMARY)
           .layoutWeight(1)
         Text(this.veil.toString() + '%')
-          .fontSize(13)
+          .fontSize(HitaDesign.caption)
           .fontColor(TEXT_SECONDARY)
       }
       .width('100%')
@@ -721,7 +723,7 @@ export struct WidgetBackgroundPage {
       }
     } else {
       Text(label)
-        .fontSize(13)
+        .fontSize(HitaDesign.caption)
         .fontColor(HitaColors.primary)
         .textAlign(TextAlign.Center)
         .height(34)

@@ -1,3 +1,4 @@
+import { HitaDesign } from '../theme/HitaDesign';
 import { HitaColors } from '../theme/HitaColors';
 import { CompatibleMaterialModifier } from '../theme/CompatibleMaterialModifier';
 
@@ -9,7 +10,7 @@ export struct HeaderBackButton {
   build() {
     Button({ type: ButtonType.Circle }) {
       SymbolGlyph($r('sys.symbol.chevron_left'))
-        .fontSize(20)
+        .fontSize(HitaDesign.iconMd)
         .fontWeight(FontWeight.Regular)
         .fontColor([CompatibleMaterialModifier.foreground(HitaColors.onSurface)]);
     }

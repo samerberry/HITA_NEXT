@@ -98,6 +98,7 @@ function summaryHarness() {
     courseDeleteEffects = { resume() {} };
     getUIContext() { return { getHostContext: () => ({}), setKeyboardAvoidMode() {} }; }
     startClock() {}
+    startDockHandedness() {}
     checkTimetableUpdate() {}
     async openPendingReminder() {}
     updateTodayHighlights() {}

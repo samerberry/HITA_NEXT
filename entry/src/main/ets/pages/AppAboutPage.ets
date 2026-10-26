@@ -222,7 +222,7 @@ struct AppAboutPage {
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start);
       SymbolGlyph($r('sys.symbol.chevron_right'))
-        .fontSize(12)
+        .fontSize(HitaDesign.iconXs)
         .fontColor([TEXT_SECONDARY])
         .width(16).height(24).flexShrink(0)
         .accessibilityLevel('no');

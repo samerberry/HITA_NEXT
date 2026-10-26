@@ -533,6 +533,9 @@ export struct ExamPage {
             .fontColor($r('app.color.hita_error'))
             .layoutWeight(1)
           Button('重试')
+            .fontColor(CompatibleMaterialModifier.foreground('#FFFFFF'))
+            .backgroundColor($r('app.color.hita_primary_fill'))
+            .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_primary_fill')))
             .onClick(() => this.loadExams())
         }
         .padding(16)
@@ -592,6 +595,9 @@ export struct ExamPage {
                   .fontColor($r('app.color.hita_error'))
                   .layoutWeight(1)
                 Button('重试')
+                  .fontColor(CompatibleMaterialModifier.foreground('#FFFFFF'))
+                  .backgroundColor($r('app.color.hita_primary_fill'))
+                  .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_primary_fill')))
                   .onClick(() => this.loadExams())
               }
               .width('100%')
@@ -728,9 +734,9 @@ export struct ExamPage {
   private examCard(it: EasEventItem) {
     Row() {
       Row()
-        .width(18)
-        .height(54)
-        .borderRadius(9)
+        .width(4)
+        .height(44)
+        .borderRadius(2)
         .backgroundColor(ExamPage.colorCss(ExamPage.examColor(it)))
       Column() {
         Row() {
@@ -756,7 +762,7 @@ export struct ExamPage {
           .fontSize(HitaDesign.caption)
           .fontColor($r('app.color.hita_text_secondary_7b8498'))
           .width('100%')
-          .margin({ top: 7 })
+          .margin({ top: 8 })
           .maxLines(2)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
 
@@ -773,9 +779,9 @@ export struct ExamPage {
       .margin({ left: 12 })
     }
     .width('100%')
-    .padding({ left: 14, right: 14, top: 12, bottom: 12 })
+    .padding(HitaDesign.inset)
     .backgroundColor($r('app.color.hita_surface'))
-    .borderRadius(16)
+    .borderRadius(HitaDesign.cardRadius)
     .onClick(() => this.openExamDetail(it))
   }
 
@@ -783,9 +789,9 @@ export struct ExamPage {
   private remoteExamCard(remote: EasExamItem) {
     Row() {
       Row()
-        .width(18)
-        .height(54)
-        .borderRadius(9)
+        .width(4)
+        .height(44)
+        .borderRadius(2)
         .backgroundColor(ExamPage.colorCss(this.remoteExamColor(remote)))
       Column() {
         Row() {
@@ -811,7 +817,7 @@ export struct ExamPage {
           .fontSize(HitaDesign.caption)
           .fontColor($r('app.color.hita_text_secondary_7b8498'))
           .width('100%')
-          .margin({ top: 7 })
+          .margin({ top: 8 })
           .maxLines(2)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
 
@@ -828,9 +834,9 @@ export struct ExamPage {
       .margin({ left: 12 })
     }
     .width('100%')
-    .padding({ left: 14, right: 14, top: 12, bottom: 12 })
+    .padding(HitaDesign.inset)
     .backgroundColor($r('app.color.hita_surface'))
-    .borderRadius(16)
+    .borderRadius(HitaDesign.cardRadius)
     .onClick(() => this.openRemoteDetail(remote))
   }
 
@@ -1024,7 +1030,7 @@ export struct ExamPage {
   private examColorButton(color: number) {
     Button({ type: ButtonType.Circle }) {
       SymbolGlyph($r('sys.symbol.paintpalette'))
-        .fontSize(HitaDesign.title)
+        .fontSize(HitaDesign.iconMd)
         .fontColor([$r('app.color.hita_primary_3390ec')])
     }
     .width(44)
@@ -1033,6 +1039,8 @@ export struct ExamPage {
     .margin({ left: 8 })
     .flexShrink(0)
     .backgroundColor($r('app.color.hita_selected_e4f0ff'))
+    .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_selected_e4f0ff'), false,
+      !this.presentedAsSheet || CompatibleSheetMaterial.isEnabled()))
     .accessibilityText('修改考试颜色')
     .enabled(!this.savingExamColor && !this.openingEditor && this.pendingDeleteId.length === 0)
     .onClick(() => this.toggleExamColor(color))
@@ -1043,7 +1051,7 @@ export struct ExamPage {
     Row() {
       Stack() {
         SymbolGlyph(symbol)
-          .fontSize(20)
+          .fontSize(HitaDesign.iconMd)
           .fontColor([$r('app.color.hita_primary_3390ec')])
       }
       .width(DETAIL_ICON_SIZE)

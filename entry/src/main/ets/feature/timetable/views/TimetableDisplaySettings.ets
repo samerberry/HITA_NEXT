@@ -109,7 +109,7 @@ export struct TimetableDisplaySettings {
       Column() {
         ImmersiveHeader({ barHeight: 40, materialEnabled: CompatibleSheetMaterial.isEnabled() }) {
           Button({ type: ButtonType.Circle }) {
-            SymbolGlyph($r('sys.symbol.paintpalette')).fontSize(20)
+            SymbolGlyph($r('sys.symbol.paintpalette')).fontSize(HitaDesign.iconMd)
               .fontColor([CompatibleMaterialModifier.foreground($r('app.color.hita_primary'))])
           }.width(40).height(40).backgroundColor($r('app.color.hita_selected'))
             .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_selected'), false,
@@ -128,7 +128,7 @@ export struct TimetableDisplaySettings {
           Row({ space: 12 }) {
             if (this.editing.length > 0) {
               Button({ type: ButtonType.Circle }) {
-                SymbolGlyph($r('sys.symbol.chevron_left')).fontSize(20)
+                SymbolGlyph($r('sys.symbol.chevron_left')).fontSize(HitaDesign.iconMd)
                   .fontColor([CompatibleMaterialModifier.foreground($r('app.color.hita_text'))])
               }.width(40).height(40).backgroundColor($r('app.color.hita_selected'))
                 .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_selected'), false,
@@ -140,7 +140,7 @@ export struct TimetableDisplaySettings {
               .fontColor($r('app.color.hita_text')).layoutWeight(1)
             if (this.editing.length === 0) {
               Button({ type: ButtonType.Circle }) {
-                SymbolGlyph($r('sys.symbol.xmark')).fontSize(HitaDesign.section)
+                SymbolGlyph($r('sys.symbol.xmark')).fontSize(HitaDesign.iconMd)
                   .fontColor([CompatibleMaterialModifier.foreground($r('app.color.hita_text_secondary'))])
               }.width(40).height(40).backgroundColor($r('app.color.hita_selected'))
                 .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_selected'), false,

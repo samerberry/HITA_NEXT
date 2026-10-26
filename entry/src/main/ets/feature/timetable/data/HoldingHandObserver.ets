@@ -10,12 +10,13 @@ export class HoldingHandObserver {
   private timer: number = -1;
   private callback: ((status: motion.HoldingHandStatus) => void) | undefined = undefined;
 
-  start(onSide: (left: boolean) => void): void {
-    if (this.started) return;
+  /** Returns whether grip readings will be delivered; otherwise `onUnavailable` runs once. */
+  start(onSide: (left: boolean) => void, onUnavailable?: () => void): boolean {
+    if (this.started) return this.callback !== undefined;
     this.started = true;
     if (deviceInfo.sdkApiVersion < 20 || !canIUse('SystemCapability.MultimodalAwareness.Motion')) {
-      onSide(false);
-      return;
+      if (onUnavailable !== undefined) onUnavailable(); else onSide(false);
+      return false;
     }
     const generation = ++this.generation;
     const callback = (status: motion.HoldingHandStatus): void => {
@@ -35,6 +36,7 @@ export class HoldingHandObserver {
     try {
       motion.on('holdingHandChanged', callback);
       this.callback = callback;
+      return true;
     } catch (error) {
       // 801: unsupported model / setting, 201: permission denied. Never block timetable actions.
       const code = (error as BusinessError).code;
@@ -42,7 +44,8 @@ export class HoldingHandObserver {
       this.generation++;
       if (this.timer >= 0) clearTimeout(this.timer);
       this.timer = -1;
-      onSide(false);
+      if (onUnavailable !== undefined) onUnavailable(); else onSide(false);
+      return false;
     }
   }
 

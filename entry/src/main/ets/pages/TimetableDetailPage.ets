@@ -463,7 +463,7 @@ struct TimetableDetailPage {
         Blank()
         Text(TimetableDetailPage.dateText(timetable.startTime))
           .fontSize(HitaDesign.body).fontColor(HitaColors.onSurface)
-        SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(12)
+        SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(HitaDesign.iconXs)
           .fontColor([HitaColors.onSurfaceVariant]).width(16).margin({ left: 8 }).accessibilityLevel('no')
       }.width('100%').constraintSize({ minHeight: 48 })
         .accessibilityText('开学日期，' + TimetableDetailPage.dateText(timetable.startTime) + '，点击修改')
@@ -509,7 +509,7 @@ struct TimetableDetailPage {
       .alignItems(HorizontalAlign.Start)
       .margin({ left: 12 })
       SymbolGlyph($r('sys.symbol.chevron_right'))
-        .fontSize(12)
+        .fontSize(HitaDesign.iconXs)
         .fontColor([$r('app.color.hita_text_hint_b2b8c4')])
         .width(16).height(24).flexShrink(0)
         .accessibilityLevel('no')
@@ -543,7 +543,7 @@ struct TimetableDetailPage {
               .fontWeight(FontWeight.Medium)
               .fontColor(HitaColors.primary)
             SymbolGlyph($r('sys.symbol.chevron_right'))
-              .fontSize(12)
+              .fontSize(HitaDesign.iconXs)
               .fontColor([$r('app.color.hita_text_hint_b2b8c4')])
               .width(16).height(24).flexShrink(0)
               .accessibilityLevel('no')
@@ -613,7 +613,7 @@ struct TimetableDetailPage {
     Button({ type: ButtonType.Normal }) {
       Column({ space: 4 }) {
         SymbolGlyph($r('sys.symbol.trash'))
-          .fontSize(HitaDesign.title)
+          .fontSize(HitaDesign.iconLg)
           .fontColor([Color.White])
         Text('删除')
           .fontSize(HitaDesign.label)
@@ -626,6 +626,7 @@ struct TimetableDetailPage {
     .margin({ left: 8 })
     .borderRadius(HitaDesign.cardRadius)
     .backgroundColor(HitaColors.error)
+    .attributeModifier(new CompatibleMaterialModifier(HitaColors.error, true, true, HitaColors.error))
     .accessibilityText('删除' + row.subject.name + '及全部课时')
     .onClick(() => {
       this.confirmDeleteCourse(row);
@@ -651,7 +652,7 @@ struct TimetableDetailPage {
         .textOverflow({ overflow: TextOverflow.Ellipsis })
         .constraintSize({ maxWidth: '38%' })
       SymbolGlyph($r('sys.symbol.chevron_right'))
-        .fontSize(12)
+        .fontSize(HitaDesign.iconXs)
         .fontColor([$r('app.color.hita_text_hint_b2b8c4')])
         .width(16).height(24).flexShrink(0)
         .accessibilityLevel('no')

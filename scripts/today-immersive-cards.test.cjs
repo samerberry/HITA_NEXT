@@ -87,7 +87,7 @@ test('edited course fields re-key today rows so the list redraws without restart
 test('today list runs to the screen bottom and keeps the dock inset as scroll end offset', () => {
   const home = require('node:fs').readFileSync(require('node:path').join(__dirname, '../entry/src/main/ets/pages/Home.ets'), 'utf8').replace(/\r\n/g, '\n');
   const today = home.slice(home.indexOf('  tabToday()'), home.indexOf('  todayHeader()'));
-  assert.match(home, /this\.tabToday\(\);\s*\}\s*\/\/[^\n]*\n\s*\.tabPage\(0, COLOR_SURFACE\)/);
+  assert.match(home, /this\.tabToday\(\);\s*\}\s*\/\/[^\n]*\n\s*\.tabPage\(0, COLOR_SURFACE, this\.railGutter\(\), this\.railGutter\(\)\)/);
   assert.match(today, /\.contentEndOffset\(this\.dockPageInset\(\) \+ 16\)/);
   assert.match(today, /\.expandSafeArea\(\[SafeAreaType\.SYSTEM\], \[SafeAreaEdge\.BOTTOM\]\)/);
   assert.doesNotMatch(today, /bottom: 16 \}/);

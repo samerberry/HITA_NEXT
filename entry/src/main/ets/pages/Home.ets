@@ -12,7 +12,7 @@ import { CourseDetailContent } from '../feature/timetable/views/CourseDetailCont
 import { common } from '@kit.AbilityKit';
 import { formProvider } from '@kit.FormKit';
 import { deviceInfo } from '@kit.BasicServicesKit';
-import { CommonModifier, FrameCallback, KeyboardAvoidMode, SymbolGlyphModifier } from '@kit.ArkUI';
+import { CommonModifier, curves, FrameCallback, FrameNode, KeyboardAvoidMode, SymbolGlyphModifier } from '@kit.ArkUI';
 import { HeaderBackButton } from '../common/components/HeaderBackButton';
 import { ImmersiveHeader } from '../common/components/ImmersiveHeader';
 import { ImmersiveEventCard } from '../common/components/ImmersiveEventCard';
@@ -31,6 +31,12 @@ import { FrostedDock } from '../common/components/FrostedDock';
 import { DockLightOverlay } from '../common/components/DockLightOverlay';
 import { DockLightController } from '../common/util/DockLightEffect';
 import { DOCK_HOLD_DELAY_MS, DockNavigationGuard } from '../common/util/DockNavigationGuard';
+import { display as screenDisplay } from '@kit.ArkUI';
+import { DOCK_HANDEDNESS_DURATION, DOCK_RAIL_INSET, DOCK_RAIL_THICKNESS, DOCK_SIDE_MARGIN, DOCK_WIDTH,
+  DOCK_GUTTER_ACTION_EDGE, DOCK_RAIL_EXIT, DOCK_RAIL_MASK_WIDTH, DOCK_RAIL_MIN_TABLET_WIDTH, dockRailMode, dockRailOnRight, dockWideFoldScreen, dockSideOffset } from '../common/util/DockHandedness';
+import { DockRail } from '../common/components/DockRail';
+import { FLOATING_ACTION_EXIT_DURATION, FLOATING_ACTION_GAP, floatingActionExitProgress } from '../feature/timetable/views/FloatingActionsMotion';
+import { HoldingHandObserver } from '../feature/timetable/data/HoldingHandObserver';
 import { DeleteEffectController } from '../common/util/DeleteEffectController';
 import { CourseControlHost } from '../feature/timetable/views/CourseControlHost';
 import { TimetableFloatingActions } from '../feature/timetable/views/TimetableFloatingActions';
@@ -71,7 +77,6 @@ import { TimetableDisplayStore } from '../feature/timetable/data/TimetableDispla
 import { TimetableDisplaySettings } from '../feature/timetable/views/TimetableDisplaySettings';
 import { ClassReminderStore } from '../feature/timetable/data/ClassReminderStore';
 import { ClassReminderScheduler, ClassReminderSyncResult } from '../feature/timetable/data/ClassReminderScheduler';
-import { IcsImportResult, TimetableIcsImporter } from '../feature/timetable/data/TimetableIcsImporter';
 import { CalendarExportResult } from '../feature/timetable/data/TimetableCalendarExporter';
 import {
   AXIS_END_HOUR,
@@ -126,13 +131,15 @@ interface MoreShortcutOptions {
 }
 
 @Extend(Column)
-function tabPage(bottomInset: number, background: ResourceColor) {
+function tabPage(bottomInset: number, background: ResourceColor, leftInset: number = 0, rightInset: number = 0) {
   .width('100%')
   .height('100%')
-  .padding({ bottom: bottomInset })
+  .padding({ bottom: bottomInset, left: leftInset, right: rightInset })
   .backgroundColor(background)
   .expandSafeArea([SafeAreaType.SYSTEM, SafeAreaType.KEYBOARD], [SafeAreaEdge.BOTTOM])
 }
+
+const DOCK_BAR_ID: string = 'home-dock-bar';
 
 class TimetableMarqueeCallback extends FrameCallback {
   private callback: (timeMs: number) => void;
@@ -280,7 +287,33 @@ struct Home {
   private dockPressSource: number = TAB_TODAY;
   private dockLightPosition: number = 106;
   private dockLight: DockLightController = new DockLightController();
+  /** 智感握姿：-1 左手、0 居中、1 右手。 */
+  @State dockSide: number = 0;
+  @State dockHandednessActive: boolean = false;
+  /** Edge the tri-fold rail is drawn on, and its slide while it changes edge through the offscreen. */
+  @State railRight: boolean = false;
+  @State railShift: number = 0;
+  private railGeneration: number = 0;
+  private railWasFollowing: boolean = false;
+  @State homeWidth: number = 0;
+  @State homeHeight: number = 0;
+  /** Fully opened tri-fold or opened wide fold: the landscape rail follows the grip. */
+  private foldRailDevice: boolean = false;
+  private dockHandObserver: HoldingHandObserver = new HoldingHandObserver();
+  /** Native floating bar capsule in Home's coordinates; the API 26 light is laid over it. */
+  @State dockBarHostX: number = 0;
+  @State dockBarHostW: number = 0;
+  @State dockBarY: number = 0;
+  /** Capsule found inside the native bar; the system moves it for the grip without telling us. */
+  @State dockCapsuleX: number = -1;
+  private dockCapsuleY: number = 0;
+  private dockBarTrackUntil: number = 0;
+  private dockBarTracking: boolean = false;
+  private homeLeft: number = 0;
+  private homeTop: number = 0;
   private dockBarModifier: CommonModifier = new CommonModifier()
+    .id(DOCK_BAR_ID)
+    .onAreaChange((_old: Area, area: Area) => this.onDockBarArea(area))
     .onTouchIntercept((event: TouchEvent) => {
       this.dockNavigation.begin(event, true);
       return HitTestMode.Default;
@@ -341,6 +374,7 @@ struct Home {
 
   async onPageShow(): Promise<void> {
     this.pageVisible = true;
+    this.startDockHandedness();
     this.courseDeleteEffects.resume();
     this.getUIContext().setKeyboardAvoidMode(KeyboardAvoidMode.NONE);
     this.startClock();
@@ -382,6 +416,7 @@ struct Home {
 
   onPageHide(): void {
     this.pageVisible = false;
+    this.dockHandObserver.stop();
     this.stopClock();
     this.resetDockInteraction();
     this.closeActiveSheet();
@@ -465,6 +500,7 @@ struct Home {
 
   aboutToDisappear(): void {
     this.pageVisible = false;
+    this.dockHandObserver.stop();
     this.timetableWallpaperGeneration++;
     this.resetDockInteraction();
     this.closeActiveSheet();
@@ -1196,7 +1232,77 @@ struct Home {
   }
 
   private dockPageInset(): number {
-    return 64 + this.navBarInset;
+    return this.railMode() ? this.navBarInset : 64 + this.navBarInset;
+  }
+
+  private railMode(): boolean {
+    return dockRailMode(this.homeWidth, this.homeHeight - this.statusBarInset - this.navBarInset,
+      deviceInfo.deviceType === 'tablet', this.foldRailDevice);
+  }
+
+  /** Tablet rails stay on the left; only a fully opened tri-fold follows the grip. */
+  private railFollowsHand(): boolean {
+    return this.railMode() && this.foldRailDevice;
+  }
+
+  private railOnRight(): boolean {
+    return this.railFollowsHand() && this.railRight;
+  }
+
+  /** Equal gutter on both edges in rail mode, so content stays put when the rail switches sides. */
+  private railGutter(): number {
+    return this.railMode() ? DOCK_RAIL_INSET : 0;
+  }
+
+  /**
+   * A landscape tri-fold rail has room below and above the rail, so the evening / return
+   * controls sit in the side gutters instead of over the timetable.
+   */
+  private floatingActionsInGutter(): boolean {
+    if (!this.railFollowsHand()) return false;
+    const content: number = this.homeHeight - this.statusBarInset - this.navBarInset;
+    const belowRail: number = (content - DOCK_WIDTH) / 2;
+    // Both controls stacked (20 vp lift + 48 vp button + gap) must clear the rail with 8 vp to spare.
+    return belowRail >= 20 + 48 + FLOATING_ACTION_GAP + 8;
+  }
+
+  /** Explicit width keeps centred timetable layers inside the screen; margin plus 100% would overflow. */
+  private railContentWidth(): Length {
+    return this.railMode() ? Math.max(0, this.homeWidth - this.railGutter() * 2) : '100%';
+  }
+
+  private static readFoldRailDevice(): boolean {
+    try {
+      if (!screenDisplay.isFoldable()) return false;
+      const status: screenDisplay.FoldStatus = screenDisplay.getFoldStatus();
+      if (status === screenDisplay.FoldStatus.FOLD_STATUS_EXPANDED_WITH_SECOND_EXPANDED) return true;
+      if (status !== screenDisplay.FoldStatus.FOLD_STATUS_EXPANDED ||
+        screenDisplay.getFoldDisplayMode() !== screenDisplay.FoldDisplayMode.FOLD_DISPLAY_MODE_FULL) {
+        return false;
+      }
+      const screen: screenDisplay.Display = screenDisplay.getDefaultDisplaySync();
+      return dockWideFoldScreen(screen.width, screen.height);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  private onHomeArea(area: Area): void {
+    this.foldRailDevice = Home.readFoldRailDevice();
+    this.homeLeft = Number(area.globalPosition.x);
+    this.homeTop = Number(area.globalPosition.y);
+    this.homeWidth = Number(area.width);
+    this.homeHeight = Number(area.height);
+    // Entering the tri-fold rail takes the current grip side without a slide.
+    const following: boolean = this.railFollowsHand();
+    if (following && !this.railWasFollowing) {
+      this.railGeneration++;
+      this.railRight = dockRailOnRight(this.dockSide);
+      this.railShift = 0;
+    }
+    this.railWasFollowing = following;
+    // Unfolding into rail mode on API 27+ needs grip readings the bottom bar did not.
+    if (this.pageVisible) this.startDockHandedness();
   }
 
   private dockTab(icon: Resource, label: string): BottomTabBarStyle {
@@ -1506,26 +1612,6 @@ struct Home {
       try {
         if (this.currentTimetable?.id === timetable.id) this.calendarSyncEnabled = await CalendarSyncStore.getInstance().enabled(timetable.id);
       } finally { this.calendarExporting = false; }
-    }
-  }
-
-  private async importIcsTimetable(): Promise<void> {
-    const ctx: common.UIAbilityContext = this.getUIContext().getHostContext() as common.UIAbilityContext;
-    try {
-      const result: IcsImportResult | undefined = await TimetableIcsImporter.pickAndImport(ctx);
-      if (result === undefined) {
-        return;
-      }
-      this.getUIContext().getPromptAction().showToast({ message: result.message });
-      if (result.success) {
-        await this.refreshSummaries();
-        this.getUIContext().getRouter().pushUrl({
-          url: 'pages/TimetableDetailPage',
-          params: { 'timetableId': result.timetableId }
-        });
-      }
-    } catch (e) {
-      this.getUIContext().getPromptAction().showToast({ message: '导入 ICS 失败' });
     }
   }
 
@@ -1916,25 +2002,33 @@ struct Home {
     if (deviceInfo.apiAvailable('26.0.0')) {
       Stack({ alignContent: Alignment.Bottom }) {
         this.homeTabs();
-        if (!deviceInfo.apiAvailable('27.0.0')) {
+        if (this.railMode()) {
+          this.dockRail();
+        } else if (!deviceInfo.apiAvailable('27.0.0')) {
           DockLightOverlay({ controller: this.dockLight })
             .hitTestBehavior(HitTestMode.None)
-            .onAreaChange((_old: Area, area: Area) => this.updateDockBounds(area))
-            .margin({ bottom: 12 + this.navBarInset })
+            .position({ x: Math.max(0, this.dockBarX()), y: this.dockLightY() })
+            .visibility(this.dockBarHostW > 0 ? Visibility.Visible : Visibility.Hidden)
         }
       }
       .width('100%')
       .height('100%')
+      .onAreaChange((_old: Area, area: Area) => this.onHomeArea(area))
       .expandSafeArea([SafeAreaType.SYSTEM, SafeAreaType.KEYBOARD], [SafeAreaEdge.BOTTOM])
     } else {
       // A Tabs overlay captures the page's input on API 23. Keep the dock a
       // bounded sibling so content gestures and clicks reach the original tabs.
       Stack({ alignContent: Alignment.Bottom }) {
         this.homeTabs();
-        this.compatibleDock();
+        if (this.railMode()) {
+          this.dockRail();
+        } else {
+          this.compatibleDock();
+        }
       }
       .width('100%')
       .height('100%')
+      .onAreaChange((_old: Area, area: Area) => this.onHomeArea(area))
       .expandSafeArea([SafeAreaType.SYSTEM, SafeAreaType.KEYBOARD], [SafeAreaEdge.BOTTOM])
     }
   }
@@ -1996,6 +2090,166 @@ struct Home {
     if (began && this.dockHolding) this.dockLight.move(this.dockLightPosition);
   }
 
+  /**
+   * API 27+ lets the native tab bar follow the hand on its own. API 26 also draws
+   * the press light above the bar and API 23-25 draws the whole dock, so both
+   * follow the same grip readings the bar receives.
+   */
+  private startDockHandedness(): void {
+    const needed: boolean = this.railMode() ? this.foldRailDevice : !deviceInfo.apiAvailable('27.0.0');
+    if (!needed) {
+      this.dockHandObserver.stop();
+      this.dockHandednessActive = false;
+      this.dockSide = 0;
+      return;
+    }
+    const subscribed: boolean = this.dockHandObserver.start((left: boolean) => {
+      const side: number = left ? -1 : 1;
+      if (side === this.dockSide) return;
+      if (this.dockLightEnabled()) this.dockLight.stop();
+      if (this.railFollowsHand()) {
+        this.dockSide = side;
+        this.moveRailTo(side > 0);
+        return;
+      }
+      this.getUIContext().animateTo({ duration: DOCK_HANDEDNESS_DURATION, curve: Curve.FastOutSlowIn }, () => {
+        this.dockSide = side;
+      });
+      this.trackDockBar();
+    }, () => {
+      this.dockSide = 0;
+      this.trackDockBar();
+      if (this.railFollowsHand() && this.railRight) this.moveRailTo(false);
+    });
+    this.dockHandednessActive = subscribed;
+  }
+
+  /**
+   * Same handoff as the evening / return controls: leave through the current edge with the
+   * bounded 180 ms exit, swap edges while offscreen, then spring in from the other edge.
+   */
+  private moveRailTo(right: boolean): void {
+    const generation: number = ++this.railGeneration;
+    if (right === this.railRight) {
+      // Reversed before the swap: come back from wherever the exit has reached.
+      this.springRailIn();
+      return;
+    }
+    this.getUIContext().animateTo({
+      duration: FLOATING_ACTION_EXIT_DURATION,
+      curve: curves.customCurve(floatingActionExitProgress),
+      onFinish: () => {
+        if (generation !== this.railGeneration) return;
+        this.railRight = right;
+        this.railShift = right ? DOCK_RAIL_EXIT : -DOCK_RAIL_EXIT;
+        this.springRailIn();
+      }
+    }, () => {
+      this.railShift = this.railRight ? DOCK_RAIL_EXIT : -DOCK_RAIL_EXIT;
+    });
+  }
+
+  private springRailIn(): void {
+    this.getUIContext().animateTo({
+      duration: FLOATING_ACTION_EXIT_DURATION,
+      curve: curves.interpolatingSpring(0, 1, 170, 17)
+    }, () => {
+      this.railShift = 0;
+    });
+  }
+
+  /**
+   * The bar node may be the capsule itself or a wider host around it. Centre the 212 x 56 light on
+   * what the system laid out; only a wide host is shifted by the grip, so a phone bar (no grip
+   * movement) never takes the offset that pushed the light out of line.
+   */
+  private onDockBarArea(area: Area): void {
+    const width: number = Number(area.width);
+    const height: number = Number(area.height);
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return;
+    this.dockBarHostX = Number(area.globalPosition.x) - this.homeLeft;
+    this.dockBarHostW = width;
+    this.dockBarY = Number(area.globalPosition.y) - this.homeTop + Math.max(0, height - 56) / 2;
+    this.trackDockBar(400);
+  }
+
+  /**
+   * Follow the capsule frame by frame for a while. Grip handling animates the native capsule inside
+   * its bar without an area change, so the light reads its drawn position until the move settles.
+   */
+  private trackDockBar(durationMs: number = 800): void {
+    if (!this.dockLightEnabled() || this.railMode()) return;
+    this.dockBarTrackUntil = Math.max(this.dockBarTrackUntil, Date.now() + durationMs);
+    if (this.dockBarTracking) return;
+    this.dockBarTracking = true;
+    const frame: TimetableMarqueeCallback = new TimetableMarqueeCallback((_timeMs: number) => {
+      this.measureDockCapsule();
+      if (Date.now() < this.dockBarTrackUntil && this.pageVisible && !this.railMode()) {
+        this.getUIContext().postFrameCallback(frame);
+      } else {
+        this.dockBarTracking = false;
+      }
+    });
+    this.getUIContext().postFrameCallback(frame);
+  }
+
+  private measureDockCapsule(): void {
+    let capsule: FrameNode | undefined = undefined;
+    try {
+      const root: FrameNode | null = this.getUIContext().getFrameNodeById(DOCK_BAR_ID);
+      if (root !== null) capsule = this.findDockCapsule(root, 0);
+    } catch (_) {
+      capsule = undefined;
+    }
+    if (capsule !== undefined) {
+      const position: Position = capsule.getPositionToWindowWithTransform();
+      const height: number = this.getUIContext().px2vp(capsule.getMeasuredSize().height);
+      const x: number = Number(position.x) - this.homeLeft;
+      const y: number = Number(position.y) - this.homeTop + Math.max(0, height - 56) / 2;
+      if (Number.isFinite(x) && Number.isFinite(y)) {
+        if (Math.abs(x - this.dockCapsuleX) > 0.25) this.dockCapsuleX = x;
+        this.dockCapsuleY = y;
+      }
+    }
+    this.syncDockBarBounds();
+  }
+
+  /** The bar itself or its first descendant drawn as the 212 vp capsule. */
+  private findDockCapsule(node: FrameNode, depth: number): FrameNode | undefined {
+    const width: number = this.getUIContext().px2vp(node.getMeasuredSize().width);
+    if (Math.abs(width - DOCK_WIDTH) <= 2) return node;
+    if (depth >= 5) return undefined;
+    let child: FrameNode | null = node.getFirstChild();
+    while (child !== null) {
+      const found: FrameNode | undefined = this.findDockCapsule(child, depth + 1);
+      if (found !== undefined) return found;
+      child = child.getNextSibling();
+    }
+    return undefined;
+  }
+
+  private dockBarX(): number {
+    if (this.dockCapsuleX >= 0) return this.dockCapsuleX;
+    if (this.dockBarHostW <= 0) return -1;
+    // The system only moves the floating bar for the grip on wide screens.
+    const shift: number = this.dockBarHostW > DOCK_WIDTH + 1 && this.homeWidth >= DOCK_RAIL_MIN_TABLET_WIDTH ?
+      this.dockOffset() : 0;
+    return this.dockBarHostX + (this.dockBarHostW - DOCK_WIDTH) / 2 + shift;
+  }
+
+  private dockLightY(): number {
+    return this.dockCapsuleX >= 0 ? this.dockCapsuleY : this.dockBarY;
+  }
+
+  private syncDockBarBounds(): void {
+    if (this.railMode() || this.dockBarHostW <= 0) return;
+    this.dockNavigation.setBounds(this.homeLeft + this.dockBarX(), this.homeTop + this.dockLightY(), DOCK_WIDTH, 56);
+  }
+
+  private dockOffset(): number {
+    return dockSideOffset(this.homeWidth, this.dockSide);
+  }
+
   private resetDockInteraction(): void {
     this.clearDockHoldTimer();
     this.updateDockHoldLight(false);
@@ -2005,9 +2259,9 @@ struct Home {
     }
   }
 
-  private updateDockBounds(area: Area, padding: number = 0): void {
+  private updateDockBounds(area: Area, padding: number = 0, vertical: boolean = false): void {
     this.dockNavigation.setBounds(Number(area.globalPosition.x), Number(area.globalPosition.y),
-      Number(area.width), Number(area.height), padding);
+      Number(area.width), Number(area.height), padding, vertical);
   }
 
   private observeDockTouch(event: TouchEvent, fromDock: boolean = false): void {
@@ -2024,6 +2278,9 @@ struct Home {
       return;
     }
     if (event.type === TouchType.Down && event.touches.length === 1) {
+      // The system may have moved the capsule for the grip on its own; re-read before lighting it.
+      this.measureDockCapsule();
+      this.trackDockBar();
       this.clearDockHoldTimer();
       this.dockPressSource = this.selectedNav;
       this.dockLightPosition = this.dockNavigation.lightPosition(event) ??
@@ -2069,7 +2326,7 @@ struct Home {
           this.tabToday();
         }
         // The list reserves the dock inset itself so cards scroll under the dock.
-        .tabPage(0, COLOR_SURFACE)
+        .tabPage(0, COLOR_SURFACE, this.railGutter(), this.railGutter())
       }
       .clip(false)
       .tabBar(this.dockTab($r('sys.symbol.calendar'), '今日'))
@@ -2087,7 +2344,7 @@ struct Home {
         Column() {
           this.tabMine();
         }
-        .tabPage(0, COLOR_SURFACE)
+        .tabPage(0, COLOR_SURFACE, this.railGutter(), this.railGutter())
       }
       .clip(false)
       .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
@@ -2099,7 +2356,7 @@ struct Home {
     .vertical(false)
     .barOverlap(true)
     .barMode(BarMode.Fixed)
-    .barHeight(deviceInfo.apiAvailable('26.0.0') ? 56 : 0)
+    .barHeight(deviceInfo.apiAvailable('26.0.0') && !this.railMode() ? 56 : 0)
     .barBackgroundColor(Color.Transparent)
     .divider(null)
     // Native paging tracks the finger on every system, including over the
@@ -2129,7 +2386,8 @@ struct Home {
     })
     .animationDuration(TAB_SWIPE_MS)
     .attributeModifier(new CompatibleDockModifier(12 + this.navBarInset,
-      this.selectedNav === TAB_TIMETABLE && this.hasTimetableBackground(), this.darkMode))
+      this.selectedNav === TAB_TIMETABLE && this.hasTimetableBackground(), this.darkMode,
+      deviceInfo.apiAvailable('27.0.0') || this.dockHandednessActive, this.railMode()))
     .backgroundColor(this.currentTab === 1 ? Color.Transparent : COLOR_SURFACE)
     .expandSafeArea([SafeAreaType.SYSTEM, SafeAreaType.KEYBOARD], [SafeAreaEdge.BOTTOM])
     .onAnimationStart((index: number, targetIndex: number, extraInfo: TabsAnimationEvent) => {
@@ -2206,6 +2464,61 @@ struct Home {
     !this.timetableDisplayOpen));
   }
 
+  /**
+   * Tablet / tri-fold rail, vertically centred between the system bars. The
+   * timetable's evening and return buttons stay at the bottom corner and are
+   * inset by the same DOCK_RAIL_INSET, so the two never overlap.
+   */
+  @Builder
+  dockRailMask() {
+    Column()
+      .width(DOCK_RAIL_MASK_WIDTH)
+      .height('100%')
+      .linearGradient({
+        direction: this.railOnRight() ? GradientDirection.Left : GradientDirection.Right,
+        colors: [[this.darkMode ? '#99101214' : '#66F1F3F5', 0], [this.darkMode ? '#00101214' : '#00F1F3F5', 1]]
+      })
+      .position(this.railOnRight() ? { right: 0, top: 0 } : { left: 0, top: 0 })
+      .translate({ x: this.railShift, y: 0 })
+      .hitTestBehavior(HitTestMode.None)
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+  }
+
+  @Builder
+  dockRail() {
+    if (!(this.selectedNav === TAB_TIMETABLE && this.hasTimetableBackground())) {
+      this.dockRailMask();
+    }
+    Stack() {
+      DockRail({
+        selectedIndex: this.selectedNav,
+        darkMode: this.darkMode,
+        onRailAreaChanged: (area: Area) => this.updateDockBounds(area, 4, true),
+        onRailTouch: (event: TouchEvent) => {
+          this.dockNavigation.begin(event, true);
+          this.observeDockTouch(event, true);
+        },
+        onSelect: (index: number) => {
+          this.requestDockClick(index);
+        }
+      })
+      if (this.dockLightEnabled()) {
+        // The bottom-dock light drawn along the upright rail: slot 0 is the top item.
+        DockLightOverlay({ controller: this.dockLight, vertical: true })
+          .hitTestBehavior(HitTestMode.None)
+      }
+    }
+    .width(DOCK_RAIL_THICKNESS)
+    .height(DOCK_WIDTH)
+    .clip(false)
+    .translate({ x: this.railShift, y: 0 })
+    .position({
+      x: this.railOnRight() ? this.homeWidth - DOCK_SIDE_MARGIN - DOCK_RAIL_THICKNESS : DOCK_SIDE_MARGIN,
+      y: this.statusBarInset + Math.max(0,
+        (this.homeHeight - this.statusBarInset - this.navBarInset - DOCK_WIDTH) / 2)
+    })
+  }
+
   @Builder
   compatibleDock() {
     if (!deviceInfo.apiAvailable('26.0.0')) {
@@ -2214,6 +2527,7 @@ struct Home {
         bottomInset: this.navBarInset,
         darkMode: this.darkMode,
         hideMask: this.selectedNav === TAB_TIMETABLE && this.hasTimetableBackground(),
+        sideOffset: this.dockOffset(),
         onDockAreaChanged: (area: Area) => this.updateDockBounds(area, 4),
         onDockTouch: (event: TouchEvent) => {
           this.dockNavigation.begin(event, true);
@@ -2535,14 +2849,14 @@ struct Home {
         Row() {
           Text() {
             Span(this.heroMinutesLeft() >= 60 ? Math.floor(this.heroMinutesLeft() / 60).toString() : '')
-              .fontSize(30)
+              .fontSize(HitaDesign.display)
               .fontWeight(FontWeight.Medium)
               .fontColor($r('app.color.hita_on_primary'));
             Span(this.heroMinutesLeft() >= 60 ? ' 小时 ' : '')
               .fontSize(HitaDesign.caption)
               .fontColor($r('app.color.hita_on_primary_secondary'));
             Span((this.heroMinutesLeft() % 60).toString())
-              .fontSize(30)
+              .fontSize(HitaDesign.display)
               .fontWeight(FontWeight.Medium)
               .fontColor($r('app.color.hita_on_primary'));
             Span(' 分钟' + this.heroCountdownSuffix())
@@ -2575,7 +2889,7 @@ struct Home {
         Blank();
         Row() {
           SymbolGlyph($r('sys.symbol.calendar'))
-            .fontSize(HitaDesign.body)
+            .fontSize(HitaDesign.iconSm)
             .fontColor([$r('app.color.hita_on_primary_secondary')]);
           Text(this.tomorrowText())
             .fontSize(HitaDesign.caption)
@@ -2855,7 +3169,7 @@ struct Home {
               .fontWeight(FontWeight.Medium)
               .fontColor(this.timetableInk())
             Text('暂无已导入或手动创建的课表')
-              .fontSize(13)
+              .fontSize(HitaDesign.caption)
               .fontColor(this.timetableInk())
               .margin({ top: 8, bottom: 16 })
             this.emptyTimetableActions();
@@ -2866,7 +3180,7 @@ struct Home {
           .alignItems(HorizontalAlign.Center)
           .padding(24);
         }
-        .width('100%')
+        .width(this.railContentWidth())
         .height('100%');
       } else {
         Stack({ alignContent: Alignment.Top }) {
@@ -2946,7 +3260,7 @@ struct Home {
             });
           }
         }
-        .width('100%')
+        .width(this.railContentWidth())
         .height('100%')
         .backgroundColor(Color.Transparent)
         .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
@@ -2987,13 +3301,13 @@ struct Home {
             Column() {
               Text(this.currentTimetable === undefined ? '时间表' :
                 '第' + this.timetableWeek.toString() + '周')
-                .fontSize(34)
+                .fontSize(HitaDesign.display)
                 .fontWeight(FontWeight.Medium)
                 .fontColor(this.timetableInk())
                 .maxLines(1)
                 .textOverflow({ overflow: TextOverflow.Ellipsis })
               Text(this.timetableCampusTerm())
-                .fontSize(15)
+                .fontSize(HitaDesign.caption)
                 .fontColor(this.timetableInk())
                 .backgroundColor(Color.Transparent)
                 .borderRadius(12)
@@ -3008,7 +3322,7 @@ struct Home {
 
             Button({ type: ButtonType.Circle }) {
               SymbolGlyph($r('sys.symbol.plus'))
-                .fontSize(20)
+                .fontSize(HitaDesign.iconMd)
                 .fontColor([CompatibleMaterialModifier.foreground(COLOR_PRIMARY)]);
             }
             .width(44)
@@ -3022,7 +3336,7 @@ struct Home {
 
             Button({ type: ButtonType.Circle }) {
               SymbolGlyph($r('sys.symbol.slider_horizontal_2'))
-                .fontSize(20)
+                .fontSize(HitaDesign.iconMd)
                 .fontColor([CompatibleMaterialModifier.foreground(COLOR_PRIMARY)]);
             }
             .width(44)
@@ -3041,7 +3355,7 @@ struct Home {
 
             Button({ type: ButtonType.Circle }) {
               SymbolGlyph($r('sys.symbol.picture'))
-                .fontSize(20)
+                .fontSize(HitaDesign.iconMd)
                 .fontColor([CompatibleMaterialModifier.foreground(COLOR_PRIMARY)]);
             }
             .width(44)
@@ -3065,7 +3379,7 @@ struct Home {
           this.timetableDateHeader()
         }
       }
-      .width('100%')
+      .width(this.railContentWidth())
       .padding({ top: this.statusBarInset })
       .backgroundColor(Color.Transparent)
       .onAreaChange((oldValue: Area, newValue: Area) => {
@@ -3085,6 +3399,9 @@ struct Home {
         returnEnabled: !this.timetableAnimating,
         interactionBlocked: this.tabTransitionRunning || this.timetableAnimating || this.activeSheetVisible,
         bottomInset: this.dockPageInset(),
+        leftInset: this.floatingActionsInGutter() ? 0 : this.railGutter(),
+        rightInset: this.floatingActionsInGutter() ? 0 : this.railGutter(),
+        edgeMargin: this.floatingActionsInGutter() ? DOCK_GUTTER_ACTION_EDGE : 18,
         onEvening: (): void => { this.timetableScroller.scrollEdge(Edge.Bottom, { velocity: 1200 }); },
         onReturn: (): void => { this.returnToCurrentWeek(); }
       })
@@ -3166,10 +3483,6 @@ struct Home {
             this.moreNavigationRow($r('sys.symbol.repeat_1'), '导入课表',
               this.importing ? '正在从教务系统同步' : '从教务系统同步当前学期', () => {
                 this.openImportTimetableSheet();
-              });
-            this.moreNavigationRow($r('sys.symbol.doc_plaintext'), '导入 ICS 课表',
-              '从日历文件导入课程', () => {
-                this.importIcsTimetable();
               });
             this.moreNavigationRow($r('sys.symbol.calendar'),
               this.calendarExporting ? '正在同步至手机日历…' : '同步至手机日历',
@@ -3311,7 +3624,7 @@ struct Home {
       Row() {
         Stack() {
           SymbolGlyph($r('sys.symbol.clock'))
-            .fontSize(HitaDesign.title)
+            .fontSize(HitaDesign.iconMd)
             .fontColor([COLOR_PRIMARY]);
         }
         .width(40)
@@ -3336,7 +3649,7 @@ struct Home {
         .alignItems(HorizontalAlign.Start)
         .margin({ left: 12 });
         SymbolGlyph($r('sys.symbol.chevron_right'))
-          .fontSize(12)
+          .fontSize(HitaDesign.iconXs)
           .fontColor([COLOR_TEXT_SECONDARY])
           .width(16).height(24).flexShrink(0)
           .accessibilityLevel('no')
@@ -3365,7 +3678,7 @@ struct Home {
                 .layoutWeight(1)
                 .maxLines(1);
               SymbolGlyph($r('sys.symbol.chevron_right'))
-                .fontSize(12)
+                .fontSize(HitaDesign.iconXs)
                 .fontColor([$r('app.color.hita_text_hint_b2b8c4')])
                 .width(16).height(24).flexShrink(0)
                 .accessibilityLevel('no')
@@ -3385,7 +3698,7 @@ struct Home {
                 .layoutWeight(1)
                 .maxLines(1);
               SymbolGlyph($r('sys.symbol.chevron_right'))
-                .fontSize(12)
+                .fontSize(HitaDesign.iconXs)
                 .fontColor([$r('app.color.hita_text_hint_b2b8c4')])
                 .width(16).height(24).flexShrink(0)
                 .accessibilityLevel('no')
@@ -3431,7 +3744,7 @@ struct Home {
       Row() {
         Stack() {
           SymbolGlyph($r('sys.symbol.moon'))
-            .fontSize(HitaDesign.title)
+            .fontSize(HitaDesign.iconMd)
             .fontColor([COLOR_PRIMARY]);
         }
         .width(40)
@@ -3457,7 +3770,7 @@ struct Home {
         .alignItems(HorizontalAlign.Start)
         .margin({ left: 12 });
         SymbolGlyph($r('sys.symbol.chevron_right'))
-          .fontSize(12)
+          .fontSize(HitaDesign.iconXs)
           .fontColor([COLOR_TEXT_SECONDARY])
           .width(16).height(24).flexShrink(0)
           .accessibilityLevel('no')
@@ -3573,7 +3886,7 @@ struct Home {
       .alignItems(HorizontalAlign.Start)
       .margin({ left: 12 });
       SymbolGlyph($r('sys.symbol.chevron_right'))
-        .fontSize(12)
+        .fontSize(HitaDesign.iconXs)
         .fontColor([COLOR_TEXT_SECONDARY])
         .width(16).height(24).flexShrink(0)
         .accessibilityLevel('no');
@@ -3734,6 +4047,7 @@ struct Home {
             .fontWeight(FontWeight.Medium)
             .fontColor(COLOR_PRIMARY)
             .backgroundColor(COLOR_NAV_ACTIVE)
+            .attributeModifier(new CompatibleMaterialModifier(COLOR_NAV_ACTIVE, false, CompatibleSheetMaterial.isEnabled()))
             .borderRadius(17)
             .onClick(() => {
               this.beginSessionLogin();
@@ -3745,6 +4059,8 @@ struct Home {
             .fontWeight(FontWeight.Medium)
             .fontColor($r('app.color.hita_error'))
             .backgroundColor($r('app.color.hita_error_surface'))
+            .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_error_surface'), false,
+              CompatibleSheetMaterial.isEnabled()))
             .borderRadius(17)
             .onClick(() => {
               this.logoutSession();
@@ -3757,7 +4073,7 @@ struct Home {
           Row() {
             Stack() {
               SymbolGlyph($r('sys.symbol.lock_shield'))
-                .fontSize(HitaDesign.title)
+                .fontSize(HitaDesign.iconMd)
                 .fontColor([COLOR_PRIMARY]);
             }
             .width(42)
@@ -3788,6 +4104,8 @@ struct Home {
             .fontWeight(FontWeight.Medium)
             .fontColor('#FFFFFF')
             .backgroundColor($r('app.color.hita_primary_fill'))
+            .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_primary_fill'), true,
+              CompatibleSheetMaterial.isEnabled()))
             .borderRadius(17)
             .margin({ top: 14 })
             .onClick(() => {
@@ -3796,7 +4114,7 @@ struct Home {
 
           Row() {
             SymbolGlyph($r('sys.symbol.lock_shield'))
-              .fontSize(HitaDesign.caption)
+              .fontSize(HitaDesign.iconSm)
               .fontColor([COLOR_TEXT_HINT]);
             Text('HITA 不保存您的教务密码')
               .fontSize(HitaDesign.label)
@@ -3848,7 +4166,7 @@ struct Home {
     Row() {
       Stack() {
         SymbolGlyph(options.symbol)
-          .fontSize(HitaDesign.title)
+          .fontSize(HitaDesign.iconMd)
           .fontColor([COLOR_PRIMARY]);
       }
       .width(40)
@@ -3902,7 +4220,7 @@ struct Home {
       Row() {
         Stack() {
           SymbolGlyph($r('sys.symbol.bell'))
-            .fontSize(HitaDesign.title)
+            .fontSize(HitaDesign.iconMd)
             .fontColor([COLOR_PRIMARY]);
         }
         .width(40)
@@ -3929,9 +4247,9 @@ struct Home {
         .alignItems(HorizontalAlign.Start)
         .margin({ left: 12 });
         SymbolGlyph($r('sys.symbol.chevron_right'))
-          .fontSize(12)
+          .fontSize(HitaDesign.iconXs)
           .fontColor([COLOR_TEXT_SECONDARY])
-          .width(16).height(24).flexShrink(0)
+          .width(16).height(20).flexShrink(0)
           .accessibilityLevel('no')
           .rotate({ angle: this.reminderExpanded ? 90 : 0 });
       }
@@ -3989,7 +4307,7 @@ struct Home {
                   COLOR_PRIMARY)
                 .maxLines(1);
               SymbolGlyph($r('sys.symbol.chevron_right'))
-                .fontSize(HitaDesign.label)
+                .fontSize(HitaDesign.iconXs)
                 .fontColor([COLOR_TEXT_SECONDARY])
                 .width(16)
                 .height(20);
@@ -4022,7 +4340,7 @@ struct Home {
                 .fontColor(CompatibleSheetMaterial.isEnabled() ? CompatibleMaterialModifier.foreground(COLOR_PRIMARY) :
                   COLOR_PRIMARY)
                 .maxLines(1);
-              SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(HitaDesign.label).fontColor([COLOR_TEXT_SECONDARY]).width(16).height(20);
+              SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(HitaDesign.iconXs).fontColor([COLOR_TEXT_SECONDARY]).width(16).height(20);
             }.width('100%').constraintSize({ minHeight: 48 }).alignItems(VerticalAlign.Center).enabled(!this.reminderBusy)
             .onClick(() => { this.showExamReminderTimePicker(); });
           }
@@ -4057,7 +4375,7 @@ struct Home {
     Row() {
       Stack() {
         SymbolGlyph(symbol)
-          .fontSize(HitaDesign.title)
+          .fontSize(HitaDesign.iconMd)
           .fontColor([COLOR_PRIMARY]);
       }
       .width(40)
@@ -4084,9 +4402,9 @@ struct Home {
       .alignItems(HorizontalAlign.Start)
       .margin({ left: 12 });
       SymbolGlyph($r('sys.symbol.chevron_right'))
-        .fontSize(12)
+        .fontSize(HitaDesign.iconXs)
         .fontColor([COLOR_TEXT_SECONDARY])
-        .width(16).height(24).flexShrink(0)
+        .width(16).height(20).flexShrink(0)
         .accessibilityLevel('no');
     }
     .width('100%')

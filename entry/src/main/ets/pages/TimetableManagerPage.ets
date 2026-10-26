@@ -1,3 +1,4 @@
+import { CompatibleLightModifier } from '../common/theme/CompatibleLightModifier';
 import { HitaDesign } from '../common/theme/HitaDesign';
 /** Android HITA-style timetable library. */
 import { common } from '@kit.AbilityKit';
@@ -267,7 +268,7 @@ struct TimetableManagerPage {
     Row({ space: HitaDesign.gap }) {
       Stack() {
         SymbolGlyph($r('sys.symbol.calendar'))
-          .fontSize(28).fontColor([HitaColors.primary])
+          .fontSize(HitaDesign.iconLg).fontColor([HitaColors.primary])
       }
       .width(56).height(56).borderRadius(HitaDesign.cardRadius)
       .backgroundColor($r('app.color.hita_selected'))
@@ -292,7 +293,7 @@ struct TimetableManagerPage {
           .width(28).height(28).textAlign(TextAlign.Center).borderRadius(HitaDesign.cardRadius)
           .backgroundColor(this.selected(timetable.id) ? HitaColors.primaryFill : HitaColors.divider)
       } else {
-        SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(12)
+        SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(HitaDesign.iconXs)
           .fontColor([HitaColors.onSurfaceVariant]).width(16).height(24)
           .accessibilityLevel('no')
       }
@@ -324,15 +325,16 @@ struct TimetableManagerPage {
   private addActionGlyph(symbol: Resource, label: string, action: () => void) {
     Button({ type: ButtonType.Normal }) {
       Row({ space: HitaDesign.gap }) {
-        SymbolGlyph(symbol).fontSize(20).fontColor([HitaColors.primary]).width(32)
+        SymbolGlyph(symbol).fontSize(HitaDesign.iconMd).fontColor([HitaColors.primary]).width(32)
         Text(label).fontSize(HitaDesign.body).fontColor(HitaColors.onSurface).layoutWeight(1)
           .textAlign(TextAlign.Start)
-        SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(12)
+        SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(HitaDesign.iconXs)
           .fontColor([HitaColors.onSurfaceVariant]).width(16).accessibilityLevel('no')
       }.width('100%')
     }
     .width('100%').height(HitaDesign.buttonHeight).padding({ left: 8, right: 8 })
     .backgroundColor(Color.Transparent).borderRadius(HitaDesign.fieldRadius)
+    .attributeModifier(new CompatibleLightModifier(HitaDesign.fieldRadius))
     .accessibilityText(label).enabled(!this.adding && !this.loading && !this.deleting)
     .onClick(action)
   }
@@ -415,7 +417,7 @@ struct TimetableManagerPage {
           } else if (deviceInfo.apiAvailable('26.0.0')) {
             Button({ type: ButtonType.Circle }) {
               SymbolGlyph($r('sys.symbol.doc_plaintext'))
-                .fontSize(20)
+                .fontSize(HitaDesign.iconMd)
                 .fontColor([CompatibleMaterialModifier.foreground(HitaColors.primary)]);
             }
             .width(44)
@@ -430,7 +432,7 @@ struct TimetableManagerPage {
             });
           } else {
             SymbolGlyph($r('sys.symbol.doc_plaintext'))
-              .fontSize(20)
+              .fontSize(HitaDesign.iconMd)
               .fontColor([HitaColors.primary])
               .width(44)
               .height(44)

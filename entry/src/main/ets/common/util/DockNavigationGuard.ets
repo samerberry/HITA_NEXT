@@ -24,10 +24,13 @@ export class DockNavigationGuard {
   private width: number = 0;
   private height: number = 0;
   private padding: number = 0;
+  /** The tablet side rail lays its three items out top to bottom. */
+  private vertical: boolean = false;
 
-  setBounds(left: number, top: number, width: number, height: number, padding: number = 0): void {
+  setBounds(left: number, top: number, width: number, height: number, padding: number = 0,
+    vertical: boolean = false): void {
     if (!Number.isFinite(left) || !Number.isFinite(top) || !Number.isFinite(width) ||
-      !Number.isFinite(height) || width <= padding * 2 || height <= 0) {
+      !Number.isFinite(height) || (vertical ? height : width) <= padding * 2 || (vertical ? width : height) <= 0) {
       return;
     }
     this.left = left;
@@ -35,6 +38,16 @@ export class DockNavigationGuard {
     this.width = width;
     this.height = height;
     this.padding = padding;
+    this.vertical = vertical;
+  }
+
+  private length(): number {
+    return this.vertical ? this.height : this.width;
+  }
+
+  /** Distance along the item axis from the first item's leading edge. */
+  private along(touch: TouchObject): number {
+    return this.vertical ? touch.windowY - this.top - this.padding : touch.windowX - this.left - this.padding;
   }
 
   begin(event: TouchEvent, fromDock: boolean, nowMs: number = Date.now()): void {
@@ -105,19 +118,23 @@ export class DockNavigationGuard {
     const dx: number = touch.windowX - this.startX;
     const dy: number = touch.windowY - this.startY;
     this.moved = this.moved || dx * dx + dy * dy > 64;
-    if (this.width <= this.padding * 2 || this.height <= 0) {
+    if (this.length() <= this.padding * 2 || (this.vertical ? this.width : this.height) <= 0) {
       return;
     }
     // Leaving the capsule clears the current target. Re-entering while held
     // can select an icon again; never clamp an outside release to an edge tab.
-    if (touch.windowX < this.left || touch.windowX > this.left + this.width ||
-      touch.windowY < this.top - 8 || touch.windowY > this.top + this.height + 8) {
+    // The 8 vp tolerance applies across the capsule, never along its items.
+    const outside: boolean = this.vertical ?
+      touch.windowY < this.top || touch.windowY > this.top + this.height ||
+        touch.windowX < this.left - 8 || touch.windowX > this.left + this.width + 8 :
+      touch.windowX < this.left || touch.windowX > this.left + this.width ||
+        touch.windowY < this.top - 8 || touch.windowY > this.top + this.height + 8;
+    if (outside) {
       this.targetIndex = -1;
       return;
     }
-    const itemWidth: number = (this.width - this.padding * 2) / 3;
-    this.targetIndex = Math.max(0, Math.min(2,
-      Math.floor((touch.windowX - this.left - this.padding) / itemWidth)));
+    const itemLength: number = (this.length() - this.padding * 2) / 3;
+    this.targetIndex = Math.max(0, Math.min(2, Math.floor(this.along(touch) / itemLength)));
   }
 
   activateHold(nowMs: number = Date.now()): boolean {
@@ -147,9 +164,8 @@ export class DockNavigationGuard {
     const point: TouchObject | undefined = event.touches.find((touch: TouchObject): boolean =>
       touch.id === this.pointerId) ?? event.changedTouches.find((touch: TouchObject): boolean =>
       touch.id === this.pointerId);
-    if (point === undefined || this.width <= this.padding * 2) return undefined;
-    return Math.max(0, Math.min(212, (point.windowX - this.left - this.padding) * 212 /
-      (this.width - this.padding * 2)));
+    if (point === undefined || this.length() <= this.padding * 2) return undefined;
+    return Math.max(0, Math.min(212, this.along(point) * 212 / (this.length() - this.padding * 2)));
   }
 
   releaseTarget(): number {
@@ -174,7 +190,7 @@ export class DockNavigationGuard {
     // Native item indices are authoritative for taps. Only a held release
     // needs geometry, because a long press may suppress the item click.
     const target: number = this.holding ? this.targetIndex : index;
-    if (target < 0 || target >= 3 || (this.holding && this.width <= 0)) {
+    if (target < 0 || target >= 3 || (this.holding && this.length() <= 0)) {
       return;
     }
     this.consumed = true;

@@ -68,6 +68,7 @@ function harness() {
       courseDeleteEffects = { resume() {}, pause() {} };
       finishCourseSheetDismissal() {}
       resetDockInteraction() {}
+      dockHandObserver = { stop() {} };
       getUIContext() { return context; }
       stopTimetableMarquee() {}
       startTimetableMarquee() {}

@@ -198,7 +198,7 @@ struct PortalsPage {
     Row() {
       Stack() {
         SymbolGlyph(portal.icon)
-          .fontSize(20)
+          .fontSize(HitaDesign.iconMd)
           .fontColor([COLOR_PRIMARY]);
       }
       .width(40)
@@ -225,7 +225,7 @@ struct PortalsPage {
       .alignItems(HorizontalAlign.Start)
       .margin({ left: 12, right: 12 });
       SymbolGlyph($r('sys.symbol.chevron_right'))
-        .fontSize(HitaDesign.body)
+        .fontSize(HitaDesign.iconXs)
         .fontColor([COLOR_TEXT_SECONDARY])
         .flexShrink(0);
     }

@@ -1,3 +1,4 @@
+import { HitaDesign } from '../../../common/theme/HitaDesign';
 import { ImmersiveHeader } from '../../../common/components/ImmersiveHeader';
 import { CompatibleMaterialModifier } from '../../../common/theme/CompatibleMaterialModifier';
 import { TimetableChangeGroup, TimetableChangeKind, TimetableUpdateDiff } from '../data/TimetableUpdateDiff';
@@ -63,19 +64,19 @@ export struct TimetableUpdateDialog {
       Column({ space: 4 }) {
         Text('教务课表有更新').fontSize(20).fontWeight(FontWeight.Bold)
           .fontColor($r('app.color.hita_text')).width('100%')
-        Text('共 ' + this.changes.length.toString() + ' 处变化').fontSize(13)
+        Text('共 ' + this.changes.length.toString() + ' 处变化').fontSize(HitaDesign.caption)
           .fontColor($r('app.color.hita_text_secondary')).width('100%')
       }
       Scroll() {
         Column({ space: 12 }) {
           ForEach(this.changes, (change: TimetableChangeGroup) => {
             Row({ space: 10 }) {
-              Text(TimetableUpdateDiff.kindLabel(change.kind)).fontSize(13).fontWeight(FontWeight.Medium)
+              Text(TimetableUpdateDiff.kindLabel(change.kind)).fontSize(HitaDesign.caption).fontWeight(FontWeight.Medium)
                 .fontColor(this.kindColor(change.kind)).margin({ top: 1 })
               Column({ space: 2 }) {
-                Text(TimetableUpdateDiff.displayName(change.name)).fontSize(15).fontWeight(FontWeight.Medium)
+                Text(TimetableUpdateDiff.displayName(change.name)).fontSize(HitaDesign.body).fontWeight(FontWeight.Medium)
                   .fontColor($r('app.color.hita_text')).width('100%')
-                Text(TimetableUpdateDiff.detailText(change)).fontSize(13)
+                Text(TimetableUpdateDiff.detailText(change)).fontSize(HitaDesign.caption)
                   .fontColor($r('app.color.hita_text_secondary')).width('100%')
               }
               .layoutWeight(1)

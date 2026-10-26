@@ -51,7 +51,7 @@ function harness() {
       getUIContext() { return context; }
       finishCourseSheetDismissal() {}
       dismissSheet() { ${disappear[1]} }
-      ${slice('  private canOpenSheet()', '  private async importIcsTimetable()')}
+      ${slice('  private canOpenSheet()', '  async importTimetable(showToast')}
     }
   `;
   const output = ts.transpileModule(code, {

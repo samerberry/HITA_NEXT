@@ -1,8 +1,9 @@
+import { HitaDesign } from '../../../common/theme/HitaDesign';
 import { curves, FrameCallback } from '@kit.ArkUI';
 import { CompatibleMaterialModifier } from '../../../common/theme/CompatibleMaterialModifier';
 import { HoldingHandObserver } from '../data/HoldingHandObserver';
 import { CourseControlHost } from './CourseControlHost';
-import { FLOATING_ACTION_EXIT_DURATION, FLOATING_ACTION_GAP, floatingActionExitProgress,
+import { FLOATING_ACTION_EXIT, FLOATING_ACTION_EXIT_DURATION, FLOATING_ACTION_GAP, floatingActionExitProgress,
   FloatingActionsFrame, FloatingActionsMotion } from './FloatingActionsMotion';
 
 class FloatingActionFrameCallback extends FrameCallback {
@@ -22,6 +23,11 @@ export struct TimetableFloatingActions {
   @Prop @Watch('sync') interactionBlocked: boolean = false;
   @Prop returnEnabled: boolean = true;
   @Prop bottomInset: number = 0;
+  /** Room kept for the tablet side rail on each edge. */
+  @Prop leftInset: number = 0;
+  @Prop rightInset: number = 0;
+  /** Distance from the screen edge; a tri-fold rail layout moves the controls into its gutter. */
+  @Prop edgeMargin: number = 18;
   onEvening: () => void = () => {};
   onReturn: () => void = () => {};
   @State private frame: FloatingActionsFrame = new FloatingActionsFrame();
@@ -84,8 +90,14 @@ export struct TimetableFloatingActions {
   }
 
   private edgePosition(): Edges {
-    return this.frame.side < 0 ? { left: 18, bottom: this.bottomInset + 20 } :
-      { right: 18, bottom: this.bottomInset + 20 };
+    return this.frame.side < 0 ? { left: this.edgeMargin + this.leftInset, bottom: this.bottomInset + 20 } :
+      { right: this.edgeMargin + this.rightInset, bottom: this.bottomInset + 20 };
+  }
+
+  /** Stretch the exit travel so a hidden control also clears a rail on its edge. */
+  private travel(x: number): number {
+    const inset: number = this.frame.side < 0 ? this.leftInset : this.rightInset;
+    return x * (FLOATING_ACTION_EXIT + inset) / FLOATING_ACTION_EXIT;
   }
 
   @Builder
@@ -93,7 +105,7 @@ export struct TimetableFloatingActions {
     CourseControlHost({ barHeight: 48 }) {
       Button({ type: ButtonType.Circle }) {
         SymbolGlyph(evening ? $r('sys.symbol.chevron_down') : $r('sys.symbol.arrow_clockwise'))
-          .fontSize(24)
+          .fontSize(HitaDesign.iconLg)
           .fontColor([CompatibleMaterialModifier.foreground($r('app.color.hita_primary'))])
       }
       .id(evening ? 'timetable-evening-hint' : 'timetable-return-current-week')
@@ -117,14 +129,14 @@ export struct TimetableFloatingActions {
         .width(48)
         .height(48)
         .visibility(this.frame.eveningMounted ? Visibility.Visible : Visibility.Hidden)
-        .translate({ x: this.frame.eveningX, y: 0 })
+        .translate({ x: this.travel(this.frame.eveningX), y: 0 })
         .hitTestBehavior(this.active && this.eveningVisible ? HitTestMode.Transparent : HitTestMode.None)
         .onTouch((event: TouchEvent) => this.touch(1, event))
       Row() { this.action(false); }
         .width(48)
         .height(48)
         .visibility(this.frame.returnMounted ? Visibility.Visible : Visibility.Hidden)
-        .translate({ x: this.frame.returnX, y: -this.frame.returnLift })
+        .translate({ x: this.travel(this.frame.returnX), y: -this.frame.returnLift })
         .hitTestBehavior(this.active && this.returnVisible && this.returnEnabled ?
           HitTestMode.Transparent : HitTestMode.None)
         .onTouch((event: TouchEvent) => this.touch(2, event))

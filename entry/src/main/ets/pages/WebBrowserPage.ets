@@ -1,3 +1,4 @@
+import { HitaDesign } from '../common/theme/HitaDesign';
 /**
  * WebBrowserPage.ets — 应用内浏览器：打开资讯文章与校园入口链接。
  */
@@ -60,7 +61,7 @@ struct WebBrowserPage {
           })
             .margin({ right: 12 })
           Text(this.titleText)
-            .fontSize(17)
+            .fontSize(HitaDesign.section)
             .fontWeight(FontWeight.Bold)
             .fontColor($r('app.color.hita_text_1a1a1a'))
             .layoutWeight(1)
@@ -68,7 +69,7 @@ struct WebBrowserPage {
             .textOverflow({ overflow: TextOverflow.Ellipsis })
           Button({ type: ButtonType.Circle }) {
             SymbolGlyph($r('sys.symbol.arrow_clockwise'))
-              .fontSize(18)
+              .fontSize(HitaDesign.iconMd)
               .fontColor([$r('app.color.hita_primary')])
           }
           .width(40)

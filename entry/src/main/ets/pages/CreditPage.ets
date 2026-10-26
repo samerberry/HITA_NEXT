@@ -264,7 +264,7 @@ export struct CreditPage {
   private officialSummary() {
     Column({ space: 16 }) {
       Row({ space: 8 }) {
-        Text(creditNumber(this.progress.completed)).fontSize(32).fontWeight(FontWeight.Medium)
+        Text(creditNumber(this.progress.completed)).fontSize(HitaDesign.display).fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.hita_primary'))
         Text('/ ' + creditNumber(this.progress.required) + ' 学分').fontSize(HitaDesign.body).fontColor($r('app.color.hita_text_secondary'))
           .layoutWeight(1)
@@ -332,7 +332,7 @@ export struct CreditPage {
           .fontColor(group.passed ? $r('app.color.hita_primary') : $r('app.color.hita_text_secondary'))
         if (!group.hasChildren) {
           SymbolGlyph(this.expanded.includes(group.id) ? $r('sys.symbol.chevron_up') : $r('sys.symbol.chevron_down'))
-            .fontSize(HitaDesign.body).fontColor([$r('app.color.hita_text_secondary')])
+            .fontSize(HitaDesign.iconSm).fontColor([$r('app.color.hita_text_secondary')])
         }
       }.width('100%').padding(16).onClick(() => { if (!group.hasChildren) this.toggleGroup(group); })
         .accessibilityText(group.name + '，' + this.groupDetail(group) + (group.hasChildren ? '' : '，展开课程'))
@@ -404,8 +404,9 @@ export struct CreditPage {
         Text(creditTypeName(category.type)).fontSize(HitaDesign.body).fontWeight(FontWeight.Medium).fontColor($r('app.color.hita_text')).layoutWeight(1)
         Text(creditNumber(category.credits) + ' 学分').fontSize(HitaDesign.body).fontWeight(FontWeight.Medium).fontColor($r('app.color.hita_primary'))
         Button({ type: ButtonType.Circle }) {
-          SymbolGlyph($r('sys.symbol.pencil_line')).fontSize(HitaDesign.section).fontColor([$r('app.color.hita_text_secondary')])
+          SymbolGlyph($r('sys.symbol.pencil_line')).fontSize(HitaDesign.iconSm).fontColor([$r('app.color.hita_text_secondary')])
         }.width(32).height(32).backgroundColor($r('app.color.hita_surface_soft'))
+          .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_surface_soft')))
           .accessibilityText('设置' + creditTypeName(category.type) + '学分目标').onClick(() => this.editGoal(category))
       }.width('100%')
       if (category.goal > 0) {
@@ -418,7 +419,7 @@ export struct CreditPage {
         Text(category.subjects.length + ' 门课程').fontSize(HitaDesign.caption).fontColor($r('app.color.hita_text_secondary')).layoutWeight(1)
         Text(this.expanded.includes(category.type) ? '收起明细' : '查看明细').fontSize(HitaDesign.caption).fontColor($r('app.color.hita_primary'))
         SymbolGlyph(this.expanded.includes(category.type) ? $r('sys.symbol.chevron_up') : $r('sys.symbol.chevron_down'))
-          .fontSize(HitaDesign.caption).fontColor([$r('app.color.hita_primary')]).margin({ left: 6 })
+          .fontSize(HitaDesign.iconSm).fontColor([$r('app.color.hita_primary')]).margin({ left: 6 })
       }.width('100%').height(36).onClick(() => this.toggle(category.type))
       if (this.expanded.includes(category.type)) {
         ForEach(category.fields, (field: CreditField) => {
@@ -524,7 +525,7 @@ export struct CreditPage {
           Text(this.official ? '培养方案完成度' : '学分统计').fontSize(HitaDesign.title).fontWeight(FontWeight.Medium)
             .fontColor($r('app.color.hita_text')).layoutWeight(1).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
           Button({ type: ButtonType.Circle }) {
-            SymbolGlyph($r('sys.symbol.arrow_clockwise')).fontSize(20)
+            SymbolGlyph($r('sys.symbol.arrow_clockwise')).fontSize(HitaDesign.iconMd)
               .fontColor([CompatibleMaterialModifier.foreground('#FFFFFF')])
           }.width(36).height(36).backgroundColor($r('app.color.hita_primary_fill'))
             .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_primary_fill'), false,

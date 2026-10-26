@@ -14,6 +14,10 @@ new Function('module', 'exports', ts.transpileModule(read('common/util/Immersive
 new Function('require', 'module', 'exports', ts.transpileModule(read('common/util/DockLightEffect.ets'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 }
 }).outputText)(() => envelopeModule.exports, lightModule, lightModule.exports);
+const handednessModule = { exports: {} };
+new Function('module', 'exports', ts.transpileModule(read('common/util/DockHandedness.ets'), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 }
+}).outputText)(handednessModule, handednessModule.exports);
 
 function material(overrides = {}) {
   const uiMaterial = {
@@ -30,6 +34,7 @@ function material(overrides = {}) {
   }).outputText;
   const platform = name => {
     if (name === '../util/DockLightEffect') return lightModule.exports;
+    if (name === '../util/DockHandedness') return handednessModule.exports;
     if (name === '@kit.BasicServicesKit') return { Available: () => value => value };
     assert.equal(name, '@kit.ArkUI');
     return { uiMaterial };
@@ -57,7 +62,42 @@ test('timetable wallpaper hides only the background mask, not the dock material'
   assert.equal(style.maskHeight, 0);
   assert.ok(style.systemMaterial);
   const home = read('pages/Home.ets');
-  assert.match(home, /new CompatibleDockModifier\(12 \+ this\.navBarInset,\s*this\.selectedNav === TAB_TIMETABLE && this\.hasTimetableBackground\(\), this\.darkMode\)/);
+  assert.match(home, /new CompatibleDockModifier\(12 \+ this\.navBarInset,\s*this\.selectedNav === TAB_TIMETABLE && this\.hasTimetableBackground\(\), this\.darkMode,\s*deviceInfo\.apiAvailable\('27\.0\.0'\) \|\| this\.dockHandednessActive, this\.railMode\(\)\)/);
+});
+
+test('smart grip: the native bar follows the hand only when asked, with the shared side margin', () => {
+  assert.equal(material().floatingStyle(12).adaptToHandedness, false);
+  const style = material().floatingStyle(12, false, false, 0, true);
+  assert.equal(style.adaptToHandedness, true);
+  assert.equal(style.barSideMargin, 16);
+  const { dockSideOffset } = handednessModule.exports;
+  // 360 vp phone: (360 - 212) / 2 - 16 = 58 vp of travel to either side.
+  assert.equal(dockSideOffset(360, 0), 0);
+  assert.equal(dockSideOffset(360, -1), -58);
+  assert.equal(dockSideOffset(360, 1), 58);
+  // Never travel past the margin or invert on narrow or unmeasured layouts.
+  assert.equal(dockSideOffset(240, 1), 0);
+  assert.equal(dockSideOffset(0, -1), 0);
+  assert.equal(dockSideOffset(NaN, 1), 0);
+});
+
+test('smart grip wiring: observer lifecycle, and API 26 light / API 23 dock follow the bar', () => {
+  const home = read('pages/Home.ets');
+  assert.match(home, /onPageShow\(\): Promise<void> \{\s*this\.pageVisible = true;\s*this\.startDockHandedness\(\);/);
+  assert.match(home, /onPageHide\(\): void \{\s*this\.pageVisible = false;\s*this\.dockHandObserver\.stop\(\);/);
+  assert.match(home, /aboutToDisappear\(\): void \{\s*this\.pageVisible = false;\s*this\.dockHandObserver\.stop\(\);/);
+  const start = home.slice(home.indexOf('  private startDockHandedness()'), home.indexOf('  private dockOffset()'));
+  // API 27+ bottom bars follow the hand natively; rails need readings only on a fully opened tri-fold.
+  assert.ok(start.includes("const needed: boolean = this.railMode() ? this.foldRailDevice : !deviceInfo.apiAvailable('27.0.0');"));
+  assert.match(start, /if \(!needed\) \{\s*this\.dockHandObserver\.stop\(\);/);
+  assert.match(start, /this\.dockSide = 0;/, 'an unavailable sensor keeps the dock centred');
+  assert.match(start, /this\.dockHandednessActive = subscribed;/);
+  // The light follows the grip through the measured bar position (see dock-rail tests).
+  assert.match(home, /const shift: number = [\s\S]*?this\.dockOffset\(\) : 0;/);
+  assert.match(home, /FrostedDock\(\{[\s\S]*?sideOffset: this\.dockOffset\(\),/);
+  const dock = read('common/components/FrostedDock.ets');
+  assert.match(dock, /\.offset\(\{ x: this\.sideOffset, y: 0 \}\)/);
+  assert.match(dock, /const left: number = \(this\.areaWidth - DOCK_WIDTH\) \/ 2 \+ this\.sideOffset;/);
 });
 
 test('the API 26 canvas owns light timing while later APIs can retain native white feedback', () => {
@@ -115,7 +155,7 @@ test('one native tab bar owns only Today, Timetable and More', () => {
   assert.match(home, /const NAV_TAB_COUNT: number = 3/);
   assert.doesNotMatch(home, /AssistantTab|NewsTab|assistantMounted|newsMounted|mountTabsNear/);
   assert.match(shell, /\.barOverlap\(true\)/);
-  assert.match(shell, /\.barHeight\(deviceInfo\.apiAvailable\('26\.0\.0'\) \? 56 : 0\)/);
+  assert.match(shell, /\.barHeight\(deviceInfo\.apiAvailable\('26\.0\.0'\) && !this\.railMode\(\) \? 56 : 0\)/);
   assert.match(shell, /\.barBackgroundColor\(Color\.Transparent\)/);
   assert.match(home, /normal\.fontColor\(\[\$r\('sys\.color\.ohos_id_color_text_secondary'\)\]\)/);
   assert.match(home, /selected\.fontColor\(\[\$r\('sys\.color\.ohos_id_color_text_primary'\)\]\)/);

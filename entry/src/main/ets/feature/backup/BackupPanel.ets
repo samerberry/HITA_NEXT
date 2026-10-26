@@ -115,7 +115,7 @@ export struct BackupPanel {
         Column({ space: 16 }) {
           Column({ space: 16 }) {
             Row({ space: 14 }) {
-              SymbolGlyph($r('sys.symbol.doc_plaintext')).fontSize(HitaDesign.display).fontColor([$r('app.color.hita_primary')])
+              SymbolGlyph($r('sys.symbol.doc_plaintext')).fontSize(HitaDesign.iconXl).fontColor([$r('app.color.hita_primary')])
               Column({ space: 5 }) {
                 Text('保存你的课表').fontSize(HitaDesign.section).fontWeight(FontWeight.Medium)
                   .fontColor($r('app.color.hita_text_1a1a1a'))
@@ -126,8 +126,8 @@ export struct BackupPanel {
               }.alignItems(HorizontalAlign.Start).layoutWeight(1)
             }.width('100%')
             Button('创建备份').width('100%').height(44)
-              .backgroundColor($r('app.color.hita_primary')).fontColor(Color.White)
-              .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_primary'), true))
+              .backgroundColor($r('app.color.hita_selected')).fontColor($r('app.color.hita_primary'))
+              .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_selected')))
               .enabled(!this.busy).onClick(() => { void this.createBackup(); })
           }.width('100%').padding(20).backgroundColor(this.presentedAsSheet ? CompatibleSheetMaterial.cardColor($r('app.color.hita_surface')) :
             $r('app.color.hita_surface')).borderRadius(HitaDesign.cardRadius)

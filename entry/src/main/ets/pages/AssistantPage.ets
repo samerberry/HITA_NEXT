@@ -275,7 +275,7 @@ struct AssistantPage {
   headerButton(symbol: Resource, label: string, action: () => void) {
     Button({ type: ButtonType.Circle }) {
       SymbolGlyph(symbol)
-        .fontSize(HitaDesign.section)
+        .fontSize(HitaDesign.iconMd)
         .fontColor([CompatibleMaterialModifier.foreground(COLOR_PRIMARY)]);
     }
     .width(40)
@@ -455,13 +455,16 @@ struct AssistantPage {
         });
       Button({ type: ButtonType.Circle }) {
         SymbolGlyph($r('sys.symbol.paperplane_fill'))
-          .fontSize(HitaDesign.section)
+          .fontSize(HitaDesign.iconMd)
           .fontColor(['#FFFFFF']);
       }
       .width(44)
       .height(44)
       .backgroundColor(this.input.trim().length > 0 && !this.chat.sending ?
         $r('app.color.hita_primary_fill') : $r('app.color.hita_disabled'))
+      .attributeModifier(new CompatibleMaterialModifier(this.input.trim().length > 0 && !this.chat.sending ?
+        $r('app.color.hita_primary_fill') : $r('app.color.hita_disabled'), true, true,
+        this.input.trim().length > 0 && !this.chat.sending ? undefined : $r('app.color.hita_disabled')))
       .enabled(this.input.trim().length > 0 && !this.chat.sending)
       .accessibilityText('发送')
       .onClick(() => {

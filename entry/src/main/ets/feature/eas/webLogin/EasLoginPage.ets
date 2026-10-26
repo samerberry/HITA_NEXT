@@ -1,3 +1,5 @@
+import { CompatibleMaterialModifier } from '../../../common/theme/CompatibleMaterialModifier';
+import { HitaDesign } from '../../../common/theme/HitaDesign';
 /**
  * EasLoginPage.ets — ArkWeb 网页登录页（对应 Android WebViewLoginActivity / WebViewLoginScreen）。
  *
@@ -280,7 +282,7 @@ export struct EasLoginPage {
 
           Column() {
             Text('统一认证登录')
-              .fontSize(17)
+              .fontSize(HitaDesign.section)
               .fontWeight(FontWeight.Medium)
               .fontColor(HitaColors.onSurface)
               .maxLines(1)
@@ -297,14 +299,15 @@ export struct EasLoginPage {
 
           Button({ type: ButtonType.Circle }) {
             SymbolGlyph($r('sys.symbol.arrow_left'))
-              .fontSize(18)
+              .fontSize(HitaDesign.iconMd)
               .fontColor([HitaColors.onSurface]);
           }
-          .width(36)
+          .width(44)
           .height(44)
           .padding(0)
           .flexShrink(0)
           .backgroundColor(Color.Transparent)
+          .attributeModifier(new CompatibleMaterialModifier(Color.Transparent))
           .enabled(this.canGoBack)
           .opacity(this.canGoBack ? 1 : 0.35)
           .accessibilityText('返回上一网页')
@@ -314,14 +317,15 @@ export struct EasLoginPage {
 
           Button({ type: ButtonType.Circle }) {
             SymbolGlyph($r('sys.symbol.repeat_1'))
-              .fontSize(20)
+              .fontSize(HitaDesign.iconMd)
               .fontColor([HitaColors.primary]);
           }
-          .width(40)
+          .width(44)
           .height(44)
           .padding(0)
           .flexShrink(0)
           .backgroundColor(Color.Transparent)
+          .attributeModifier(new CompatibleMaterialModifier(Color.Transparent))
           .accessibilityText('刷新认证网页')
           .enabled(!this.recoveryBusy)
           .onClick(() => {
@@ -362,6 +366,7 @@ export struct EasLoginPage {
               .fontSize(12)
               .fontColor(HitaColors.primary)
               .backgroundColor(Color.Transparent)
+              .attributeModifier(new CompatibleMaterialModifier(Color.Transparent))
               .onClick(() => this.confirmRecovery())
           }
           Text('✕')
