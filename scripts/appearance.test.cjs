@@ -277,8 +277,10 @@ test('appearance matches surrounding settings rows and reveals choices only when
   assert.match(setting, /this\.appearanceMode === AppearanceMode\.LIGHT \? '已关闭' : '跟随系统'/);
   assert.match(setting, /animateTo\(\{ duration: 300, curve: Curve\.EaseInOut \}/);
   assert.match(setting, /this\.appearanceExpanded = !this\.appearanceExpanded/);
-  assert.match(setting, /if \(this\.appearanceExpanded\) \{\s*ImmersiveHeader\(\{ barHeight: 60, materialEnabled: CompatibleSheetMaterial\.isEnabled\(\) \}\) \{\s*Row[\s\S]*this\.appearanceOption\(AppearanceMode\.SYSTEM/);
+  assert.match(setting, /if \(this\.appearanceExpanded\) \{\s*Column\(\) \{\s*ImmersiveHeader\(\{ barHeight: 60, materialEnabled: CompatibleSheetMaterial\.isEnabled\(\) \}\) \{\s*Row[\s\S]*this\.appearanceOption\(AppearanceMode\.SYSTEM/);
   assert.match(setting, /\.padding\(\{ left: 16, right: 16, top: 4, bottom: 12 \}\)/);
+  // 展开动画与其他折叠面板一致：外层普通 Column 承载 OPACITY 过渡，材质头部在其内部。
+  assert.match(setting, /\.transition\(TransitionEffect\.OPACITY\)/);
   assert.doesNotMatch(setting, /this\.selectAppearance|AppearanceStore/);
   assert.match(setting, /\.rotate\(\{ angle: this\.appearanceExpanded \? 90 : 0 \}\)/);
   assert.match(setting, /\.accessibilityDescription\(this\.appearanceExpanded \? '已展开' : '已收起'\)/);

@@ -3291,6 +3291,7 @@ struct Home {
         });
       });
       if (this.widgetMenuExpanded) {
+        Column() {
         ImmersiveHeader({ barHeight: this.widgetMaterialHeight, materialEnabled: CompatibleSheetMaterial.isEnabled() }) {
         Column() {
           Column() {
@@ -3363,8 +3364,10 @@ struct Home {
             this.widgetMaterialHeight = height;
           }
         })
-        .transition(TransitionEffect.OPACITY);
         }
+        }
+        .width('100%')
+        .transition(TransitionEffect.OPACITY);
       }
     }
     .width('100%')
@@ -3419,16 +3422,19 @@ struct Home {
         });
       });
       if (this.appearanceExpanded) {
-        ImmersiveHeader({ barHeight: 60, materialEnabled: CompatibleSheetMaterial.isEnabled() }) {
-          Row({ space: 8 }) {
-            this.appearanceOption(AppearanceMode.DARK, '开启');
-            this.appearanceOption(AppearanceMode.LIGHT, '关闭');
-            this.appearanceOption(AppearanceMode.SYSTEM, '跟随系统');
+        Column() {
+          ImmersiveHeader({ barHeight: 60, materialEnabled: CompatibleSheetMaterial.isEnabled() }) {
+            Row({ space: 8 }) {
+              this.appearanceOption(AppearanceMode.DARK, '开启');
+              this.appearanceOption(AppearanceMode.LIGHT, '关闭');
+              this.appearanceOption(AppearanceMode.SYSTEM, '跟随系统');
+            }
+            .width('100%')
+            .padding({ left: 16, right: 16, top: 4, bottom: 12 })
           }
-          .width('100%')
-          .padding({ left: 16, right: 16, top: 4, bottom: 12 })
-          .transition(TransitionEffect.OPACITY);
         }
+        .width('100%')
+        .transition(TransitionEffect.OPACITY);
       }
     }
     .width('100%')
@@ -3883,6 +3889,7 @@ struct Home {
         });
       });
       if (this.reminderExpanded) {
+        Column() {
         ImmersiveHeader({ barHeight: this.reminderMaterialHeight, materialEnabled: CompatibleSheetMaterial.isEnabled() }) {
         Column() {
           Column() {
@@ -3978,8 +3985,10 @@ struct Home {
             this.reminderMaterialHeight = height;
           }
         })
-        .transition(TransitionEffect.OPACITY);
         }
+        }
+        .width('100%')
+        .transition(TransitionEffect.OPACITY);
     }
     }
     .width('100%')
