@@ -1,3 +1,6 @@
+import { CalendarSyncStore } from '../feature/timetable/data/CalendarSyncStore';
+import { ScheduleSyncService } from '../feature/timetable/data/ScheduleSyncService';
+import { CourseDetailContent } from '../feature/timetable/views/CourseDetailContent';
 /**
  * HITA NEXT main shell.
  *
@@ -28,7 +31,6 @@ import { DockLightOverlay } from '../common/components/DockLightOverlay';
 import { DockLightController } from '../common/util/DockLightEffect';
 import { DOCK_HOLD_DELAY_MS, DockNavigationGuard } from '../common/util/DockNavigationGuard';
 import { DeleteEffectController } from '../common/util/DeleteEffectController';
-import { CourseColorEditor } from '../feature/timetable/views/CourseColorEditor';
 import { CourseControlHost } from '../feature/timetable/views/CourseControlHost';
 import { TimetableFloatingActions } from '../feature/timetable/views/TimetableFloatingActions';
 import { TimetableCardMaterials } from '../feature/timetable/views/TimetableCardMaterials';
@@ -68,7 +70,7 @@ import { TimetableDisplaySettings } from '../feature/timetable/views/TimetableDi
 import { ClassReminderStore } from '../feature/timetable/data/ClassReminderStore';
 import { ClassReminderScheduler, ClassReminderSyncResult } from '../feature/timetable/data/ClassReminderScheduler';
 import { IcsImportResult, TimetableIcsImporter } from '../feature/timetable/data/TimetableIcsImporter';
-import { CalendarExportResult, TimetableCalendarExporter } from '../feature/timetable/data/TimetableCalendarExporter';
+import { CalendarExportResult } from '../feature/timetable/data/TimetableCalendarExporter';
 import {
   AXIS_END_HOUR,
   AXIS_START_HOUR,
@@ -113,8 +115,6 @@ const TIMETABLE_FLING_VELOCITY: number = 400;
 const TIMETABLE_FLING_MIN_OFFSET: number = 12;
 const TAB_SWIPE_MS: number = 300;
 const TIMETABLE_SLIDE_MS: number = 220;
-const COURSE_DETAIL_ICON_SIZE: number = 38;
-const COURSE_DETAIL_TEXT_GAP: number = 12;
 
 interface MoreShortcutOptions {
   symbol: Resource;
@@ -200,10 +200,18 @@ struct Home {
   private courseSheetDismissed: (() => void) | undefined = undefined;
   private courseSheetDismissTimer: number = -1;
   private summaryRequestGeneration: number = 0;
+  @State examReminderEnabled: boolean = false;
+  @State examReminderLeadMinutes: number = 60;
+  @State calendarSyncEnabled: boolean = false;
+  @State calendarExportSyncEnabled: boolean = false;
+  @StorageProp('hita_calendar_sync_status') calendarSyncStatus: string = '';
+  @StorageProp('hita_reminder_open_event') @Watch('onPendingReminderChanged') pendingReminderEvent: string = '';
+  private remindersReady: boolean = false;
+  private reminderOpening: boolean = false;
   @State classReminderEnabled: boolean = false;
   @State reminderBusy: boolean = false;
   @State reminderExpanded: boolean = false;
-  @State reminderMaterialHeight: number = 152;
+  @State reminderMaterialHeight: number = 260;
   @State reminderLeadMinutes: number = 15;
   @State timetableEvents: EasEventItem[] = [];
   @State timetableWeek: number = 1;
@@ -218,7 +226,6 @@ struct Home {
   private pendingTimetableUpdate: EasTimetableUpdate | undefined = undefined;
   private timetableUpdateDialog: CustomDialogController | undefined = undefined;
   private clockTimer: number = -1;
-  private lastReminderDispatchAt: number = 0;
   @State @Watch('updateTimetableSystemBars') private pageVisible: boolean = false;
   @State private tabTransitionRunning: boolean = false;
   private timetablePlaceLabels: TimetablePlaceLabel[] = [];
@@ -292,6 +299,9 @@ struct Home {
     await ClassReminderStore.getInstance().init(ctx);
     this.classReminderEnabled = await ClassReminderStore.getInstance().loadEnabled();
     this.reminderLeadMinutes = await ClassReminderStore.getInstance().loadLeadMinutes();
+    this.examReminderEnabled = await ClassReminderStore.getInstance().loadExamEnabled();
+    this.examReminderLeadMinutes = await ClassReminderStore.getInstance().loadExamLeadMinutes();
+    await CalendarSyncStore.getInstance().init(ctx);
     const background = TimetableBackgroundStore.load(ctx);
     const bgPath: string = background.imagePath;
     this.timetableVideoUri = background.videoPath ? 'file://' + background.videoPath : '';
@@ -316,6 +326,8 @@ struct Home {
       }
     }
     await this.refreshSummaries();
+    this.remindersReady = true;
+    await this.openPendingReminder();
     this.startClock();
     this.checkTimetableUpdate();
   }
@@ -330,6 +342,7 @@ struct Home {
     const preserveWeek: boolean = this.returningFromCourseEditor;
     this.returningFromCourseEditor = false;
     await this.refreshSummaries(preserveWeek);
+    await this.openPendingReminder();
     this.checkTimetableUpdate();
   }
 
@@ -441,11 +454,6 @@ struct Home {
         if (nextDayKey !== this.dayKey) {
           this.dayKey = nextDayKey;
           this.refreshSummaries();
-        }
-        if (this.classReminderEnabled && now - this.lastReminderDispatchAt >= 15000) {
-          this.lastReminderDispatchAt = now;
-          const host: common.UIAbilityContext = this.getUIContext().getHostContext() as common.UIAbilityContext;
-          void ClassReminderScheduler.dispatchDue(host, this.timetableEvents);
         }
       }, 1000);
     }
@@ -575,17 +583,92 @@ struct Home {
       '今日 ' + today.length.toString() + ' 项安排';
     this.drawTimetableNow();
     NextClassWidgetService.scheduleRefresh();
-    if (this.classReminderEnabled) {
+    this.calendarSyncEnabled = display !== undefined && await CalendarSyncStore.getInstance().enabled(display.id);
+    if (this.classReminderEnabled || this.examReminderEnabled) {
       const host: common.UIAbilityContext = ctx as common.UIAbilityContext;
       await ClassReminderScheduler.sync(host, allEvents);
     }
   }
 
   private classReminderSubtitle(): string {
-    if (!this.classReminderEnabled) {
-      return '已关闭';
-    }
+    if (!this.classReminderEnabled) return this.examReminderEnabled ? '课程已关闭' : '已关闭';
     return '上课前 ' + this.reminderLeadMinutes.toString() + ' 分钟提醒';
+  }
+
+  private onPendingReminderChanged(): void { void this.openPendingReminder(); }
+
+  private async openPendingReminder(): Promise<void> {
+    if (!this.remindersReady || !this.pageVisible || this.reminderOpening || this.pendingReminderEvent.length === 0) return;
+    this.reminderOpening = true;
+    const id: string = this.pendingReminderEvent;
+    try {
+      const event: EasEventItem | undefined = await RdbHelper.getInstance().getEventById(id);
+      if (event === undefined) {
+        this.getUIContext().getPromptAction().showToast({ message: '这条课程或考试已被删除' }); return;
+      }
+      if (this.activeSheetVisible) {
+        this.closeActiveSheet();
+        await new Promise<void>((resolve: () => void) => { setTimeout(resolve, 650); });
+      }
+      if (!this.pageVisible) return;
+      await TimetableSelectionStore.getInstance().save(event.timetableId);
+      await this.refreshSummaries(true);
+      if (this.currentTab !== TAB_TIMETABLE || this.selectedNav !== TAB_TIMETABLE) {
+        this.resetDockInteraction();
+        this.tabsController.changeIndex(TAB_TIMETABLE);
+        await new Promise<void>((resolve: () => void) => { setTimeout(resolve, TAB_SWIPE_MS + 80); });
+      }
+      if (!this.pageVisible) return;
+      this.selectTab(TAB_TIMETABLE);
+      this.timetableWeek = this.currentTimetable?.getWeekNumber(event.from) ?? 1;
+      this.drawTimetableNow();
+      this.selectedCourse = this.timetableEvents.find((item: EasEventItem): boolean => item.id === id) ?? event;
+      this.courseColorEditing = false;
+      this.courseSheetOpen = true;
+      this.activeSheetVisible = true;
+    } catch (_) {
+      this.getUIContext().getPromptAction().showToast({ message: '打开提醒详情失败，请重试' });
+    } finally {
+      if (this.pendingReminderEvent === id) AppStorage.setOrCreate('hita_reminder_open_event', '');
+      this.reminderOpening = false;
+    }
+  }
+
+  private showExamReminderTimePicker(): void {
+    if (this.reminderBusy) return;
+    const range: string[] = [];
+    for (let minutes: number = 1; minutes <= 120; minutes++) range.push('考试前 ' + minutes.toString() + ' 分钟');
+    this.getUIContext().showTextPickerDialog({ range: range, selected: this.examReminderLeadMinutes - 1, canLoop: false,
+      onAccept: (result: TextPickerResult) => { void this.saveExamReminderTime(Number(result.index) + 1); }
+    });
+  }
+
+  private async saveExamReminderTime(minutes: number): Promise<void> {
+    if (this.reminderBusy || !ClassReminderStore.validLeadMinutes(minutes)) return;
+    this.reminderBusy = true;
+    try {
+      await ClassReminderStore.getInstance().saveExamLeadMinutes(minutes);
+      this.examReminderLeadMinutes = minutes;
+      const ctx: common.UIAbilityContext = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      await ClassReminderScheduler.sync(ctx, this.timetableEvents);
+      this.getUIContext().getPromptAction().showToast({ message: '已更新考试提醒时间' });
+    } catch (_) { this.getUIContext().getPromptAction().showToast({ message: '提醒时间保存失败，请重试' }); }
+    finally { this.reminderBusy = false; }
+  }
+
+  private async setExamReminderEnabled(enabled: boolean): Promise<void> {
+    if (this.reminderBusy) return;
+    this.reminderBusy = true;
+    try {
+      const ctx: common.UIAbilityContext = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      if (enabled && !(await ClassReminderScheduler.requestNotification(ctx))) {
+        this.getUIContext().getPromptAction().showToast({ message: '未授予通知权限，无法开启考试提醒' }); return;
+      }
+      await ClassReminderStore.getInstance().saveExamEnabled(enabled);
+      this.examReminderEnabled = enabled;
+      await ClassReminderScheduler.sync(ctx, this.timetableEvents);
+    } catch (_) { this.getUIContext().getPromptAction().showToast({ message: '考试提醒设置失败，请重试' }); }
+    finally { this.reminderBusy = false; }
   }
 
   private showReminderTimePicker(): void {
@@ -632,9 +715,9 @@ struct Home {
     const ctx: common.UIAbilityContext = this.getUIContext().getHostContext() as common.UIAbilityContext;
     try {
       if (!on) {
-        this.classReminderEnabled = false;
         await ClassReminderStore.getInstance().saveEnabled(false);
-        await ClassReminderScheduler.cancelAll(ctx);
+        this.classReminderEnabled = false;
+        await ClassReminderScheduler.sync(ctx, this.timetableEvents);
         this.getUIContext().getPromptAction().showToast({ message: '已关闭课程提醒' });
         return;
       }
@@ -645,8 +728,8 @@ struct Home {
         this.getUIContext().getPromptAction().showToast({ message: '未授予通知权限，无法开启课程提醒' });
         return;
       }
-      this.classReminderEnabled = true;
       await ClassReminderStore.getInstance().saveEnabled(true);
+      this.classReminderEnabled = true;
       const result: ClassReminderSyncResult = await ClassReminderScheduler.sync(ctx, this.timetableEvents, true);
       if (result.pendingClasses === 0) {
         this.getUIContext().getPromptAction().showToast({
@@ -659,6 +742,8 @@ struct Home {
             '。应用在前台或后台时会通知，划掉应用后不会提醒'
         });
       }
+    } catch (_) {
+      this.getUIContext().getPromptAction().showToast({ message: '课程提醒设置未完成，请重试' });
     } finally {
       this.reminderBusy = false;
     }
@@ -1345,6 +1430,7 @@ struct Home {
     }
     // Keep the confirmed target stable if the current selection refreshes.
     this.calendarExportTimetable = this.currentTimetable;
+    this.calendarExportSyncEnabled = this.calendarSyncEnabled;
     this.calendarExportSheetOpen = true;
     this.activeSheetVisible = true;
   }
@@ -1361,16 +1447,24 @@ struct Home {
       timetable === undefined) {
       return;
     }
+    const enabled: boolean = this.calendarExportSyncEnabled;
     this.calendarExporting = true;
     this.closeActiveSheet();
     try {
       const ctx: common.UIAbilityContext = this.getUIContext().getHostContext() as common.UIAbilityContext;
-      const result: CalendarExportResult = await TimetableCalendarExporter.exportTimetable(ctx, timetable);
-      this.getUIContext().getPromptAction().showToast({ message: result.message, duration: 3500 });
+      if (enabled) {
+        const result: CalendarExportResult = await ScheduleSyncService.enable(ctx, timetable);
+        this.getUIContext().getPromptAction().showToast({ message: result.success ? '已同步' : result.message });
+      } else if (await CalendarSyncStore.getInstance().enabled(timetable.id)) {
+        await ScheduleSyncService.disable(ctx, timetable.id);
+        this.getUIContext().getPromptAction().showToast({ message: '已关闭同步' });
+      }
     } catch (_) {
-      this.getUIContext().getPromptAction().showToast({ message: '导出至手机日历失败，请稍后重试' });
+      this.getUIContext().getPromptAction().showToast({ message: '日历同步设置失败，请稍后重试' });
     } finally {
-      this.calendarExporting = false;
+      try {
+        if (this.currentTimetable?.id === timetable.id) this.calendarSyncEnabled = await CalendarSyncStore.getInstance().enabled(timetable.id);
+      } finally { this.calendarExporting = false; }
     }
   }
 
@@ -2175,7 +2269,7 @@ struct Home {
   @Builder
   calendarExportConfirmationSheet(timetable: EasTimetable) {
     Column() {
-      Text('导出至手机日历')
+      Text('同步至手机日历')
         .fontSize(21)
         .fontWeight(FontWeight.Bold)
         .fontColor(COLOR_TEXT_PRIMARY)
@@ -2189,12 +2283,31 @@ struct Home {
         .width('100%')
         .maxLines(3)
         .textOverflow({ overflow: TextOverflow.Ellipsis });
-      Text('将此课表的日程写入系统日历。再次导出会更新此课表已导出的日程。')
-        .fontSize(14)
-        .fontColor(COLOR_TEXT_SECONDARY)
-        .lineHeight(22)
-        .width('100%')
-        .margin({ top: 8, bottom: 24 });
+      Row() {
+        Text('自动同步')
+          .fontSize(16)
+          .fontColor(COLOR_TEXT_PRIMARY)
+          .layoutWeight(1);
+        Toggle({ type: ToggleType.Switch, isOn: this.calendarExportSyncEnabled })
+          .selectedColor(COLOR_PRIMARY)
+          .margin(0)
+          .enabled(!this.calendarExporting)
+          .accessibilityText('自动同步此课表到手机日历')
+          .onChange((enabled: boolean) => { this.calendarExportSyncEnabled = enabled; });
+      }
+      .width('100%')
+      .height(56)
+      .alignItems(VerticalAlign.Center)
+      .margin({ top: 12, bottom: 24 });
+      if (this.calendarSyncEnabled && (this.calendarSyncStatus.indexOf('未完成') >= 0 ||
+        this.calendarSyncStatus.indexOf('提醒已关闭') >= 0)) {
+        Text(this.calendarSyncStatus)
+          .fontSize(12)
+          .lineHeight(18)
+          .fontColor(COLOR_TEXT_SECONDARY)
+          .width('100%')
+          .margin({ bottom: 16 });
+      }
 
       ImmersiveHeader({ barHeight: 46 }) {
         Row({ space: 12 }) {
@@ -2210,7 +2323,7 @@ struct Home {
             .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_control')))
             .enabled(!this.calendarExporting)
             .onClick(() => this.cancelCalendarExport());
-          Button('确认导出', { type: ButtonType.Capsule })
+          Button('保存', { type: ButtonType.Capsule })
             .fontSize(15)
             .fontWeight(FontWeight.Medium)
             .fontColor(CompatibleMaterialModifier.foreground('#FFFFFF'))
@@ -3002,7 +3115,7 @@ struct Home {
                 this.importIcsTimetable();
               });
             this.moreNavigationRow($r('sys.symbol.calendar'),
-              this.calendarExporting ? '正在导出至手机日历…' : '导出至手机日历',
+              this.calendarExporting ? '正在同步至手机日历…' : '同步至手机日历',
               this.currentTimetable === undefined ? '暂无课表' : this.currentTimetable.name, () => {
                 this.requestCalendarExport();
               });
@@ -3387,145 +3500,27 @@ struct Home {
 
   @Builder
   courseDetailSheet(event: EasEventItem) {
-    Column() {
-      Row() {
-        Circle()
-          .width(COURSE_DETAIL_ICON_SIZE)
-          .height(COURSE_DETAIL_ICON_SIZE)
-          .flexShrink(0)
-          .attributeModifier(new CirclePaintModifier(Home.canvasColorCss(timetableBlockColor(
-            this.courseColorEditing ? this.courseColorPreview : event.color))));
-        Column() {
-          Text(event.name === 'NULL' || event.name.length === 0 ? '未命名课程' : event.name)
-            .fontSize(21)
-            .fontWeight(FontWeight.Bold)
-            .fontColor(COLOR_TEXT_PRIMARY)
-            .maxLines(2)
-            .textOverflow({ overflow: TextOverflow.Ellipsis });
-          Text(event.type === EasEventType.EXAM ? '考试详情' : '课程详情')
-            .fontSize(13)
-            .fontColor(COLOR_TEXT_SECONDARY)
-            .margin({ top: 4 });
-        }
-        .layoutWeight(1)
-        .alignItems(HorizontalAlign.Start)
-        .margin({ left: COURSE_DETAIL_TEXT_GAP });
-        if (event.type === EasEventType.EXAM ||
-          (event.type === EasEventType.CLASS && event.subjectId.length > 0)) {
-          Column() {
-            ImmersiveHeader({ barHeight: 44, materialEnabled: CompatibleSheetMaterial.isEnabled() }) {
-              Button({ type: ButtonType.Circle }) {
-                SymbolGlyph($r('sys.symbol.paintpalette')).fontSize(22)
-                  .fontColor([CompatibleSheetMaterial.isEnabled() ? CompatibleMaterialModifier.foreground(COLOR_PRIMARY) :
-                    COLOR_PRIMARY]);
-              }
-              .width(44).height(44).padding(0).flexShrink(0)
-              .backgroundColor(COLOR_NAV_ACTIVE)
-              .attributeModifier(new CompatibleMaterialModifier(COLOR_NAV_ACTIVE, false, CompatibleSheetMaterial.isEnabled()))
-              .accessibilityText(event.type === EasEventType.EXAM ? '修改考试颜色' : '修改课程颜色')
-              .onClick(() => {
-                this.courseColorPreview = event.color;
-                this.courseColorEditing = !this.courseColorEditing;
-              });
-            }
-          }
-          .width(44).height(44).flexShrink(0);
-        }
-      }
-      .width('100%')
-      .alignItems(VerticalAlign.Center)
-      .margin({ bottom: 14 });
-
-      if (this.courseColorEditing) {
-        CourseColorEditor({
-          initialColor: event.color,
-          immersiveControls: true,
-          examMode: event.type === EasEventType.EXAM,
-          textColor: this.timetableTextColor,
-          onPreview: (color: number) => { this.courseColorPreview = color; },
-          onSave: async (color: number) => { await this.saveCourseColor(event, color); },
-          onCancel: () => { this.courseColorEditing = false; }
-        })
-      } else {
-      this.courseDetailRow($r('sys.symbol.person_crop_circle_fill'), '老师',
-        event.teacher.trim().length > 0 ? event.teacher : '无');
-      this.courseDetailRow($r('sys.symbol.pin'), event.type === EasEventType.EXAM ? '考场' : '教室',
-        event.place.trim().length > 0 ? event.place : '无');
-      this.courseDetailRow($r('sys.symbol.clock'), '时间',
-        EasTimeTools.printTime(event.from) + ' - ' + EasTimeTools.printTime(this.eventDetailEndTime(event)));
-      if (event.type !== EasEventType.EXAM) {
-        this.courseDetailRow($r('sys.symbol.doc_plaintext'), '节次', Home.coursePeriodText(event));
-      }
-      this.courseDetailRow($r('sys.symbol.calendar'), '日期', Home.courseDateText(event.from));
-      if (event.type === EasEventType.EXAM) {
-        this.courseDetailRow($r('sys.symbol.checkmark'), '类型', '考试');
-      } else {
-        this.courseDetailRow($r('sys.symbol.repeat_1'), '课程进度', this.courseProgressText(event));
-      }
-      if (event.type === EasEventType.CLASS) {
-        Column() {
-          ImmersiveHeader({ barHeight: 40, materialEnabled: CompatibleSheetMaterial.isEnabled() }) {
-            Row() {
-              Button('翘课', { type: ButtonType.Capsule })
-                .height(32)
-                .padding({ left: 12, right: 12 })
-                .fontSize(13)
-                .fontWeight(FontWeight.Medium)
-                .fontColor('#FFFFFF')
-                .backgroundColor('#E84040')
-                .attributeModifier(new CompatibleMaterialModifier('#E84040', true,
-                  CompatibleSheetMaterial.isEnabled(), '#EBE84040', false))
-                .enabled(!this.skippingCourse)
-                .onClick(() => { this.confirmSkipCourse(event); });
-            }
-            .width('100%')
-            .height(40)
-            .justifyContent(FlexAlign.End);
-          }
-        }
-        .width('100%')
-        .margin({ top: 12 });
-      }
-      }
-    }
-    .width('100%')
-    .padding({ left: 20, right: 20, top: 0, bottom: 20 })
-    .attributeModifier(new CompatibleLightModifier(24, CompatibleSheetMaterial.isEnabled(), true));
+    CourseDetailContent({
+      event: event, endTime: this.eventDetailEndTime(event), periodText: Home.coursePeriodText(event),
+      dateText: Home.courseDateText(event.from), progressText: this.courseProgressText(event),
+      textColor: this.timetableTextColor, busy: this.skippingCourse,
+      courseColorEditing: $courseColorEditing, courseColorPreview: $courseColorPreview,
+      onSaveColor: async (color: number) => { await this.saveCourseColor(event, color); },
+      onEdit: () => { void this.editCourse(event); },
+      onDelete: () => { void this.confirmSkipCourse(event); }
+    })
   }
 
-  @Builder
-  courseDetailRow(symbol: Resource, label: string, value: string) {
-    Row() {
-      Stack() {
-        SymbolGlyph(symbol)
-          .fontSize(20)
-          .fontColor([COLOR_PRIMARY]);
-      }
-      .width(COURSE_DETAIL_ICON_SIZE)
-      .height(COURSE_DETAIL_ICON_SIZE)
-      .borderRadius(COURSE_DETAIL_ICON_SIZE / 2)
-      .flexShrink(0)
-      .backgroundColor(COLOR_NAV_ACTIVE)
-      .alignContent(Alignment.Center);
-      Column() {
-        Text(label)
-          .fontSize(12)
-          .fontColor(COLOR_TEXT_SECONDARY);
-        Text(value)
-          .fontSize(17)
-          .fontWeight(FontWeight.Medium)
-          .fontColor(COLOR_TEXT_PRIMARY)
-          .margin({ top: 2 })
-          .maxLines(3)
-          .textOverflow({ overflow: TextOverflow.Ellipsis });
-      }
-      .layoutWeight(1)
-      .alignItems(HorizontalAlign.Start)
-      .margin({ left: COURSE_DETAIL_TEXT_GAP });
-    }
-    .width('100%')
-    .padding({ top: 8, bottom: 8 })
-    .alignItems(VerticalAlign.Center);
+  private async editCourse(event: EasEventItem): Promise<void> {
+    if (this.skippingCourse) return;
+    await this.closeCourseSheetBeforeSkip();
+    if (!this.pageVisible) return;
+    this.returningFromCourseEditor = true;
+    this.getUIContext().getRouter().pushUrl({ url: 'pages/AddEventPage',
+      params: { id: event.id, type: 'CLASS', timetableId: event.timetableId } }).catch(() => {
+      this.returningFromCourseEditor = false;
+      this.getUIContext().getPromptAction().showToast({ message: '无法打开课程编辑，请重试' });
+    });
   }
 
   private static canvasColorCss(argb: number): string {
@@ -3825,13 +3820,13 @@ struct Home {
         .alignContent(Alignment.Center)
         .backgroundColor(COLOR_NAV_ACTIVE);
         Column() {
-          Text('课程提醒')
+          Text('课程与考试提醒')
             .fontSize(14)
             .fontColor(COLOR_TEXT_PRIMARY)
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis });
           if (this.classReminderSubtitle().length > 0) {
-            Text(this.classReminderSubtitle())
+            Text(this.examReminderEnabled ? this.classReminderSubtitle() + ' · 考试前 ' + this.examReminderLeadMinutes.toString() + ' 分钟' : this.classReminderSubtitle())
               .fontSize(12)
               .fontColor(COLOR_TEXT_SECONDARY)
               .margin({ top: 2 })
@@ -3911,6 +3906,19 @@ struct Home {
             .enabled(!this.reminderBusy)
             .accessibilityText('提醒时间，上课前 ' + this.reminderLeadMinutes.toString() + ' 分钟，点击修改')
             .onClick(() => { this.showReminderTimePicker(); });
+            Divider().strokeWidth(0.5).color(COLOR_TEXT_SECONDARY).opacity(0.15);
+            Row() {
+              Text('开启考试提醒').fontSize(14).fontColor(COLOR_TEXT_PRIMARY).layoutWeight(1);
+              Toggle({ type: ToggleType.Switch, isOn: this.examReminderEnabled })
+                .selectedColor(COLOR_PRIMARY).margin(0).enabled(!this.reminderBusy)
+                .onChange((enabled: boolean) => { void this.setExamReminderEnabled(enabled); });
+            }.width('100%').height(48).alignItems(VerticalAlign.Center);
+            Row({ space: 8 }) {
+              Text('考试提醒时间').fontSize(14).fontColor(COLOR_TEXT_PRIMARY).layoutWeight(1);
+              Text('考试前 ' + this.examReminderLeadMinutes.toString() + ' 分钟').fontSize(13).fontColor(COLOR_TEXT_SECONDARY);
+              SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(12).fontColor([COLOR_TEXT_SECONDARY]).width(16).height(20);
+            }.width('100%').height(48).alignItems(VerticalAlign.Center).enabled(!this.reminderBusy)
+              .onClick(() => this.showExamReminderTimePicker());
           }
           .width('100%')
           .padding({ left: 14, right: 14, top: 8, bottom: 2 })

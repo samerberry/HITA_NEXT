@@ -142,6 +142,22 @@ async function seed(db) {
   ]) await db.saveEvent(item);
 }
 
+test('strict calendar reads distinguish query, cursor and column failures from empty data', async () => {
+  for (const method of ['getTimetableById', 'getEventsOfTimetable']) {
+    const db = new RdbHelper();
+    db.store = { query: async () => { throw Error('read unavailable'); } };
+    await assert.rejects(db[method]('a', true), /read unavailable/);
+    db.store.query = async () => ({ goToNextRow() { throw Error('cursor unavailable'); }, close() {} });
+    await assert.rejects(db[method]('a', true), /row read failed/);
+    db.store.query = async () => ({ goToNextRow: () => true,
+      getColumnIndex() { throw Error('column unavailable'); }, close() {} });
+    await assert.rejects(db[method]('a', true), /row read failed/);
+    db.store.query = async () => rowsResult([]);
+    const empty = await db[method]('a', true);
+    assert.deepEqual(empty, method === 'getTimetableById' ? undefined : []);
+  }
+});
+
 test('failed single-row edits preserve timetable, subject and event identities and contents', async () => {
   for (const [tableName, item, save] of [
     ['timetable', table(), 'saveTimetable'],

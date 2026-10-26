@@ -1,3 +1,4 @@
+import { ScheduleSyncService } from '../feature/timetable/data/ScheduleSyncService';
 import { AbilityConstant, common, Configuration, UIAbility, Want } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { display, window } from '@kit.ArkUI';
@@ -9,7 +10,6 @@ import {
   STATUS_BAR_INSET_FALLBACK,
   STATUS_BAR_INSET_KEY
 } from '../common/theme/StatusBarInset';
-import { ClassReminderScheduler } from '../feature/timetable/data/ClassReminderScheduler';
 import { ClassReminderStore } from '../feature/timetable/data/ClassReminderStore';
 import { AppearanceStore } from '../common/theme/AppearanceStore';
 import { NextClassWidgetService } from '../feature/widget/NextClassWidgetService';
@@ -25,10 +25,30 @@ export default class EntryAbility extends UIAbility {
     AppStorage.setOrCreate(KEYBOARD_INSET_KEY, KEYBOARD_INSET_FALLBACK);
     AppearanceStore.getInstance().initialize(this.context);
     NextClassWidgetService.attach(this.context);
+    ScheduleSyncService.attach(this.context);
+    this.captureReminderWant(want);
     void this.restoreClassReminders();
   }
 
+  onNewWant(want: Want): void {
+    this.captureReminderWant(want);
+    if (typeof want.parameters?.['hitaReminderEventId'] === 'string') {
+      void window.getLastWindow(this.context).then((mainWindow: window.Window): void => {
+        const router = mainWindow.getUIContext().getRouter();
+        if (Number(router.getLength()) > 1) router.back({ url: 'pages/Home' });
+      }).catch(() => {});
+    }
+  }
+
+  private captureReminderWant(want: Want): void {
+    const id = want.parameters?.['hitaReminderEventId'];
+    if (typeof id === 'string' && id.length > 0) {
+      AppStorage.setOrCreate('hita_reminder_open_event', id);
+    }
+  }
+
   onDestroy(): void {
+    ScheduleSyncService.detach();
     hilog.info(DOMAIN, TAG, 'Ability onDestroy');
   }
 
@@ -118,6 +138,7 @@ export default class EntryAbility extends UIAbility {
     AppStorage.setOrCreate('hita_app_foreground', true);
     hilog.info(DOMAIN, TAG, 'Ability onForeground');
     NextClassWidgetService.scheduleRefresh();
+    ScheduleSyncService.schedule();
     void this.restoreClassReminders();
     AppearanceStore.getInstance().onConfigurationUpdate(this.context.config);
   }
@@ -135,7 +156,7 @@ export default class EntryAbility extends UIAbility {
   private async restoreClassReminders(): Promise<void> {
     try {
       await ClassReminderStore.getInstance().init(this.context);
-      await ClassReminderScheduler.restore(this.context as common.UIAbilityContext);
+      await ScheduleSyncService.refreshReminders();
     } catch (e) {
       hilog.error(DOMAIN, TAG, 'restoreClassReminders %{public}s', String(e));
     }

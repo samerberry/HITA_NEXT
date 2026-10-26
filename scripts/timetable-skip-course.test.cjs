@@ -261,12 +261,15 @@ test('cancelling an unstarted pan never locks out a light tap, regardless of nat
 });
 
 test('skip UI exists only in timetable class details and uses the red material host', () => {
-  const detail = slice(home, '  courseDetailSheet(', '  courseDetailRow(');
-  assert.match(detail, /if \(event\.type === EasEventType\.CLASS\)[\s\S]*Button\('翘课'/);
+  const detail = fs.readFileSync(path.join(root, 'feature/timetable/views/CourseDetailContent.ets'), 'utf8');
+  assert.match(home, /CourseDetailContent\(\{/);
+  assert.match(detail, /deleteLabel: string = '翘课'/);
+  assert.match(detail, /Button\('编辑'[\s\S]*Button\(this\.deleteLabel/);
+  assert.match(detail, /if \(this\.event\.type === EasEventType\.CLASS\)[\s\S]*Button\(this\.deleteLabel/);
   assert.match(detail, /ImmersiveHeader\(\{ barHeight: 40/);
   assert.match(detail, /CompatibleMaterialModifier\('#E84040', true/);
   assert.match(detail, /'#EBE84040', false\)/);
-  assert.match(detail, /Button\('翘课'[\s\S]*?\.height\(32\)[\s\S]*?\.fontSize\(13\)/);
+  assert.match(detail, /Button\(this\.deleteLabel[\s\S]*?\.height\(32\)[\s\S]*?\.fontSize\(13\)/);
   assert.doesNotMatch(detail, /\.width\(132\)|\.height\(52\)/);
   assert.match(detail, /\.justifyContent\(FlexAlign\.End\)/);
   for (const file of ['TimetableDetailPage.ets', 'ExamPage.ets']) {
@@ -329,11 +332,12 @@ function refreshHarness() {
     ${slice(home, '  async refreshSummaries(', '  private classReminderSubtitle()')}
   }`;
   const page = new Function('table', 'state', 'RdbHelper', 'EasSessionStore', 'TimetableResolver',
-    'TimetableSelectionStore', 'EasEventType', 'DAY_MS', 'NextClassWidgetService',
+    'TimetableSelectionStore', 'EasEventType', 'DAY_MS', 'NextClassWidgetService', 'CalendarSyncStore',
     compile(code) + '; return new Home();')(
     table, state, { getInstance: () => rdb }, { getInstance: () => ({ loadPreferred: async () => undefined }) },
     { getRecent: async () => table, getReal: async () => table },
-    { getInstance: () => ({ load: async () => 'table' }) }, { EXAM: 'EXAM' }, 86400000, { scheduleRefresh() {} });
+    { getInstance: () => ({ load: async () => 'table' }) }, { EXAM: 'EXAM' }, 86400000, { scheduleRefresh() {} },
+    { getInstance: () => ({ enabled: async () => false }) });
   return { page, state };
 }
 

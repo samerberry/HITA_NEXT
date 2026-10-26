@@ -1,3 +1,4 @@
+import { CourseDetailContent } from '../feature/timetable/views/CourseDetailContent';
 import { SheetContent } from '../common/components/SheetContent';
 /** Android HITA-style timetable detail and course management. */
 import { common } from '@kit.AbilityKit';
@@ -5,7 +6,6 @@ import { HeaderBackButton } from '../common/components/HeaderBackButton';
 import { ImmersiveHeader } from '../common/components/ImmersiveHeader';
 import { CompatibleMaterialModifier } from '../common/theme/CompatibleMaterialModifier';
 import { CompatibleSheetMaterial } from '../common/theme/CompatibleSheetMaterial';
-import { CirclePaintModifier } from '../common/theme/CirclePaintModifier';
 import { DeleteParticleCard } from '../common/components/DeleteParticleCard';
 import { DeleteEffectController } from '../common/util/DeleteEffectController';
 import { HeaderFadeMask } from '../common/components/HeaderFadeMask';
@@ -29,13 +29,9 @@ import { ClassReminderStore } from '../feature/timetable/data/ClassReminderStore
 import { ClassReminderScheduler } from '../feature/timetable/data/ClassReminderScheduler';
 
 const HEADER_HEIGHT: number = 64;
-const COURSE_DETAIL_ICON_SIZE: number = 38;
-const COURSE_DETAIL_TEXT_GAP: number = 12;
 const PAGE_BG: ResourceColor = $r('app.color.hita_page_f6f7fa');
 const PAGE_BG_RGB: string = '246,247,250';
 const DAY_MS: number = 24 * 60 * 60 * 1000;
-const SUBJECT_PALETTE: number[] = [0xFF5C6BC0, 0xFF26A69A, 0xFFEF8E5A, 0xFFD93025,
-  0xFF7E57C2, 0xFF42A5F5, 0xFF9CCC65, 0xFF8D6E63];
 
 class TimetableSubjectRow {
   subject: EasTermSubject = new EasTermSubject();
@@ -57,6 +53,9 @@ struct TimetableDetailPage {
   /** bindSheet 只看这一个开关；内容状态在收起动画结束前保持不变。 */
   @State sheetVisible: boolean = false;
   @State selectedEvent: EasEventItem | undefined = undefined;
+  @State courseColorEditing: boolean = false;
+  @State courseColorPreview: number = 0;
+  @State deletingEvent: boolean = false;
   @State sheetEventId: string = '';
   /** 当前展开课时列表的科目 id（空串 = 全部收起）。 */
   @State expandedSubjectId: string = '';
@@ -221,10 +220,6 @@ struct TimetableDetailPage {
       foundSubject = true;
       const next: TimetableSubjectRow = new TimetableSubjectRow();
       next.subject = prev.subject;
-      if (event.name.length > 0 && event.name !== 'NULL' && event.name !== prev.subject.name) {
-        next.subject.name = event.name;
-        void RdbHelper.getInstance().saveSubject(next.subject);
-      }
       const sessions: EasEventItem[] = [];
       let foundSession: boolean = false;
       for (let j: number = 0; j < prev.sessions.length; j++) {
@@ -272,6 +267,7 @@ struct TimetableDetailPage {
   }
 
   private openEventDetail(event: EasEventItem): void {
+    this.courseColorEditing = false;
     this.sheetEventId = event.id;
     this.selectedEvent = event;
     this.eventSheetMode = 1;
@@ -378,20 +374,6 @@ struct TimetableDetailPage {
     }).catch(() => {
     }).finally(() => {
       this.pendingDeleteCourseId = '';
-    });
-  }
-
-  private cycleColor(row: TimetableSubjectRow): void {
-    let next: number = SUBJECT_PALETTE[0];
-    for (let i: number = 0; i < SUBJECT_PALETTE.length; i++) {
-      if (SUBJECT_PALETTE[i] === row.subject.color) {
-        next = SUBJECT_PALETTE[(i + 1) % SUBJECT_PALETTE.length];
-        break;
-      }
-    }
-    RdbHelper.getInstance().changeSubjectColor(row.subject.id, next).then(() => {
-      this.load();
-    }).catch(() => {
     });
   }
 
@@ -556,9 +538,6 @@ struct TimetableDetailPage {
         .height(54)
         .borderRadius(9)
         .backgroundColor(TimetableDetailPage.css(row.subject.color))
-        .onClick(() => {
-          this.cycleColor(row);
-        })
       Column() {
         Text(row.subject.name)
           .fontSize(16)
@@ -781,14 +760,12 @@ struct TimetableDetailPage {
           onCancel: () => {
             this.closeSheet();
           },
-          onSaved: (_event: EasEventItem, occurrences: EasEventItem[]) => {
-            for (const occurrence of occurrences) {
-              this.applySavedEvent(occurrence, false);
-              if (this.timetable !== undefined && occurrence.to > this.timetable.endTime) {
-                this.timetable.endTime = CourseDateSelection.weekEnd(occurrence.to);
-              }
-            }
-            void this.resyncReminders();
+          onChanged: async () => {
+            await this.load();
+            await this.resyncReminders();
+          },
+          onSaved: (_event: EasEventItem, _occurrences: EasEventItem[]) => {
+            void this.load().then(() => this.resyncReminders()).catch(() => {});
             this.closeSheet();
           }
         })
@@ -802,95 +779,40 @@ struct TimetableDetailPage {
 
   @Builder
   private courseDetailSheet(event: EasEventItem) {
-    Column() {
-      Row() {
-        Circle()
-          .width(COURSE_DETAIL_ICON_SIZE)
-          .height(COURSE_DETAIL_ICON_SIZE)
-          .flexShrink(0)
-          .attributeModifier(new CirclePaintModifier(TimetableDetailPage.css(event.color === 0 ?
-            TimetableDetailPage.eventColor(event.type) : event.color)));
-        Column() {
-          Text(event.name === 'NULL' || event.name.length === 0 ? '未命名课程' : event.name)
-            .fontSize(21)
-            .fontWeight(FontWeight.Bold)
-            .fontColor($r('app.color.hita_text_202b45'))
-            .maxLines(2)
-            .textOverflow({ overflow: TextOverflow.Ellipsis });
-          Text('课程详情')
-            .fontSize(13)
-            .fontColor($r('app.color.hita_text_secondary_72809a'))
-            .margin({ top: 4 });
-        }
-        .layoutWeight(1)
-        .alignItems(HorizontalAlign.Start)
-        .margin({ left: COURSE_DETAIL_TEXT_GAP });
-
-        Text('编辑')
-          .fontSize(14)
-          .fontColor(HitaColors.primary)
-          .fontWeight(FontWeight.Medium)
-          .padding({ left: 8, right: 8, top: 8, bottom: 8 })
-          .margin({ left: 8 })
-          .flexShrink(0)
-          .onClick(() => {
-            this.openEditEvent(event);
-          });
-      }
-      .width('100%')
-      .alignItems(VerticalAlign.Center)
-      .margin({ bottom: 14 });
-
-      this.courseDetailRow($r('sys.symbol.person_crop_circle_fill'), '老师',
-        event.teacher.trim().length > 0 ? event.teacher : '无');
-      this.courseDetailRow($r('sys.symbol.pin'), '教室',
-        event.place.trim().length > 0 ? event.place : '无');
-      this.courseDetailRow($r('sys.symbol.clock'), '时间',
-        EasTimeTools.printTime(event.from) + ' - ' + EasTimeTools.printTime(event.to));
-      this.courseDetailRow($r('sys.symbol.doc_plaintext'), '节次',
-        TimetableDetailPage.coursePeriodText(event));
-      this.courseDetailRow($r('sys.symbol.calendar'), '日期',
-        TimetableDetailPage.courseDateText(event.from));
-      this.courseDetailRow($r('sys.symbol.repeat_1'), '课程进度',
-        this.courseProgressText(event));
-    }
-    .width('100%')
-    .padding({ left: 20, right: 20, top: 0, bottom: 20 });
+    CourseDetailContent({
+      event: event, endTime: event.to, periodText: TimetableDetailPage.coursePeriodText(event),
+      dateText: TimetableDetailPage.courseDateText(event.from), progressText: this.courseProgressText(event),
+      deleteLabel: '删除', busy: this.deletingEvent,
+      courseColorEditing: $courseColorEditing, courseColorPreview: $courseColorPreview,
+      onSaveColor: async (color: number) => {
+        await RdbHelper.getInstance().saveCourseColor(event.subjectId, event.timetableId, color);
+        await this.load();
+        this.selectedEvent = this.eventRows.find((item: EasEventItem): boolean => item.id === event.id);
+        this.courseColorEditing = false;
+      },
+      onEdit: () => { this.openEditEvent(event); },
+      onDelete: () => { void this.deleteOccurrence(event); }
+    })
   }
 
-  @Builder
-  private courseDetailRow(symbol: Resource, label: string, value: string) {
-    Row() {
-      Stack() {
-        SymbolGlyph(symbol)
-          .fontSize(20)
-          .fontColor([HitaColors.primary]);
-      }
-      .width(COURSE_DETAIL_ICON_SIZE)
-      .height(COURSE_DETAIL_ICON_SIZE)
-      .borderRadius(COURSE_DETAIL_ICON_SIZE / 2)
-      .flexShrink(0)
-      .backgroundColor($r('app.color.hita_selected_e4f0ff'))
-      .alignContent(Alignment.Center);
-      Column() {
-        Text(label)
-          .fontSize(12)
-          .fontColor($r('app.color.hita_text_secondary_72809a'));
-        Text(value)
-          .fontSize(17)
-          .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.hita_text_202b45'))
-          .margin({ top: 2 })
-          .maxLines(3)
-          .textOverflow({ overflow: TextOverflow.Ellipsis });
-      }
-      .layoutWeight(1)
-      .alignItems(HorizontalAlign.Start)
-      .margin({ left: COURSE_DETAIL_TEXT_GAP });
-    }
-    .width('100%')
-    .padding({ top: 8, bottom: 8 })
-    .alignItems(VerticalAlign.Center);
+  private async deleteOccurrence(event: EasEventItem): Promise<void> {
+    if (this.deletingEvent) return;
+    this.deletingEvent = true;
+    let confirmed: boolean = false;
+    try {
+      const result = await this.getUIContext().getPromptAction().showDialog({
+        title: '删除这次课程？', message: '仅删除当前课次。',
+        buttons: [{ text: '取消', color: $r('app.color.hita_text_secondary_72809a') }, { text: '删除', color: HitaColors.error }]
+      });
+      if (result.index !== 1 || !this.sheetVisible || this.selectedEvent?.id !== event.id) return;
+      confirmed = true;
+      await RdbHelper.getInstance().deleteClassOccurrences([event.id], event.timetableId);
+      this.closeSheet();
+      await this.load();
+      void this.resyncReminders().catch(() => {});
+    } catch (_) {
+      if (confirmed) this.getUIContext().getPromptAction().showToast({ message: '未能删除，请重试' });
+    } finally { this.deletingEvent = false; }
   }
 
   private courseProgressText(event: EasEventItem): string {

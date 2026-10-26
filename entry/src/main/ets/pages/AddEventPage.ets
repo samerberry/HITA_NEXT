@@ -1,8 +1,9 @@
+import { CourseBatchEdit } from '../feature/timetable/CourseBatchEdit';
 /**
  * AddEventPage.ets — 新建/编辑事件（HITA_X ui/event/add 语义 → ArkUI 表单）。
  *
  * Both timetable entry points share single-date/calendar and weekly course creation.
- * Weekly occurrences are committed atomically; editing still changes one occurrence only.
+ * Weekly occurrences are committed atomically; editing supports explicit occurrence scopes with atomic writes.
  */
 import { common } from '@kit.AbilityKit';
 import { LengthMetrics } from '@kit.ArkUI';
@@ -47,6 +48,7 @@ export struct EventEditorForm {
   @Prop initialType: string = '';
   @Prop sheetMode: boolean = false;
   onCancel: () => void = () => {};
+  onChanged: () => Promise<void> = async () => {};
   onSaved: (event: EasEventItem, occurrences: EasEventItem[]) => void =
     (_event: EasEventItem, _occurrences: EasEventItem[]) => {};
 
@@ -79,6 +81,10 @@ export struct EventEditorForm {
   @State loading: boolean = true;
   @State loadFailed: boolean = false;
   @State saving: boolean = false;
+  @State editScope: number = 0;
+  @State stoppingCourse: boolean = false;
+  @State relatedCourses: EasEventItem[] = [];
+  private originalCourse: EasEventItem | undefined = undefined;
   private editId: string = '';
   private timetableId: string = '';
   private subjectId: string = '';
@@ -174,6 +180,16 @@ export struct EventEditorForm {
       this.loadFailed = true;
       this.hint = '这条记录已不存在，请关闭后刷新列表';
       return;
+    }
+    this.timetableId = ev.timetableId.length > 0 ? ev.timetableId : this.timetableId;
+    this.originalCourse = CourseBatchEdit.copy(ev);
+    if (ev.type === EasEventType.CLASS) {
+      this.courseEntry = true;
+      await this.loadCourseTimetable(false);
+      this.relatedCourses = await RdbHelper.getInstance().getEventsOfTimetable(ev.timetableId);
+      if (this.courseTimetable !== undefined) {
+        this.selectedWeeks = [this.courseTimetable.getWeekNumber(ev.from)];
+      }
     }
     this.name = ev.name;
     this.place = ev.place;
@@ -380,7 +396,8 @@ export struct EventEditorForm {
 
   private canSave(): boolean {
     return !this.loading && !this.loadFailed && !this.saving && !this.saved && !this.pickingExisting &&
-      this.validationHint().length === 0;
+      (this.stoppingCourse || this.validationHint().length === 0) &&
+      (this.editId.length === 0 || this.typeIdx !== 1 || this.editTargets().length > 0);
   }
 
   private extensionHint(): string {
@@ -468,16 +485,86 @@ export struct EventEditorForm {
     if (this.loading || this.loadFailed || this.saving || this.saved) {
       return;
     }
-    const invalid: string = this.validationHint();
+    if (this.editId.length > 0 && this.typeIdx === 1 && this.editTargets().length === 0) {
+      this.hint = '所选范围没有课次，请重新选择'; return;
+    }
+    const invalid: string = this.stoppingCourse ? '' : this.validationHint();
     if (invalid.length > 0) { this.hint = invalid; return; }
     this.saving = true;
     try {
-      await this.persistEvent();
+      if (this.editId.length > 0 && this.typeIdx === 1) {
+        await this.persistCourseEdit();
+      } else {
+        await this.persistEvent();
+      }
     } catch (_) {
       this.hint = '保存失败，请重试';
     } finally {
       this.saving = false;
     }
+  }
+
+  private editTargets(): EasEventItem[] {
+    if (this.originalCourse === undefined) return [];
+    return CourseBatchEdit.targets(this.relatedCourses, this.originalCourse, this.editScope,
+      this.selectedWeeks, this.courseTimetable);
+  }
+
+  private async persistCourseEdit(): Promise<void> {
+    const original: EasEventItem | undefined = this.originalCourse;
+    if (original === undefined) return;
+    const before: EasEventItem[] = this.editTargets();
+    if (before.length === 0) { this.hint = '所选范围没有课次'; return; }
+    const edited: EasEventItem = CourseBatchEdit.copy(original);
+    edited.name = this.name.trim(); edited.place = this.place.trim(); edited.teacher = this.teacher.trim();
+    const date: Date = new Date(this.todayBase + this.dayOffset * DAY_MS);
+    date.setHours(this.hour, this.minute, 0, 0); edited.from = date.getTime();
+    date.setHours(this.endHour, this.endMinute, 0, 0); edited.to = date.getTime();
+    const after: EasEventItem[] = this.stoppingCourse ? [] : CourseBatchEdit.update(before, original, edited);
+    const operation: string = this.stoppingCourse ? '停课' : '修改';
+    let confirmed: boolean = false;
+    try {
+      const result = await this.getUIContext().getPromptAction().showDialog({
+        title: operation + ' ' + before.length.toString() + ' 个课次？',
+        message: this.editScope === 0 ? '仅本次课程' :
+          (this.editScope === 1 ? '所选教学周内本课程的全部课次' : '从当前课次起本课程的全部后续课次'),
+        buttons: [
+          { text: '取消', color: $r('app.color.hita_text_secondary_72809a') },
+          { text: '确认' + operation, color: $r('app.color.hita_primary_3390ec') }
+        ]
+      });
+      confirmed = result.index === 1;
+    } catch (_) { return; }
+    if (!confirmed || !this.editorActive) return;
+    const rdb: RdbHelper = RdbHelper.getInstance();
+    await rdb.replaceCourseOccurrences(before, after, original.timetableId);
+    await this.onChanged().catch(() => {});
+    // Keep the snapshot until the user finishes or restores it. A failed undo stays retryable.
+    let undone: boolean = false;
+    if (this.editorActive) {
+      let finished: boolean = false;
+      while (!finished && this.editorActive) {
+        try {
+          const result = await this.getUIContext().getPromptAction().showDialog({
+            title: '已' + operation + ' ' + before.length.toString() + ' 个课次',
+            buttons: [{ text: '完成', color: $r('app.color.hita_text_secondary_72809a') }, { text: '撤销', color: $r('app.color.hita_primary_3390ec') }]
+          });
+          if (result.index === 1) {
+            try {
+              await rdb.replaceCourseOccurrences(after, before, original.timetableId);
+              undone = true; finished = true;
+              await this.onChanged().catch(() => {});
+            } catch (_) {
+              this.getUIContext().getPromptAction().showToast({ message: '撤销失败，课表可能已变更，请重试或刷新后检查' });
+            }
+          } else { finished = true; }
+        } catch (_) { finished = true; }
+      }
+    }
+    if (!this.editorActive) return;
+    this.saved = true;
+    if (this.sheetMode) this.onSaved(undone ? original : edited, undone ? before : after);
+    else this.getUIContext().getRouter().back();
   }
 
   private async persistEvent(): Promise<void> {
@@ -658,10 +745,11 @@ export struct EventEditorForm {
   }
 
   private courseSaveSummary(): string {
+    if (this.stoppingCourse) return '将停课 ' + this.editTargets().length.toString() + ' 个课次';
     if (this.name.trim().length === 0) return '';
     const invalid: string = this.validationHint();
     if (invalid.length > 0) return invalid;
-    if (this.editId.length > 0) return '仅修改当前课次';
+    if (this.editId.length > 0) return '将' + (this.stoppingCourse ? '停课 ' : '修改 ') + this.editTargets().length.toString() + ' 个课次';
     if (this.dateMode === 0) return this.dateText() + ' · ' + this.startLabel() + '–' + this.endLabel();
     if (this.selectedWeekdays.length === 0) return '请选择上课的星期';
     if (this.selectedWeeks.length === 0) return '请选择教学周';
@@ -726,8 +814,14 @@ export struct EventEditorForm {
           }
         }
         if (this.typeIdx === 1) {
-          ListItem() { this.courseInfoCard() }
-          ListItem() { this.timeRow() }
+          if (this.editId.length > 0) {
+            ListItem() { this.editScopeCard() }
+              .clip(false).zIndex(this.activeCourseControl || this.choosingWeeks ? 3 : 1)
+          }
+          if (!this.stoppingCourse) {
+            ListItem() { this.courseInfoCard() }
+            ListItem() { this.timeRow() }
+          }
         } else {
         ListItem() {
           Column() {
@@ -802,6 +896,7 @@ export struct EventEditorForm {
           .alignItems(HorizontalAlign.Start)
         }
         }
+        if (!this.stoppingCourse) {
         ListItem() {
           if (this.typeIdx === 1 && this.editId.length === 0) {
             this.courseDateRow()
@@ -813,6 +908,7 @@ export struct EventEditorForm {
         .zIndex(this.activeCourseControl || this.choosingWeeks ? 3 : 1)
         if (this.typeIdx !== 1) {
           ListItem() { this.timeRow() }
+        }
         }
       }
       .width('100%')
@@ -853,7 +949,7 @@ export struct EventEditorForm {
         }
         ImmersiveHeader({ barHeight: 44 }) {
           Button(this.loading ? '正在读取' : (this.saving ? '正在保存' :
-            (this.typeIdx === 1 ? (this.editId.length > 0 ? '保存修改' : '添加课程') : '保存')), { type: ButtonType.Capsule })
+            (this.typeIdx === 1 ? (this.stoppingCourse ? '停课' : (this.editId.length > 0 ? '保存修改' : '添加课程')) : '保存')), { type: ButtonType.Capsule })
             .width('100%')
             .height(44)
             .fontWeight(FontWeight.Medium)
@@ -881,6 +977,37 @@ export struct EventEditorForm {
     .backgroundColor(this.editorBackground())
     .attributeModifier(new CompatibleLightModifier(24, this.sheetMode && this.courseMaterialsEnabled(), true))
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
+  }
+
+  @Builder
+  editScopeCard() {
+    Column({ space: 12 }) {
+      Text('应用范围').fontSize(15).fontWeight(FontWeight.Medium)
+        .fontColor($r('app.color.hita_text_202b45'))
+      CourseModeSegment({ labels: ['仅本次', '选定周次', '之后所有'], selectedIndex: this.editScope,
+        onSelect: (index: number) => {
+          if (index > 0 && this.subjectId.length === 0) {
+            this.hint = '当前课次没有关联课程，仅支持修改本次'; return;
+          }
+          this.editScope = index; this.hint = '';
+        },
+        onControlPressingChanged: (pressing: boolean) => { this.activeCourseControl = pressing; }
+      })
+      if (this.editScope === 1) {
+        CourseWeekPicker({ weeks: this.weekChoices, chosen: $selectedWeeks,
+          onChoosingChanged: (choosing: boolean) => { this.choosingWeeks = choosing; }
+        })
+      }
+      Row() {
+        Text('停课').fontSize(14).fontColor($r('app.color.hita_text_202b45'))
+        Blank()
+        Toggle({ type: ToggleType.Switch, isOn: this.stoppingCourse })
+          .onChange((value: boolean) => { this.stoppingCourse = value; this.hint = ''; })
+      }.width('100%')
+      Text('已选 ' + this.editTargets().length.toString() + ' 个课次')
+        .fontSize(12).fontColor($r('app.color.hita_text_secondary_72809a'))
+    }.width('100%').padding(16).borderRadius(20)
+    .alignItems(HorizontalAlign.Start).backgroundColor(this.courseCardColor())
   }
 
   @Builder

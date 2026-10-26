@@ -1,3 +1,4 @@
+import { ScheduleChangeSignal } from '../../../common/util/ScheduleChangeSignal';
 /** Persists whether the user wants class-start notifications. */
 import { preferences } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
@@ -10,6 +11,8 @@ const PLANS_KEY: string = 'class_reminder_plans';
 const SIGNATURE_KEY: string = 'class_reminder_signature';
 
 export class ClassReminderPlan {
+  type: string = 'CLASS';
+  timetableId: string = '';
   id: string = '';
   name: string = '';
   place: string = '';
@@ -40,38 +43,40 @@ export class ClassReminderStore {
     }
   }
 
-  async loadEnabled(): Promise<boolean> {
+  async loadEnabled(strict: boolean = false): Promise<boolean> {
     if (this.store === undefined) {
+      if (strict) throw new Error('提醒设置暂时无法读取');
       return false;
     }
     try {
       return Boolean(await this.store.get(ENABLED_KEY, false));
     } catch (e) {
+      if (strict) throw new Error('提醒设置暂时无法读取');
       return false;
     }
   }
 
   async saveEnabled(enabled: boolean): Promise<void> {
-    if (this.store === undefined) {
-      return;
-    }
-    try {
-      await this.store.put(ENABLED_KEY, enabled);
-      await this.store.flush();
-    } catch (e) {
-    }
+    if (this.store === undefined) throw new Error('提醒设置暂时无法保存');
+    await this.store.put(ENABLED_KEY, enabled);
+    await this.store.flush();
+    ScheduleChangeSignal.notify();
   }
 
   static validLeadMinutes(value: number): boolean {
     return Number.isInteger(value) && value >= 1 && value <= 120;
   }
 
-  async loadLeadMinutes(): Promise<number> {
-    if (this.store === undefined) return 15;
+  async loadLeadMinutes(strict: boolean = false): Promise<number> {
+    if (this.store === undefined) {
+      if (strict) throw new Error('提醒设置暂时无法读取');
+      return 15;
+    }
     try {
       const value: number = Number(await this.store.get(LEAD_MINUTES_KEY, 15));
       return ClassReminderStore.validLeadMinutes(value) ? value : 15;
     } catch (_) {
+      if (strict) throw new Error('提醒设置暂时无法读取');
       return 15;
     }
   }
@@ -81,6 +86,30 @@ export class ClassReminderStore {
     if (this.store === undefined) throw new Error('提醒设置暂时无法保存');
     await this.store.put(LEAD_MINUTES_KEY, value);
     await this.store.flush();
+    ScheduleChangeSignal.notify();
+  }
+
+  async loadExamEnabled(): Promise<boolean> {
+    return this.store !== undefined && Boolean(await this.store.get('exam_reminder_enabled', false));
+  }
+
+  async saveExamEnabled(enabled: boolean): Promise<void> {
+    if (this.store === undefined) throw new Error('提醒设置暂时无法保存');
+    await this.store.put('exam_reminder_enabled', enabled);
+    await this.store.flush();
+    ScheduleChangeSignal.notify();
+  }
+
+  async loadExamLeadMinutes(): Promise<number> {
+    const value: number = this.store === undefined ? 60 : Number(await this.store.get('exam_reminder_lead_minutes', 60));
+    return ClassReminderStore.validLeadMinutes(value) ? value : 60;
+  }
+
+  async saveExamLeadMinutes(minutes: number): Promise<void> {
+    if (!ClassReminderStore.validLeadMinutes(minutes) || this.store === undefined) throw new Error('提醒时间无效');
+    await this.store.put('exam_reminder_lead_minutes', minutes);
+    await this.store.flush();
+    ScheduleChangeSignal.notify();
   }
 
   async hasNotified(key: string): Promise<boolean> {
@@ -137,6 +166,8 @@ export class ClassReminderStore {
       for (let i: number = 0; i < parsed.length; i++) {
         const row: Record<string, string | number> = parsed[i] as Record<string, string | number>;
         const plan: ClassReminderPlan = new ClassReminderPlan();
+        plan.type = row['type'] === 'EXAM' ? 'EXAM' : 'CLASS';
+        plan.timetableId = typeof row['timetableId'] === 'string' ? String(row['timetableId']) : '';
         plan.id = String(row['id']);
         plan.name = String(row['name']);
         plan.place = String(row['place']);

@@ -1,8 +1,10 @@
+import { CalendarSyncStore } from './CalendarSyncStore';
+import { ReminderEventSelection } from './ReminderEventSelection';
 /**
  * Class reminders fire via notificationManager while HITA is in foreground or
  * still running in the background. They are not registered with the system agent.
  */
-import { common } from '@kit.AbilityKit';
+import { common, wantAgent } from '@kit.AbilityKit';
 import { notificationManager } from '@kit.NotificationKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { BusinessError } from '@kit.BasicServicesKit';
@@ -10,8 +12,6 @@ import { EasEventItem, EasEventType } from '../../../common/model/timetable/Time
 import { EasTimeTools } from '../../../common/util/EasTimeTools';
 import { ClassReminderPlan, ClassReminderStore } from './ClassReminderStore';
 
-const MAX_REMINDERS: number = 8;
-const MERGE_GAP_MS: number = 20 * 60 * 1000;
 const SLOT: notificationManager.SlotType = notificationManager.SlotType.SOCIAL_COMMUNICATION;
 const DOMAIN: number = 0x0000;
 const TAG: string = 'ClassReminder';
@@ -25,6 +25,7 @@ export class ClassReminderSyncResult {
 }
 
 export class ClassReminderScheduler {
+  private static dispatching: boolean = false;
   private static syncSeq: number = 0;
   private static slotReady: boolean = false;
 
@@ -54,7 +55,7 @@ export class ClassReminderScheduler {
 
   static async restore(context: common.UIAbilityContext): Promise<void> {
     const store: ClassReminderStore = ClassReminderStore.getInstance();
-    if (!(await store.loadEnabled())) {
+    if (!(await store.loadEnabled()) && !(await store.loadExamEnabled())) {
       return;
     }
     await ClassReminderScheduler.ensureSlot();
@@ -73,7 +74,9 @@ export class ClassReminderScheduler {
     result.scheduled = upcoming.length;
     const store: ClassReminderStore = ClassReminderStore.getInstance();
     const leadMinutes: number = await store.loadLeadMinutes();
-    const signature: string = leadMinutes.toString() + ':' + ClassReminderScheduler.signatureOf(upcoming);
+    const signature: string = leadMinutes.toString() + ':' + (await store.loadExamLeadMinutes()).toString() + ':' +
+      (await store.loadEnabled()).toString() + ':' + (await store.loadExamEnabled()).toString() + ':' +
+      ClassReminderScheduler.signatureOf(upcoming);
     if (!force && signature.length > 0 && signature === await store.loadSignature()) {
       result.duePublished = await ClassReminderScheduler.dispatchDue(context, upcoming);
       if (upcoming.length > 0) {
@@ -83,9 +86,6 @@ export class ClassReminderScheduler {
     }
     const seq: number = ++ClassReminderScheduler.syncSeq;
     await ClassReminderScheduler.ensureSlot();
-    if (force) {
-      await store.clearNotified();
-    }
     if (seq !== ClassReminderScheduler.syncSeq) {
       return result;
     }
@@ -103,24 +103,39 @@ export class ClassReminderScheduler {
     return result;
   }
 
-  static async dispatchDue(_context: common.UIAbilityContext, events: EasEventItem[]): Promise<number> {
+  static async dispatchDue(context: common.UIAbilityContext, events: EasEventItem[]): Promise<number> {
+    if (ClassReminderScheduler.dispatching) return 0;
+    ClassReminderScheduler.dispatching = true;
+    try { return await ClassReminderScheduler.dispatch(context, events); }
+    finally { ClassReminderScheduler.dispatching = false; }
+  }
+
+  private static async dispatch(context: common.UIAbilityContext, events: EasEventItem[]): Promise<number> {
     const store: ClassReminderStore = ClassReminderStore.getInstance();
-    if (!(await store.loadEnabled())) return 0;
-    const leadMs: number = (await store.loadLeadMinutes()) * 60 * 1000;
+    const classes: boolean = await store.loadEnabled();
+    const exams: boolean = await store.loadExamEnabled();
+    if (!classes && !exams) return 0;
+    const classMinutes: number = await store.loadLeadMinutes();
+    const examMinutes: number = await store.loadExamLeadMinutes();
     const upcoming: EasEventItem[] = ClassReminderScheduler.upcomingClasses(events);
     let published: number = 0;
     for (let i: number = 0; i < upcoming.length; i++) {
       const event: EasEventItem = upcoming[i];
-      if (event.from - Date.now() > leadMs) {
+      const exam: boolean = event.type === EasEventType.EXAM;
+      if (exam ? !exams : !classes) continue;
+      const leadMinutes: number = exam ? examMinutes : classMinutes;
+      if (await CalendarSyncStore.getInstance().covers(event.timetableId, event.id, event.from, leadMinutes)) continue;
+      if (event.from - Date.now() > leadMinutes * 60000) {
         continue;
       }
       const key: string = ClassReminderScheduler.notifyKey(event);
-      if (await ClassReminderStore.getInstance().hasNotified(key)) {
+      if (await store.hasNotified(key) || (event.type === EasEventType.CLASS &&
+        await store.hasNotified(event.id + ':' + event.from.toString()))) {
         continue;
       }
       const text: [string, string] = ClassReminderScheduler.copyText(event);
       const alertErr: string = await ClassReminderScheduler.publishAlert(text[0], text[1],
-        ClassReminderScheduler.hashId('alert:' + event.id + ':' + event.from.toString()));
+        ClassReminderScheduler.hashId('alert:' + event.id + ':' + event.from.toString()), context, event);
       if (alertErr.length === 0) {
         await ClassReminderStore.getInstance().markNotified(key);
         published++;
@@ -130,50 +145,27 @@ export class ClassReminderScheduler {
   }
 
   private static upcomingClasses(events: EasEventItem[]): EasEventItem[] {
-    const now: number = Date.now();
-    const classes: EasEventItem[] = [];
-    for (let i: number = 0; i < events.length; i++) {
-      if (events[i].type === EasEventType.CLASS && events[i].from > now) {
-        classes.push(events[i]);
-      }
-    }
-    classes.sort((a: EasEventItem, b: EasEventItem): number => a.from - b.from);
-    const merged: EasEventItem[] = [];
-    for (let i: number = 0; i < classes.length; i++) {
-      const event: EasEventItem = classes[i];
-      if (merged.length > 0) {
-        const prev: EasEventItem = merged[merged.length - 1];
-        const sameBlock: boolean = prev.subjectId.length > 0 && prev.subjectId === event.subjectId &&
-          event.from - prev.to <= MERGE_GAP_MS;
-        if (sameBlock) {
-          continue;
-        }
-      }
-      merged.push(event);
-      if (merged.length >= MAX_REMINDERS) {
-        break;
-      }
-    }
-    return merged;
+    return ReminderEventSelection.blocks(events).filter((event: EasEventItem): boolean => event.from > Date.now());
   }
 
   private static signatureOf(upcoming: EasEventItem[]): string {
     let text: string = '';
     for (let i: number = 0; i < upcoming.length; i++) {
-      text = text + upcoming[i].id + ':' + upcoming[i].from.toString() + ';';
+      text += JSON.stringify([upcoming[i].id, upcoming[i].from.toString(), upcoming[i].to.toString(),
+        upcoming[i].name, upcoming[i].place, upcoming[i].type]) + ';';
     }
     return text;
   }
 
   private static notifyKey(event: EasEventItem): string {
-    return event.id + ':' + event.from.toString();
+    return event.type + ':' + event.id + ':' + event.from.toString();
   }
 
   private static copyText(event: EasEventItem): [string, string] {
     const place: string = event.place.length > 0 ? event.place : '地点待定';
     const title: string = event.name.length > 0 && event.name !== 'NULL' ? event.name : '课程提醒';
     const minutes: number = Math.max(1, Math.ceil((event.from - Date.now()) / 60000));
-    const content: string = minutes.toString() + '分钟后上课 · ' +
+    const content: string = minutes.toString() + (event.type === EasEventType.EXAM ? '分钟后考试 · ' : '分钟后上课 · ') +
       EasTimeTools.printTime(event.from) + ' · ' + place;
     return [title, content];
   }
@@ -182,6 +174,8 @@ export class ClassReminderScheduler {
     const plans: ClassReminderPlan[] = [];
     for (let i: number = 0; i < events.length; i++) {
       const plan: ClassReminderPlan = new ClassReminderPlan();
+      plan.type = events[i].type;
+      plan.timetableId = events[i].timetableId;
       plan.id = events[i].id;
       plan.name = events[i].name;
       plan.place = events[i].place;
@@ -198,7 +192,8 @@ export class ClassReminderScheduler {
     for (let i: number = 0; i < plans.length; i++) {
       const event: EasEventItem = new EasEventItem();
       event.id = plans[i].id;
-      event.type = EasEventType.CLASS;
+      event.type = plans[i].type === 'EXAM' ? EasEventType.EXAM : EasEventType.CLASS;
+      event.timetableId = plans[i].timetableId;
       event.name = plans[i].name;
       event.place = plans[i].place;
       event.subjectId = plans[i].subjectId;
@@ -209,7 +204,8 @@ export class ClassReminderScheduler {
     return events;
   }
 
-  private static async publishAlert(title: string, text: string, id: number): Promise<string> {
+  private static async publishAlert(title: string, text: string, id: number,
+    context: common.UIAbilityContext, event: EasEventItem): Promise<string> {
     await ClassReminderScheduler.ensureSlot();
     try {
       const request: notificationManager.NotificationRequest = {
@@ -225,6 +221,15 @@ export class ClassReminderScheduler {
           }
         }
       };
+      if (context.abilityInfo !== undefined) {
+        request.wantAgent = await wantAgent.getWantAgent({
+          wants: [{ bundleName: context.abilityInfo.bundleName, abilityName: context.abilityInfo.name,
+            parameters: { hitaReminderEventId: event.id, hitaReminderTimetableId: event.timetableId } }],
+          operationType: wantAgent.OperationType.START_ABILITY,
+          requestCode: id,
+          wantAgentFlags: [wantAgent.WantAgentFlags.UPDATE_PRESENT_FLAG]
+        });
+      }
       await notificationManager.publish(request);
       return '';
     } catch (e) {

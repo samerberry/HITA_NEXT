@@ -534,10 +534,10 @@ export class RdbHelper {
     });
   }
 
-  async getTimetableById(id: string): Promise<EasTimetable | undefined> {
+  async getTimetableById(id: string, strict: boolean = false): Promise<EasTimetable | undefined> {
     const pred: relationalStore.RdbPredicates = new relationalStore.RdbPredicates('timetable');
     pred.equalTo('id', id);
-    return RdbHelper.firstRow(await this.qry(pred), (col: (name: string) => ValueGetter) => {
+    return RdbHelper.firstRow(await (strict ? this.s().query(pred) : this.qry(pred)), (col: (name: string) => ValueGetter) => {
       const t: EasTimetable = new EasTimetable();
       t.id = col('id').str();
       t.name = col('name').str();
@@ -547,7 +547,7 @@ export class RdbHelper {
       t.createdAt = col('createdAt').num();
       t.scheduleStructure = EasTimetable.decodeStructure(col('scheduleStructure').str());
       return t;
-    });
+    }, strict);
   }
 
   async getTimetableByEasCode(easCode: string): Promise<EasTimetable | undefined> {
@@ -747,6 +747,64 @@ export class RdbHelper {
     }
   }
 
+  /** Atomic reschedule, cancellation and undo, guarded by the original occurrence snapshot. */
+  async replaceCourseOccurrences(before: EasEventItem[], after: EasEventItem[], timetableId: string): Promise<void> {
+    if (timetableId.length === 0 || (before.length === 0 && after.length === 0)) throw new Error('Missing course identity');
+    const all: EasEventItem[] = before.concat(after);
+    if (all.some((item: EasEventItem): boolean => item.type !== EasEventType.CLASS ||
+      item.timetableId !== timetableId || item.id.length === 0)) throw new Error('Invalid course scope');
+    if (new Set(before.map((item: EasEventItem): string => item.id)).size !== before.length ||
+      new Set(after.map((item: EasEventItem): string => item.id)).size !== after.length) throw new Error('Duplicate occurrence');
+    await this.writeTransaction(async (transaction: relationalStore.Transaction): Promise<void> => {
+      const tables: relationalStore.ResultSet = await transaction.query(
+        new relationalStore.RdbPredicates('timetable').equalTo('id', timetableId), ['endTime']);
+      let endTime: number = 0;
+      try {
+        if (!tables.goToFirstRow()) throw new Error('Timetable no longer exists');
+        endTime = tables.getLong(tables.getColumnIndex('endTime'));
+      } finally { tables.close(); }
+      // Check the complete snapshot before any write, including undo. Reject concurrent edits.
+      for (const item of before) {
+        const rows: relationalStore.ResultSet = await transaction.query(
+          new relationalStore.RdbPredicates('events').equalTo('id', item.id).equalTo('timetableId', timetableId));
+        const current: EasEventItem | undefined = RdbHelper.firstRow(rows, RdbHelper.eventMapper);
+        if (current === undefined || current.type !== item.type || current.subjectId !== item.subjectId ||
+          current.from !== item.from || current.to !== item.to || current.name !== item.name ||
+          current.place !== item.place || current.teacher !== item.teacher || current.color !== item.color ||
+          current.fromNumber !== item.fromNumber || current.lastNumber !== item.lastNumber) {
+          throw new Error('Course changed; refresh before editing');
+        }
+      }
+      for (const item of before) {
+        if (!after.some((next: EasEventItem): boolean => next.id === item.id)) {
+          await transaction.delete(new relationalStore.RdbPredicates('events')
+            .equalTo('id', item.id).equalTo('timetableId', timetableId));
+        }
+      }
+      for (const item of after) {
+        if (item.to <= item.from) throw new Error('Invalid course time');
+        const existing: boolean = before.some((previous: EasEventItem): boolean => previous.id === item.id);
+        if (existing) {
+          const values: relationalStore.ValuesBucket = RdbHelper.eventValues(item);
+          if (await transaction.update(values, new relationalStore.RdbPredicates('events')
+            .equalTo('id', item.id).equalTo('timetableId', timetableId)) !== 1) throw new Error('Course update failed');
+        } else {
+          const subjects: relationalStore.ResultSet = await transaction.query(
+            new relationalStore.RdbPredicates('subject').equalTo('id', item.subjectId).equalTo('timetableId', timetableId), ['id']);
+          try { if (!subjects.goToFirstRow()) throw new Error('Subject no longer exists'); } finally { subjects.close(); }
+          const duplicates: relationalStore.ResultSet = await transaction.query(
+            new relationalStore.RdbPredicates('events').equalTo('id', item.id), ['id']);
+          try { if (duplicates.goToFirstRow()) throw new Error('Occurrence already exists'); } finally { duplicates.close(); }
+          if (await transaction.insert('events', RdbHelper.eventValues(item)) < 0) throw new Error('Course restore failed');
+        }
+      }
+      let lastEnd: number = endTime;
+      for (const item of after) lastEnd = Math.max(lastEnd, item.to);
+      if (lastEnd > endTime) await transaction.update({ endTime: CourseDateSelection.weekEnd(lastEnd) },
+        new relationalStore.RdbPredicates('timetable').equalTo('id', timetableId));
+    });
+  }
+
   /** Edit in place: failed writes must not remove or recreate an existing event. */
   async updateEvent(e: EasEventItem): Promise<void> {
     try {
@@ -799,11 +857,11 @@ export class RdbHelper {
   }
 
   /** 某课表全部事件（对应 getEventsOfTimetableSync）。 */
-  async getEventsOfTimetable(timetableId: string): Promise<EasEventItem[]> {
+  async getEventsOfTimetable(timetableId: string, strict: boolean = false): Promise<EasEventItem[]> {
     const pred: relationalStore.RdbPredicates = new relationalStore.RdbPredicates('events');
     pred.equalTo('timetableId', timetableId);
     pred.orderByAsc('fromTime');
-    return RdbHelper.readRows(await this.qry(pred), RdbHelper.eventMapper);
+    return RdbHelper.readRows(await (strict ? this.s().query(pred) : this.qry(pred)), RdbHelper.eventMapper, strict);
   }
 
   async getClassesOfSubject(subjectId: string): Promise<EasEventItem[]> {
@@ -948,47 +1006,53 @@ export class RdbHelper {
   }
 
   private static readRows<T>(rs: relationalStore.ResultSet | null,
-    mapper: (col: (name: string) => ValueGetter) => T): T[] {
+    mapper: (col: (name: string) => ValueGetter) => T, strict: boolean = false): T[] {
     const out: T[] = [];
     if (rs === null || rs === undefined) {
+      if (strict) throw new Error('Database read failed');
       return out;
     }
     try {
       while (rs.goToNextRow()) {
         const col = (name: string): ValueGetter => {
-          return new ValueGetter(rs, name);
+          return new ValueGetter(rs, name, strict);
         };
         out.push(mapper(col));
       }
     } catch (e) {
+      if (strict) throw new Error('Database row read failed');
     } finally {
       try {
         rs.close();
       } catch (e) {
+        if (strict) throw new Error('Database close failed');
       }
     }
     return out;
   }
 
   private static firstRow<T>(rs: relationalStore.ResultSet | null,
-    mapper: (col: (name: string) => ValueGetter) => T): T | undefined {
+    mapper: (col: (name: string) => ValueGetter) => T, strict: boolean = false): T | undefined {
     if (rs === null || rs === undefined) {
+      if (strict) throw new Error('Database read failed');
       return undefined;
     }
     try {
       if (rs.goToNextRow()) {
         const col = (name: string): ValueGetter => {
-          return new ValueGetter(rs, name);
+          return new ValueGetter(rs, name, strict);
         };
         return mapper(col);
       }
       return undefined;
     } catch (e) {
+      if (strict) throw new Error('Database row read failed');
       return undefined;
     } finally {
       try {
         rs.close();
       } catch (e) {
+        if (strict) throw new Error('Database close failed');
       }
     }
   }
@@ -998,10 +1062,12 @@ export class RdbHelper {
 class ValueGetter {
   private rs: relationalStore.ResultSet;
   private name: string;
+  private strict: boolean;
 
-  constructor(rs: relationalStore.ResultSet, name: string) {
+  constructor(rs: relationalStore.ResultSet, name: string, strict: boolean = false) {
     this.rs = rs;
     this.name = name;
+    this.strict = strict;
   }
 
   str(): string {
@@ -1010,6 +1076,7 @@ class ValueGetter {
       const v = this.rs.getString(idx);
       return v === undefined || v === null ? '' : v;
     } catch (e) {
+      if (this.strict) throw new Error('Database column read failed');
       return '';
     }
   }
@@ -1020,6 +1087,7 @@ class ValueGetter {
       const v = this.rs.getLong(idx);
       return v === undefined || v === null ? 0 : Number(v);
     } catch (e) {
+      if (this.strict) throw new Error('Database column read failed');
       return 0;
     }
   }
@@ -1031,6 +1099,7 @@ class ValueGetter {
       const v = this.rs.getDouble(idx);
       return v === undefined || v === null ? 0 : Number(v);
     } catch (e) {
+      if (this.strict) throw new Error('Database column read failed');
       return 0;
     }
   }

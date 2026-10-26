@@ -14,15 +14,20 @@ const slice = (start, end) => {
 };
 
 function harness() {
-  const state = { calls: [], toasts: [], run: async () => ({ success: true, message: 'Exported' }) };
+  const state = { calls: [], disabled: [], enabled: true, toasts: [],
+    run: async () => ({ success: true, message: 'Exported' }), cleanup: async () => { state.enabled = false; } };
   const context = {
     getHostContext: () => ({}),
     getPromptAction: () => ({ showToast: value => state.toasts.push(value.message) })
   };
   const exporter = {
-    async exportTimetable(ctx, timetable) {
+    async enable(ctx, timetable) {
       state.calls.push(timetable);
       return state.run(ctx, timetable);
+    },
+    async disable(ctx, id) {
+      state.disabled.push(id);
+      await state.cleanup();
     }
   };
   const binding = slice('.bindSheet($$this.activeSheetVisible,', '\n  @Builder\n  compatibleDock()');
@@ -33,6 +38,8 @@ function harness() {
       currentTimetable = { id: 'a', name: 'Term A' };
       calendarExportTimetable;
       calendarExporting = false;
+      calendarSyncEnabled = true;
+      calendarExportSyncEnabled = false;
       calendarExportSheetOpen = false;
       activeSheetVisible = false;
       pageVisible = true;
@@ -50,8 +57,8 @@ function harness() {
   const output = ts.transpileModule(code, {
     compilerOptions: { target: ts.ScriptTarget.ES2020 }
   }).outputText;
-  const page = new Function('context', 'TimetableCalendarExporter', output + '; return new Home();')(
-    context, exporter);
+  const page = new Function('context', 'ScheduleSyncService', 'CalendarSyncStore', output + '; return new Home();')(
+    context, exporter, { getInstance: () => ({ enabled: async () => state.enabled }) });
   return { page, state };
 }
 
@@ -63,6 +70,11 @@ test('the entry opens a bottom confirmation sheet; only its confirm button start
   assert.doesNotMatch(more, /this\.exportToCalendar\(\)/);
   assert.match(active, /this\.calendarExportConfirmationSheet\(this\.calendarExportTimetable as EasTimetable\)/);
   assert.match(sheet, /Text\(timetable\.name\)/);
+  assert.match(sheet, /Toggle\(\{ type: ToggleType.Switch, isOn: this\.calendarExportSyncEnabled \}\)/);
+  assert.match(sheet, /Button\('保存'/);
+  const reminder = slice('  classReminderSettings()', '  moreNavigationRow(');
+  assert.doesNotMatch(reminder, /calendarSync|同步到手机日历|当前课表|立即同步/);
+  assert.doesNotMatch(sheet, /将此课表|之后调课|提醒时间沿用/);
   assert.match(sheet, /\.onClick\(\(\) => this\.cancelCalendarExport\(\)\)/);
   assert.match(sheet, /\.onClick\(\(\) => this\.exportToCalendar\(\)\)/);
   assert.match(home, /\.bindSheet\(\$\$this\.activeSheetVisible,[\s\S]*?SheetSize\.FIT_CONTENT[\s\S]*?preferType: SheetType\.BOTTOM/);
@@ -121,9 +133,52 @@ test('confirm exports the displayed timetable once and retains it after dismissa
   release({ success: true, message: 'Exported' });
   await first;
   assert.equal(page.calendarExporting, false);
-  assert.deepEqual(state.toasts, ['Exported']);
+  assert.deepEqual(state.toasts, ['已同步']);
   page.requestCalendarExport();
   assert.equal(page.calendarExportTimetable.id, 'b');
+});
+
+test('changing the draft switch and dismissing never changes calendar settings; reopening restores saved state', async () => {
+  const { page, state } = harness();
+  page.requestCalendarExport();
+  assert.equal(page.calendarExportSyncEnabled, true);
+  page.calendarExportSyncEnabled = false;
+  page.cancelCalendarExport(); page.dismissSheet();
+  assert.deepEqual(state.disabled, []);
+  assert.deepEqual(state.calls, []);
+  assert.equal(state.enabled, true);
+  page.requestCalendarExport();
+  assert.equal(page.calendarExportSyncEnabled, true);
+});
+
+test('saving off cleans only the displayed timetable, and an already-off setting never touches the calendar', async () => {
+  const { page, state } = harness();
+  page.requestCalendarExport();
+  page.calendarExportSyncEnabled = false;
+  page.currentTimetable = { id: 'b', name: 'Term B' };
+  await page.exportToCalendar();
+  assert.deepEqual(state.disabled, ['a']);
+  assert.deepEqual(state.calls, []);
+  assert.equal(state.enabled, false);
+  page.dismissSheet();
+  page.currentTimetable = { id: 'a', name: 'Term A' };
+  page.calendarSyncEnabled = false;
+  page.requestCalendarExport();
+  await page.exportToCalendar();
+  assert.deepEqual(state.disabled, ['a']);
+  assert.equal(page.calendarExporting, false);
+});
+
+test('failed cleanup retains the enabled setting and releases the sheet operation lock', async () => {
+  const { page, state } = harness();
+  state.cleanup = async () => { throw Error('Permission denied'); };
+  page.requestCalendarExport(); page.calendarExportSyncEnabled = false;
+  await page.exportToCalendar(); page.dismissSheet();
+  assert.equal(page.calendarSyncEnabled, true);
+  assert.equal(page.calendarExporting, false);
+  page.requestCalendarExport();
+  assert.equal(page.calendarExportSyncEnabled, true);
+  assert.match(state.toasts[0], /失败/);
 });
 
 test('missing selection and another active sheet cannot initiate calendar export', async () => {

@@ -309,7 +309,12 @@ test('editing a period-created course by clock clears stale period numbers but d
     if (changed) form.minute = 20;
     db.getEventById = async () => event;
     let stored;
-    db.updateEvent = async value => { stored = value; };
+    form.originalCourse = event; form.relatedCourses = [event];
+    db.replaceCourseOccurrences = async (_before, after) => { stored = after[0]; };
+    let dialog = 0;
+    form.getUIContext = () => ({ getPromptAction: () => ({
+      showDialog: async () => ({ index: dialog++ === 0 ? 1 : 0 }), showToast() {}
+    }) });
     await form.save();
     assert.equal(stored.fromNumber, changed ? 0 : 1);
     assert.equal(stored.lastNumber, changed ? 0 : 2);

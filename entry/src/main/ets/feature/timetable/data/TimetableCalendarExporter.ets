@@ -1,3 +1,5 @@
+import { CalendarReminderOptions, CalendarSyncStore } from './CalendarSyncStore';
+import { ReminderEventSelection } from './ReminderEventSelection';
 import { abilityAccessCtrl, common, Permissions } from '@kit.AbilityKit';
 import { calendarManager } from '@kit.CalendarKit';
 import { BusinessError } from '@kit.BasicServicesKit';
@@ -10,6 +12,8 @@ const EVENT_PREFIX: string = 'hita-course:';
 
 export class CalendarExportResult {
   success: boolean = false;
+  calendarRemindersEnabled: boolean = true;
+  coverage: string[] = [];
   written: number = 0;
   total: number = 0;
   message: string = '';
@@ -20,7 +24,8 @@ export class TimetableCalendarExporter {
   private static exporting: boolean = false;
 
   static async exportTimetable(context: common.UIAbilityContext,
-    timetable: EasTimetable | undefined): Promise<CalendarExportResult> {
+    timetable: EasTimetable | undefined, requestPermission: boolean = true,
+    reminders: CalendarReminderOptions | undefined = undefined, allowEmpty: boolean = false): Promise<CalendarExportResult> {
     const result: CalendarExportResult = new CalendarExportResult();
     if (timetable === undefined) {
       result.message = '请先新建或导入课表';
@@ -34,27 +39,45 @@ export class TimetableCalendarExporter {
     try {
       const rdb: RdbHelper = RdbHelper.getInstance();
       await rdb.init(context);
-      const saved: EasTimetable | undefined = await rdb.getTimetableById(timetable.id);
+      const saved: EasTimetable | undefined = await rdb.getTimetableById(timetable.id, true);
       if (saved === undefined) {
         result.message = '课表不存在或已删除';
         return result;
       }
-      const events: calendarManager.Event[] = TimetableCalendarExporter.calendarEvents(
-        saved, await rdb.getEventsOfTimetable(saved.id));
+      const sources: EasEventItem[] = await rdb.getEventsOfTimetable(saved.id, true);
+      const events: calendarManager.Event[] = TimetableCalendarExporter.calendarEvents(saved, sources, reminders);
+      if (reminders !== undefined) {
+        for (const event of ReminderEventSelection.blocks(sources)) {
+          if ((event.type === EasEventType.CLASS && reminders.classes) || (event.type === EasEventType.EXAM && reminders.exams)) {
+            result.coverage.push(CalendarSyncStore.coverageKey(event.id, event.from,
+              event.type === EasEventType.EXAM ? reminders.examMinutes : reminders.classMinutes));
+          }
+        }
+      }
       result.total = events.length;
-      if (events.length === 0) {
+      if (events.length === 0 && !allowEmpty) {
         result.message = '当前课表没有可导出的课程';
         return result;
       }
-      const permission = await abilityAccessCtrl.createAtManager().requestPermissionsFromUser(
-        context, CALENDAR_PERMISSIONS);
-      if (permission.authResults.length !== CALENDAR_PERMISSIONS.length ||
-        permission.authResults.some((status: number): boolean => status !== 0)) {
-        result.message = '未获得日历权限，请在系统设置中允许 HITA 访问日历后重试';
-        return result;
+      if (requestPermission) {
+        const permission = await abilityAccessCtrl.createAtManager().requestPermissionsFromUser(context, CALENDAR_PERMISSIONS);
+        if (permission.authResults.length !== CALENDAR_PERMISSIONS.length ||
+          permission.authResults.some((status: number): boolean => status !== 0)) {
+          result.message = '未获得日历权限，请在系统设置中允许 HITA 访问日历后重试';
+          return result;
+        }
       }
       const calendar: calendarManager.Calendar = await TimetableCalendarExporter.getCalendar(context, saved);
+      if (reminders !== undefined && requestPermission) {
+        const config: calendarManager.CalendarConfig = await calendar.getConfig();
+        config.enableReminder = true;
+        await calendar.setConfig(config);
+      }
       await TimetableCalendarExporter.writeEvents(calendar, events, result);
+      if (reminders !== undefined && !(await calendar.getConfig()).enableReminder) {
+        result.calendarRemindersEnabled = false;
+        result.coverage = [];
+      }
       result.success = true;
       hilog.info(0x0000, 'TimetableCalendar', 'export complete total=%{public}d', result.total);
       result.message = '已将 ' + result.total.toString() + ' 条日程导出至手机日历';
@@ -79,6 +102,17 @@ export class TimetableCalendarExporter {
     return result;
   }
 
+  /** Remove our exports only; retain the account and every user-created event. Never create an account to clean it. */
+  static async clearTimetable(context: common.UIAbilityContext, timetableId: string): Promise<void> {
+    const manager: calendarManager.CalendarManager = calendarManager.getCalendarManager(context);
+    const calendars: calendarManager.Calendar[] = await manager.getAllCalendars();
+    for (const calendar of calendars) {
+      const account: calendarManager.CalendarAccount = calendar.getAccount();
+      if (account.name !== 'hita-timetable-' + timetableId || account.type !== calendarManager.CalendarType.LOCAL) continue;
+      await TimetableCalendarExporter.writeEvents(calendar, [], new CalendarExportResult());
+    }
+  }
+
   private static async getCalendar(context: common.UIAbilityContext,
     timetable: EasTimetable): Promise<calendarManager.Calendar> {
     const manager: calendarManager.CalendarManager = calendarManager.getCalendarManager(context);
@@ -98,10 +132,13 @@ export class TimetableCalendarExporter {
     if (!Number.isFinite(created.id) || created.id <= 0) {
       throw new Error('CALENDAR_CREATE_FAILED');
     }
+    await created.setConfig({ enableReminder: true });
     return created;
   }
 
-  private static calendarEvents(timetable: EasTimetable, sources: EasEventItem[]): calendarManager.Event[] {
+  private static calendarEvents(timetable: EasTimetable, sources: EasEventItem[],
+    reminders: CalendarReminderOptions | undefined = undefined): calendarManager.Event[] {
+    const starts: Set<string> = new Set<string>(ReminderEventSelection.blocks(sources).map((event: EasEventItem): string => event.id));
     const events: calendarManager.Event[] = [];
     const identifiers: Set<string> = new Set<string>();
     for (let i: number = 0; i < sources.length; i++) {
@@ -136,7 +173,10 @@ export class TimetableCalendarExporter {
         timeZone: 'Asia/Shanghai',
         location: { location: source.place },
         description: description.join('\n'),
-        identifier: identifier
+        identifier: identifier,
+        reminderTime: reminders === undefined || !starts.has(source.id) ? [] :
+          (source.type === EasEventType.CLASS && reminders.classes ? [reminders.classMinutes] :
+            (source.type === EasEventType.EXAM && reminders.exams ? [reminders.examMinutes] : []))
       };
       events.push(event);
     }
@@ -148,22 +188,22 @@ export class TimetableCalendarExporter {
     // Native overload dispatch rejects an explicit undefined filter (401).
     // API 20+ includes id and identifier in the no-argument query's default fields.
     const existing: calendarManager.Event[] = await calendar.getEvents();
-    const byIdentifier: Map<string, number> = new Map<string, number>();
+    const byIdentifier: Map<string, calendarManager.Event> = new Map<string, calendarManager.Event>();
     for (let i: number = 0; i < existing.length; i++) {
       const event: calendarManager.Event = existing[i];
       if (event.identifier !== undefined && event.identifier.startsWith(EVENT_PREFIX) &&
         event.id !== undefined && event.id > 0) {
-        byIdentifier.set(event.identifier, event.id);
+        byIdentifier.set(event.identifier, event);
       }
     }
     const keptIds: Set<number> = new Set<number>();
     for (let i: number = 0; i < events.length; i++) {
       const event: calendarManager.Event = events[i];
-      const existingId: number | undefined = byIdentifier.get(event.identifier as string);
-      if (existingId !== undefined) {
-        event.id = existingId;
-        await calendar.updateEvent(event);
-        keptIds.add(existingId);
+      const previous: calendarManager.Event | undefined = byIdentifier.get(event.identifier as string);
+      if (previous !== undefined) {
+        event.id = previous.id;
+        if (!TimetableCalendarExporter.sameContent(previous, event)) await calendar.updateEvent(event);
+        keptIds.add(previous.id as number);
       } else {
         const id: number = await calendar.addEvent(event);
         if (!Number.isFinite(id) || id <= 0) {
@@ -182,5 +222,11 @@ export class TimetableCalendarExporter {
         await calendar.deleteEvent(event.id);
       }
     }
+  }
+
+  private static sameContent(a: calendarManager.Event, b: calendarManager.Event): boolean {
+    return a.type === b.type && a.title === b.title && a.startTime === b.startTime && a.endTime === b.endTime &&
+      a.isAllDay === b.isAllDay && a.timeZone === b.timeZone && a.description === b.description &&
+      a.location?.location === b.location?.location && JSON.stringify(a.reminderTime ?? []) === JSON.stringify(b.reminderTime ?? []);
   }
 }

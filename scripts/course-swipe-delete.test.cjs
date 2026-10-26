@@ -122,7 +122,7 @@ test('failed deletion and missing course roll back without touching other rows',
 async function confirmCourse(choice, fail = false, reminderFail = false, options = {}) {
   const source = pageSource;
   const method = source.slice(source.indexOf('  private currentSubjectRow('),
-    source.indexOf('  private cycleColor(')).replace('private confirmDeleteCourse', 'confirmDeleteCourse');
+    source.indexOf('  /** 教务数据未提供考核方式')).replace('private confirmDeleteCourse', 'confirmDeleteCourse');
   const js = ts.transpileModule('class Host { ' + method + ' }; module.exports = Host;', {
     compilerOptions: { target: ts.ScriptTarget.ES2020 }
   }).outputText;

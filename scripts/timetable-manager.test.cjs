@@ -99,6 +99,7 @@ function summaryHarness() {
     getUIContext() { return { getHostContext: () => ({}), setKeyboardAvoidMode() {} }; }
     startClock() {}
     checkTimetableUpdate() {}
+    async openPendingReminder() {}
     updateTodayHighlights() {}
     drawTimetableNow() {}
     static defaultCanvasColor() { return 1; }
@@ -106,7 +107,7 @@ function summaryHarness() {
     ${homeMethod('  async refreshSummaries(', '  private classReminderSubtitle()')}
   }`;
   const page = new Function('RdbHelper', 'EasSessionStore', 'TimetableSelectionStore', 'TimetableResolver',
-    'EasEventType', 'DAY_MS', 'KeyboardAvoidMode', 'WidgetBackgroundStore', 'NextClassWidgetService',
+    'EasEventType', 'DAY_MS', 'KeyboardAvoidMode', 'WidgetBackgroundStore', 'NextClassWidgetService', 'CalendarSyncStore',
     ts.transpileModule(code, {
       compilerOptions: { target: ts.ScriptTarget.ES2020 }
     }).outputText + '; return new Home();')(
@@ -116,7 +117,7 @@ function summaryHarness() {
       load: async () => state.selectedId,
       clearIf: async id => { if (state.selectedId === id) state.selectedId = ''; }
     }) }, module.exports.TimetableResolver, { EXAM: 'EXAM' }, 86400000, { NONE: 0 },
-    { hasBackground: () => false }, { scheduleRefresh() {} });
+    { hasBackground: () => false }, { scheduleRefresh() {} }, { getInstance: () => ({ enabled: async () => false }) });
   return { page, state, table };
 }
 
