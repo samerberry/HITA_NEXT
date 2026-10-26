@@ -49,10 +49,11 @@ test('page and sheet header back buttons stay on the leading side', () => {
 
 test('timetable detail uses an aligned color circle instead of the old back button and stripe', () => {
   const home = read('pages/Home.ets');
-  const header = home.slice(home.indexOf('  courseDetailSheet('), home.indexOf('  courseDetailRow('));
-  const row = home.slice(home.indexOf('  courseDetailRow('), home.indexOf('  private static canvasColorCss('));
-  assert.match(home, /const COURSE_DETAIL_ICON_SIZE: number = 38;/);
-  assert.match(home, /const COURSE_DETAIL_TEXT_GAP: number = 12;/);
+  const content = read('feature/timetable/views/CourseDetailContent.ets');
+  const header = content.slice(content.indexOf('  build() {'), content.indexOf('      if (this.courseColorEditing) {'));
+  const row = content.slice(content.indexOf('  courseDetailRow(symbol'), content.indexOf('  private static canvasColorCss('));
+  assert.match(content, /const COURSE_DETAIL_ICON_SIZE: number = 38;/);
+  assert.match(content, /const COURSE_DETAIL_TEXT_GAP: number = 12;/);
   assert.match(header, /Row\(\) \{\s*Circle\(\)/);
   assert.doesNotMatch(header, /HeaderBackButton|\.width\(7\)|\.height\(50\)/);
   for (const section of [header, row]) {
@@ -62,8 +63,8 @@ test('timetable detail uses an aligned color circle instead of the old back butt
     assert.match(section, /\.margin\(\{ left: COURSE_DETAIL_TEXT_GAP \}\)/);
     assert.match(section, /\.alignItems\(HorizontalAlign\.Start\)/);
   }
-  assert.match(header, /CirclePaintModifier\(Home\.canvasColorCss\(timetableBlockColor\(\s*this\.courseColorEditing \? this\.courseColorPreview : event\.color\)\)\)/);
-  assert.match(header, /event\.type === EasEventType\.EXAM \? '考试详情' : '课程详情'/);
+  assert.match(header, /CirclePaintModifier\(CourseDetailContent\.canvasColorCss\(timetableBlockColor\(\s*this\.courseColorEditing \? this\.courseColorPreview : this\.event\.color\)\)\)/);
+  assert.match(header, /this\.event\.type === EasEventType\.EXAM \? '考试详情' : '课程详情'/);
   assert.match(home, /\.bindSheet\(\$\$this\.activeSheetVisible,[\s\S]*?dragBar: true/);
 });
 
@@ -77,7 +78,7 @@ test('local and remote exam details use aligned color circles with live palette 
   assert.equal((details.match(/\.margin\(\{ left: DETAIL_TEXT_GAP \}\)/g) || []).length, 2);
   assert.equal((details.match(/onPreview: \(color: number\) => \{ this\.examColorPreview = color; \}/g) || []).length, 2);
   assert.equal((details.match(/this\.examColorEditing \? this\.examColorPreview/g) || []).length, 2);
-  assert.match(read('pages/Home.ets'), /onPreview: \(color: number\) => \{ this\.courseColorPreview = color; \}/);
+  assert.match(read('feature/timetable/views/CourseDetailContent.ets'), /onPreview: \(color: number\) => \{ this\.courseColorPreview = color; \}/);
 });
 
 test('login uses one app-return button and no overlapping system close control', () => {
@@ -113,11 +114,8 @@ test('manager selection cancel and course editor cancel keep their behavior', ()
   const sheet = detail.slice(detail.indexOf('  private courseDetailSheet('),
     detail.indexOf('  private courseProgressText('));
   assert.doesNotMatch(sheet, /HeaderBackButton|confirmDeleteEvent|删除课程|\.width\(7\)|\.height\(50\)/);
-  assert.match(sheet, /Row\(\) \{\s*Circle\(\)/);
-  assert.equal((sheet.match(/\.width\(COURSE_DETAIL_ICON_SIZE\)/g) || []).length, 2);
-  assert.equal((sheet.match(/\.height\(COURSE_DETAIL_ICON_SIZE\)/g) || []).length, 2);
-  assert.equal((sheet.match(/\.margin\(\{ left: COURSE_DETAIL_TEXT_GAP \}\)/g) || []).length, 2);
-  assert.match(sheet, /CirclePaintModifier/);
+  // 详情布局已抽取为共享组件，与管理页之外的时间表详情保持同构。
+  assert.match(sheet, /CourseDetailContent\(\{/);
   assert.match(sheet, /this\.openEditEvent\(event\)/);
   assert.match(detail, /\.bindSheet\(\$\$this\.sheetVisible,[\s\S]*?dragBar: true/);
 });

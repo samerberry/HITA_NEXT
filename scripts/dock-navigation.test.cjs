@@ -194,7 +194,11 @@ test('Home wires both renderers through the release target and deferred change g
   assert.match(home, /onDockTouch:[\s\S]*?this\.observeDockTouch\(event, true\)/);
   assert.match(home, /releaseTarget\(\)[\s\S]*?this\.requestDockClick\(target\)/);
   assert.match(home, /setTimeout\(\(\) => \{\s*this\.dockNavigation\.commitClick/);
-  assert.equal((home.match(/tabsController\.changeIndex/g) || []).length, 1);
+  // dock 提交路径一次；提醒通知深链打开课表再切换一次。
+  const switches = home.match(/tabsController\.changeIndex/g) || [];
+  assert.equal(switches.length, 2);
+  assert.match(home, /setTimeout\(\(\) => \{\s*this\.dockNavigation\.commitClick[\s\S]*?this\.tabsController\.changeIndex\(target\)/);
+  assert.match(home, /resetDockInteraction\(\);\s*\n\s*this\.tabsController\.changeIndex\(TAB_TIMETABLE\)/);
 });
 
 function boundedGuard() {

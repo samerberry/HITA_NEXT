@@ -163,30 +163,33 @@ test('more opens the reusable timetable importer as an expanded sheet while pres
 test('calendar confirmation uses the guarded sheet material without changing export or cancel controls', () => {
   const home = read('ets/pages/Home.ets');
   const sheet = home.slice(home.indexOf('  calendarExportConfirmationSheet('), home.indexOf('  tabToday('));
-  assert.match(sheet, /Text\('导出至手机日历'\)/);
-  assert.match(sheet, /onClick\(\(\) => this.cancelCalendarExport\(\)\)/);
-  assert.match(sheet, /onClick\(\(\) => this.exportToCalendar\(\)\)/);
-  assert.equal((sheet.match(/\.enabled\(!this.calendarExporting\)/g) || []).length, 2);
+  assert.match(sheet, /Text\('同步至手机日历'\)/);
+  assert.match(sheet, /Toggle\(\{ type: ToggleType\.Switch, isOn: this\.calendarExportSyncEnabled \}\)/);
+  assert.match(sheet, /Button\('保存'/);
+  assert.match(sheet, /onClick\(\(\) => this\.cancelCalendarExport\(\)\)/);
+  assert.match(sheet, /onClick\(\(\) => this\.exportToCalendar\(\)\)/);
+  assert.equal((sheet.match(/\.enabled\(!this\.calendarExporting\)/g) || []).length, 3);
   assert.doesNotMatch(sheet, /\.backgroundColor\(COLOR_SURFACE\)|systemMaterial/);
   assert.match(sheet, /ImmersiveHeader\(\{ barHeight: 46 \}\)/);
 });
 
 test('course palette button keeps a stable circle host, original preview and toggle callbacks', () => {
   const home = read('ets/pages/Home.ets');
-  const course = home.slice(home.indexOf('  courseDetailSheet('), home.indexOf('  courseDetailRow('));
-  assert.match(course, /ImmersiveHeader\(\{ barHeight: 44, materialEnabled: CompatibleSheetMaterial.isEnabled\(\) \}\)/);
+  const content = read('ets/feature/timetable/views/CourseDetailContent.ets');
+  const course = content.slice(content.indexOf('  build() {'), content.indexOf('      if (this.courseColorEditing) {'));
+  assert.match(course, /ImmersiveHeader\(\{ barHeight: 44, materialEnabled: CompatibleSheetMaterial\.isEnabled\(\) \}\)/);
   assert.match(course, /\.width\(44\).height\(44\).padding\(0\).flexShrink\(0\)/);
   assert.match(course, /\.width\(44\).height\(44\).flexShrink\(0\)/);
-  assert.match(course, /new CompatibleMaterialModifier\(COLOR_NAV_ACTIVE, false, CompatibleSheetMaterial.isEnabled\(\)\)/);
-  assert.match(course, /this.courseColorPreview = event.color;\s*this.courseColorEditing = !this.courseColorEditing/);
-  assert.match(course, /onSave: async \(color: number\) => \{ await this.saveCourseColor\(event, color\)/);
-  assert.match(course, /onCancel: \(\) => \{ this.courseColorEditing = false/);
+  assert.match(course, /new CompatibleMaterialModifier\(COLOR_NAV_ACTIVE, false, CompatibleSheetMaterial\.isEnabled\(\)\)/);
+  assert.match(course, /this\.courseColorPreview = this\.event\.color;\s*this\.courseColorEditing = !this\.courseColorEditing/);
+  assert.match(home, /onSaveColor: async \(color: number\) => \{ await this\.saveCourseColor\(event, color\)/);
+  assert.match(content, /onCancel: \(\) => \{ this\.courseColorEditing = false/);
 });
 
 test('course and timetable text color actions share the material footer while retaining the legacy fallback', () => {
-  const home = read('ets/pages/Home.ets');
-  assert.equal((home.match(/immersiveControls: true/g) || []).length, 1);
-  assert.match(home, /initialColor: event.color,\s*immersiveControls: true/);
+  const content = read('ets/feature/timetable/views/CourseDetailContent.ets');
+  assert.equal((content.match(/immersiveControls: true/g) || []).length, 1);
+  assert.match(content, /initialColor: this\.event\.color,\s*immersiveControls: true/);
   const display = read('ets/feature/timetable/views/TimetableDisplaySettings.ets');
   assert.match(display, /textMode: this\.editing === 'text',[\s\S]*immersiveControls: true/);
   assert.match(display, /new CompatibleMaterialModifier/);

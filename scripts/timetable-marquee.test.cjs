@@ -363,11 +363,12 @@ test('timetable taps open detail for exams as well as classes', () => {
   const tap = home.slice(home.indexOf('  private openCourseAt'), home.indexOf('  private courseProgressText'));
   assert.match(tap, /event\.type === EasEventType\.CLASS \|\| event\.type === EasEventType\.EXAM/);
   assert.match(tap, /timetableEventSpan/);
-  const detail = home.slice(home.indexOf('  courseDetailSheet'), home.indexOf('  courseDetailRow'));
-  assert.match(detail, /event\.type === EasEventType\.EXAM \? '考试详情' : '课程详情'/);
-  assert.match(home, /event\.type === EasEventType\.EXAM \? '考场' : '教室'/);
-  assert.match(home, /if \(event\.type !== EasEventType\.EXAM\) \{[\s\S]*?Home\.coursePeriodText\(event\)/);
-  assert.match(home, /'类型', '考试'/);
+  assert.match(home, /periodText: Home\.coursePeriodText\(event\)/);
+  const detail = fs.readFileSync(path.join(root, 'feature/timetable/views/CourseDetailContent.ets'), 'utf8');
+  assert.match(detail, /this\.event\.type === EasEventType\.EXAM \? '考试详情' : '课程详情'/);
+  assert.match(detail, /this\.event\.type === EasEventType\.EXAM \? '考场' : '教室'/);
+  assert.match(detail, /if \(this\.event\.type !== EasEventType\.EXAM\) \{[\s\S]*?'节次', this\.periodText\)/);
+  assert.match(detail, /'类型', '考试'/);
 });
 
 test('native card surfaces match legacy bounds and preserve all title and classroom positions', () => {
