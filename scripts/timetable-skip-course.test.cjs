@@ -266,10 +266,10 @@ test('skip UI exists only in timetable class details and uses the red material h
   assert.match(detail, /deleteLabel: string = '翘课'/);
   assert.match(detail, /Button\('编辑'[\s\S]*Button\(this\.deleteLabel/);
   assert.match(detail, /if \(this\.event\.type === EasEventType\.CLASS\)[\s\S]*Button\(this\.deleteLabel/);
-  assert.match(detail, /ImmersiveHeader\(\{ barHeight: 40/);
-  assert.match(detail, /CompatibleMaterialModifier\('#E84040', true/);
-  assert.match(detail, /'#EBE84040', false\)/);
-  assert.match(detail, /Button\(this\.deleteLabel[\s\S]*?\.height\(32\)[\s\S]*?\.fontSize\(13\)/);
+  assert.match(detail, /ImmersiveHeader\(\{ barHeight: 56/);
+  assert.match(detail, /CompatibleMaterialModifier\(\$r\('app.color.hita_error_fill'\), true/);
+  assert.match(detail, /\$r\('app.color.hita_error_fill'\), false\)/);
+  assert.match(detail, /Button\(this\.deleteLabel[\s\S]*?\.height\(HitaDesign.buttonHeight\)[\s\S]*?\.fontSize\(HitaDesign.body\)/);
   assert.doesNotMatch(detail, /\.width\(132\)|\.height\(52\)/);
   assert.match(detail, /\.justifyContent\(FlexAlign\.End\)/);
   for (const file of ['TimetableDetailPage.ets', 'ExamPage.ets']) {

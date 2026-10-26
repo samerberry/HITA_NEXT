@@ -80,7 +80,7 @@ function database() {
   const source = read('common/db/RdbHelper.ets');
   const schemas = source.slice(source.indexOf('const CREATE_TIMETABLE:'), source.indexOf('export class RdbHelper'));
   for (const schema of new Function(compile(schemas +
-    '\nreturn [CREATE_TIMETABLE, CREATE_SUBJECT, CREATE_EVENTS, CREATE_IMPORT_BASE];'))()) {
+    '\nreturn [CREATE_TIMETABLE, CREATE_SUBJECT, CREATE_EVENTS, CREATE_IMPORT_BASE, CREATE_BACKUP_RECEIPT];'))()) {
     sql.exec(schema);
   }
   const ops = {
@@ -520,4 +520,81 @@ test('Benbu repair rolls back every timestamp and the schedule if a write or com
       }
     } finally { f.sql.close(); }
   }
+});
+
+
+test('backup snapshot reads all tables strictly and restore keeps original identities intact', async () => {
+  const f = database();
+  try {
+    await seed(f.db);
+    await f.db.saveImportedTimetable(table(), [subject()], [event('base-event')], true,
+      [new EasImportBaseEntry('Math', start, start + 3600000, 'signature')]);
+    const before = f.snapshot();
+    const snapshot = await f.db.createBackupSnapshot();
+    assert.equal(snapshot.length, 2);
+    assert.equal(snapshot.find(s => s.timetable.id === 'a').importBase[0].signature, 'signature');
+    assert.deepEqual(f.snapshot(), before);
+    // Fresh IDs are the service's validated remapping; the DB must never upsert over existing records.
+    const copy = structuredClone(snapshot);
+    for (const item of copy) {
+      const id = item.timetable.id + '-restored';
+      item.timetable.id = id;
+      for (const s of item.subjects) { s.id += '-restored'; s.timetableId = id; }
+      for (const e of item.events) { e.id += '-restored'; e.timetableId = id; e.subjectId += '-restored'; }
+    }
+    let applied = 0;
+    await f.db.restoreBackup(copy, 'receipt', async () => { applied++; });
+    assert.equal(applied, 1);
+    assert.equal(await f.db.hasBackupReceipt('receipt'), true);
+    const after = f.snapshot();
+    for (let i = 0; i < after.length; i++) {
+      assert.deepEqual(after[i].filter(r => !r.id.endsWith('-restored')), before[i]);
+      assert.equal(after[i].length, before[i].length * 2);
+    }
+    assert.equal(f.sql.prepare("SELECT signature FROM import_base WHERE timetableId='a-restored'").get().signature, 'signature');
+    await assert.rejects(f.db.restoreBackup(copy, 'duplicate', async () => {}), /UNIQUE/);
+    assert.deepEqual(f.snapshot(), after);
+    assert.equal(await f.db.hasBackupReceipt('duplicate'), false);
+  } finally { f.sql.close(); }
+});
+
+test('backup restore rolls back every table and receipt on side effects or commit failure, including empty backups', async () => {
+  for (const failure of ['settings', 'commit']) {
+    const f = database();
+    try {
+      await seed(f.db);
+      const before = f.snapshot();
+      const item = { timetable: table('fresh'), subjects: [subject('fresh-subject', 'fresh')], events: [], importBase: [] };
+      if (failure === 'commit') f.rejectCommit();
+      await assert.rejects(f.db.restoreBackup([item], 'failed', async () => {
+        if (failure === 'settings') throw Error('settings failed');
+      }), /failed/);
+      assert.deepEqual(f.snapshot(), before);
+      assert.equal(await f.db.hasBackupReceipt('failed'), false);
+    } finally { f.sql.close(); }
+  }
+  const f = database();
+  try {
+    await f.db.restoreBackup([], 'settings-only', async () => {});
+    assert.equal(await f.db.hasBackupReceipt('settings-only'), true);
+    assert.equal((await f.db.createBackupSnapshot()).length, 0);
+  } finally { f.sql.close(); }
+});
+
+test('backup snapshot refuses cursor failures instead of exporting partial data', async () => {
+  const f = database();
+  try {
+    await seed(f.db);
+    const create = f.db.store.createTransaction;
+    f.db.store.createTransaction = async () => {
+      const tx = await create();
+      const query = tx.query;
+      tx.query = async pred => pred.table === 'subject' ? {
+        goToNextRow() { throw Error('cursor failed'); }, close() {}
+      } : query(pred);
+      return tx;
+    };
+    await assert.rejects(f.db.createBackupSnapshot(), /row read failed/);
+    assert.equal(f.sql.isTransaction, false);
+  } finally { f.sql.close(); }
 });

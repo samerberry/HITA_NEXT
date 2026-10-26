@@ -1,3 +1,4 @@
+import { HitaDesign } from '../common/theme/HitaDesign';
 /**
  * NewsPage.ets — 功能中心「资讯」：博客与通知。
  */
@@ -16,7 +17,7 @@ import { EasCampus } from '../feature/eas/EasSession';
 import { EasSessionStore } from '../feature/eas/EasSessionStore';
 
 const COLOR_PRIMARY: ResourceColor = $r('app.color.hita_primary');
-const SURFACE_RGB: string = '244,247,252';
+const SURFACE_RGB: string = '245,246,248';
 const COLOR_CARD: ResourceColor = $r('app.color.hita_surface');
 const COLOR_TEXT_PRIMARY: ResourceColor = $r('app.color.hita_text');
 const COLOR_TEXT_SECONDARY: ResourceColor = $r('app.color.hita_text_secondary');
@@ -162,11 +163,11 @@ struct NewsPage {
         .margin({ right: 12 });
       Column() {
         Text('资讯')
-          .fontSize(20)
-          .fontWeight(FontWeight.Bold)
+          .fontSize(HitaDesign.title)
+          .fontWeight(FontWeight.Medium)
           .fontColor(COLOR_TEXT_PRIMARY);
         Text('博客与通知')
-          .fontSize(12)
+          .fontSize(HitaDesign.label)
           .fontColor(COLOR_TEXT_SECONDARY)
           .margin({ top: 2 });
       }
@@ -174,7 +175,7 @@ struct NewsPage {
       .alignItems(HorizontalAlign.Start);
       Button({ type: ButtonType.Circle }) {
         SymbolGlyph($r('sys.symbol.arrow_clockwise'))
-          .fontSize(18)
+          .fontSize(HitaDesign.section)
           .fontColor([CompatibleMaterialModifier.foreground(COLOR_PRIMARY)]);
       }
       .width(40)
@@ -220,7 +221,7 @@ struct NewsPage {
   @Builder
   segment(label: string, index: number) {
     Text(label)
-      .fontSize(14)
+      .fontSize(HitaDesign.caption)
       .fontWeight(this.selected === index ? FontWeight.Medium : FontWeight.Regular)
       .fontColor(this.selected === index ? COLOR_TEXT_PRIMARY : COLOR_TEXT_SECONDARY)
       .textAlign(TextAlign.Center)
@@ -304,30 +305,30 @@ struct NewsPage {
             .height(20)
             .color(COLOR_PRIMARY);
           Text(this.items.length === 0 ? '正在加载资讯…' : '正在加载更多…')
-            .fontSize(13)
+            .fontSize(HitaDesign.caption)
             .fontColor(COLOR_TEXT_HINT);
         }
       } else if (this.message.length > 0) {
         Text(this.message)
-          .fontSize(13)
+          .fontSize(HitaDesign.caption)
           .fontColor(COLOR_TEXT_HINT);
         Button('重试')
-          .fontSize(14)
+          .fontSize(HitaDesign.caption)
           .height(36)
           .fontColor(COLOR_PRIMARY)
           .backgroundColor(COLOR_NAV_ACTIVE)
-          .borderRadius(18)
+          .borderRadius(HitaDesign.cardRadius)
           .margin({ top: 10 })
           .onClick(() => {
             this.reload();
           });
         if (this.sourceUrl.length > 0) {
           Button('打开通知网站')
-            .fontSize(14)
+            .fontSize(HitaDesign.caption)
             .height(36)
             .fontColor(COLOR_PRIMARY)
             .backgroundColor(COLOR_NAV_ACTIVE)
-            .borderRadius(18)
+            .borderRadius(HitaDesign.cardRadius)
             .margin({ top: 10 })
             .onClick(() => {
               this.openSource();
@@ -335,7 +336,7 @@ struct NewsPage {
         }
       } else if (!this.hasMore && this.items.length > 0) {
         Text('没有更多了')
-          .fontSize(12)
+          .fontSize(HitaDesign.label)
           .fontColor(COLOR_TEXT_HINT);
       }
     }
@@ -361,7 +362,7 @@ struct NewsPage {
           Text(row.avatarText)
             .fontSize(NewsPresentation.avatarFontSize(row.avatarText))
             .lineHeight(row.avatarText.includes('\n') ? 13 : 18)
-            .fontWeight(FontWeight.Bold)
+            .fontWeight(FontWeight.Medium)
             .fontColor('#FFFFFF')
             .textAlign(TextAlign.Center)
             .maxLines(row.avatarText.includes('\n') ? 2 : 1)
@@ -381,8 +382,8 @@ struct NewsPage {
           // Title first, as on iOS; the date sits on its first line.
           Row() {
             Text(row.title)
-              .fontSize(16)
-              .fontWeight(FontWeight.Bold)
+              .fontSize(HitaDesign.body)
+              .fontWeight(FontWeight.Medium)
               .fontColor(COLOR_TEXT_PRIMARY)
               .lineHeight(22)
               .maxLines(2)
@@ -390,7 +391,7 @@ struct NewsPage {
               .layoutWeight(1);
             if (row.date.length > 0) {
               Text(row.date)
-                .fontSize(13)
+                .fontSize(HitaDesign.caption)
                 .lineHeight(22)
                 .fontColor(COLOR_TEXT_HINT)
                 .flexShrink(0)
@@ -404,15 +405,15 @@ struct NewsPage {
           Text() {
             if (row.tag.length > 0) {
               Span(row.tag)
-                .fontSize(11)
-                .fontWeight(FontWeight.Bold)
+                .fontSize(HitaDesign.label)
+                .fontWeight(FontWeight.Medium)
                 .fontColor(COLOR_TAG_TEXT)
                 .textBackgroundStyle({ color: COLOR_TAG_BG, radius: 4 });
               Span('  ')
-                .fontSize(13);
+                .fontSize(HitaDesign.caption);
             }
             Span(row.source)
-              .fontSize(13)
+              .fontSize(HitaDesign.caption)
               .fontColor(COLOR_TEXT_SECONDARY);
           }
           .width('100%')
@@ -423,7 +424,7 @@ struct NewsPage {
 
           if (row.body.length > 0) {
             Text(row.body)
-              .fontSize(14)
+              .fontSize(HitaDesign.caption)
               .lineHeight(20)
               .fontColor(COLOR_TEXT_SECONDARY)
               .maxLines(2)

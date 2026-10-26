@@ -45,8 +45,8 @@ test('the shared header mask supplies the existing curve and reverses it for bot
     mask.fromBottom = false;
     const expected = offsets.map((offset, i) => [HeaderFade.rgba(mask.rgb, alphas[i]), offset]);
     assert.deepEqual(mask.stops(), expected);
-    assert.equal(expected[0][0], 'rgba(244,247,252,1.000)');
-    assert.equal(expected.at(-1)[0], 'rgba(244,247,252,0.000)');
+    assert.equal(expected[0][0], 'rgba(245,246,248,1.000)');
+    assert.equal(expected.at(-1)[0], 'rgba(245,246,248,0.000)');
     mask.fromBottom = true;
     assert.deepEqual(mask.stops(), expected.slice().reverse().map(([color, offset]) => [color, 1 - offset]));
   }
@@ -246,9 +246,9 @@ test('the fade over the today column is page colour composited with the today ti
   // 0x17 alpha of #2E86E8 over the light page.
   const argb = ((23 << 24) | 0x2E86E8) >>> 0;
   const a = 23 / 255;
-  const expected = [0x2E, 0x86, 0xE8].map((c, i) => Math.round(c * a + [244, 247, 252][i] * (1 - a))).join(',');
-  assert.equal(HeaderFade.blendRgb('244,247,252', argb), expected);
-  assert.equal(HeaderFade.blendRgb('244,247,252', 0), '244,247,252');
+  const expected = [0x2E, 0x86, 0xE8].map((c, i) => Math.round(c * a + [245, 246, 248][i] * (1 - a))).join(',');
+  assert.equal(HeaderFade.blendRgb('245,246,248', argb), expected);
+  assert.equal(HeaderFade.blendRgb('245,246,248', 0), '245,246,248');
   const mask = new HeaderFadeMask();
   mask.headerHeight = 150;
   mask.highlight = argb;

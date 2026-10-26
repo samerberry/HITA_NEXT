@@ -1,3 +1,4 @@
+import { HitaDesign } from '../../../common/theme/HitaDesign';
 import { EasEventItem, EasEventType } from '../../../common/model/timetable/TimetableModels';
 import { EasTimeTools } from '../../../common/util/EasTimeTools';
 import { ImmersiveHeader } from '../../../common/components/ImmersiveHeader';
@@ -41,13 +42,13 @@ export struct CourseDetailContent {
             this.courseColorEditing ? this.courseColorPreview : this.event.color))));
         Column() {
           Text(this.event.name === 'NULL' || this.event.name.length === 0 ? '未命名课程' : this.event.name)
-            .fontSize(21)
-            .fontWeight(FontWeight.Bold)
+            .fontSize(HitaDesign.title)
+            .fontWeight(FontWeight.Medium)
             .fontColor(COLOR_TEXT_PRIMARY)
             .maxLines(2)
             .textOverflow({ overflow: TextOverflow.Ellipsis });
           Text(this.event.type === EasEventType.EXAM ? '考试详情' : '课程详情')
-            .fontSize(13)
+            .fontSize(HitaDesign.caption)
             .fontColor(COLOR_TEXT_SECONDARY)
             .margin({ top: 4 });
         }
@@ -59,7 +60,7 @@ export struct CourseDetailContent {
           Column() {
             ImmersiveHeader({ barHeight: 44, materialEnabled: CompatibleSheetMaterial.isEnabled() }) {
               Button({ type: ButtonType.Circle }) {
-                SymbolGlyph($r('sys.symbol.paintpalette')).fontSize(22)
+                SymbolGlyph($r('sys.symbol.paintpalette')).fontSize(HitaDesign.title)
                   .fontColor([CompatibleSheetMaterial.isEnabled() ? CompatibleMaterialModifier.foreground(COLOR_PRIMARY) :
                     COLOR_PRIMARY]);
               }
@@ -108,29 +109,29 @@ export struct CourseDetailContent {
       }
       if (this.event.type === EasEventType.CLASS) {
         Column() {
-          ImmersiveHeader({ barHeight: 40, materialEnabled: CompatibleSheetMaterial.isEnabled() }) {
+          ImmersiveHeader({ barHeight: 56, materialEnabled: CompatibleSheetMaterial.isEnabled() }) {
             Row({ space: 8 }) {
               Button('编辑', { type: ButtonType.Capsule })
-                .height(32).padding({ left: 12, right: 12 }).fontSize(13)
+                .height(HitaDesign.buttonHeight).padding({ left: 20, right: 20 }).fontSize(HitaDesign.body)
                 .fontWeight(FontWeight.Medium).fontColor(CompatibleSheetMaterial.isEnabled() ?
                   CompatibleMaterialModifier.foreground(COLOR_PRIMARY) : COLOR_PRIMARY)
                 .backgroundColor(COLOR_NAV_ACTIVE)
                 .attributeModifier(new CompatibleMaterialModifier(COLOR_NAV_ACTIVE, false, CompatibleSheetMaterial.isEnabled()))
                 .enabled(!this.busy).onClick(() => this.onEdit());
               Button(this.deleteLabel, { type: ButtonType.Capsule })
-                .height(32)
-                .padding({ left: 12, right: 12 })
-                .fontSize(13)
+                .height(HitaDesign.buttonHeight)
+                .padding({ left: 20, right: 20 })
+                .fontSize(HitaDesign.body)
                 .fontWeight(FontWeight.Medium)
                 .fontColor('#FFFFFF')
-                .backgroundColor('#E84040')
-                .attributeModifier(new CompatibleMaterialModifier('#E84040', true,
-                  CompatibleSheetMaterial.isEnabled(), '#EBE84040', false))
+                .backgroundColor($r('app.color.hita_error_fill'))
+                .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_error_fill'), true,
+                  CompatibleSheetMaterial.isEnabled(), $r('app.color.hita_error_fill'), false))
                 .enabled(!this.busy)
                 .onClick(() => { this.onDelete(); });
             }
             .width('100%')
-            .height(40)
+            .height(56)
             .justifyContent(FlexAlign.End);
           }
         }
@@ -140,7 +141,7 @@ export struct CourseDetailContent {
       }
     }
     .width('100%')
-    .padding({ left: 20, right: 20, top: 0, bottom: 20 })
+    .padding({ left: HitaDesign.inset, right: HitaDesign.inset, top: 0, bottom: 24 })
     .attributeModifier(new CompatibleLightModifier(24, CompatibleSheetMaterial.isEnabled(), true));
   }
 
@@ -160,10 +161,10 @@ export struct CourseDetailContent {
       .alignContent(Alignment.Center);
       Column() {
         Text(label)
-          .fontSize(12)
+          .fontSize(HitaDesign.label)
           .fontColor(COLOR_TEXT_SECONDARY);
         Text(value)
-          .fontSize(17)
+          .fontSize(HitaDesign.body)
           .fontWeight(FontWeight.Medium)
           .fontColor(COLOR_TEXT_PRIMARY)
           .margin({ top: 2 })
@@ -175,6 +176,7 @@ export struct CourseDetailContent {
       .margin({ left: COURSE_DETAIL_TEXT_GAP });
     }
     .width('100%')
+    .constraintSize({ minHeight: 64 })
     .padding({ top: 8, bottom: 8 })
     .alignItems(VerticalAlign.Center);
   }

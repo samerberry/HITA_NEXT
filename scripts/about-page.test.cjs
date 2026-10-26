@@ -55,7 +55,7 @@ test('about lists the three contributors in order with real names, GitHub nickna
   const content = loadContent();
   const people = content.contributors();
   assert.deepEqual(people.map(person => [person.name, person.github]),
-    [['蒋国贤', 'samerberry'], ['刘震宇', 'shafa1145'], ['肖丁荣', 'xdInternet']]);
+    [['蒋国贤', 'samerberry'], ['刘震宇', 'sofa1145'], ['肖丁荣', 'xdInternet']]);
   for (const person of people) {
     assert.equal(person.url, 'https://github.com/' + person.github);
     const media = person.avatar.params[0].replace('app.media.', '');

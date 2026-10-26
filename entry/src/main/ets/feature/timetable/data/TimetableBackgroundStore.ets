@@ -17,6 +17,7 @@ export class TimetableBackgroundStore {
   static load(context: common.Context): TimetableBackground {
     try {
       const saved = JSON.parse(fileIo.readTextSync(context.filesDir + MANIFEST)) as TimetableBackground;
+      if (saved.imagePath === '') return new TimetableBackground();
       if (saved.imagePath && fileIo.accessSync(saved.imagePath)) {
         if (saved.videoPath && !fileIo.accessSync(saved.videoPath)) saved.videoPath = '';
         return saved;

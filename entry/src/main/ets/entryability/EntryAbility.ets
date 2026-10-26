@@ -1,3 +1,4 @@
+import { BackupService } from '../feature/backup/BackupService';
 import { ScheduleSyncService } from '../feature/timetable/data/ScheduleSyncService';
 import { AbilityConstant, common, Configuration, UIAbility, Want } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
@@ -18,16 +19,21 @@ const DOMAIN: number = 0x0000;
 const TAG: string = 'HitaNEXT';
 
 export default class EntryAbility extends UIAbility {
+  private startup: Promise<void> = Promise.resolve();
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     hilog.info(DOMAIN, TAG, 'Ability onCreate');
     AppStorage.setOrCreate(STATUS_BAR_INSET_KEY, STATUS_BAR_INSET_FALLBACK);
     AppStorage.setOrCreate(NAV_BAR_INSET_KEY, NAV_BAR_INSET_FALLBACK);
     AppStorage.setOrCreate(KEYBOARD_INSET_KEY, KEYBOARD_INSET_FALLBACK);
     AppearanceStore.getInstance().initialize(this.context);
-    NextClassWidgetService.attach(this.context);
-    ScheduleSyncService.attach(this.context);
+    this.startup = BackupService.recover(this.context).then(() => {
+      BackupService.clearAbandonedFiles(this.context);
+      AppearanceStore.getInstance().initialize(this.context);
+      NextClassWidgetService.attach(this.context);
+      ScheduleSyncService.attach(this.context);
+    });
     this.captureReminderWant(want);
-    void this.restoreClassReminders();
+    void this.startup.then(() => this.restoreClassReminders()).catch(() => {});
   }
 
   onNewWant(want: Want): void {
@@ -52,7 +58,8 @@ export default class EntryAbility extends UIAbility {
     hilog.info(DOMAIN, TAG, 'Ability onDestroy');
   }
 
-  onWindowStageCreate(windowStage: window.WindowStage): void {
+  async onWindowStageCreate(windowStage: window.WindowStage): Promise<void> {
+    await this.startup;
     this.configureSystemBars(windowStage);
     // 首屏直接进入主界面。教务登录从主界面的会话入口按需打开。
     windowStage.loadContent('pages/Home', (err) => {
@@ -134,12 +141,13 @@ export default class EntryAbility extends UIAbility {
     hilog.info(DOMAIN, TAG, 'Ability onWindowStageDestroy');
   }
 
-  onForeground(): void {
+  async onForeground(): Promise<void> {
+    await this.startup;
     AppStorage.setOrCreate('hita_app_foreground', true);
     hilog.info(DOMAIN, TAG, 'Ability onForeground');
     NextClassWidgetService.scheduleRefresh();
     ScheduleSyncService.schedule();
-    void this.restoreClassReminders();
+    void this.startup.then(() => this.restoreClassReminders()).catch(() => {});
     AppearanceStore.getInstance().onConfigurationUpdate(this.context.config);
   }
 

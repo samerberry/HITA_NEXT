@@ -109,7 +109,7 @@ test('rows put the title first and the source on the secondary line', () => {
   assert.equal(feed.body, '', 'an excerpt that repeats the title is dropped');
 });
 
-test('news rows render the iOS-style hierarchy on one shared surface', () => {
+test('news rows render the native reading hierarchy on one shared surface', () => {
   const page = read('pages/NewsPage.ets');
   const row = page.slice(page.indexOf('  newsRow(item: NewsItem, row: NewsRowModel, last: boolean)'));
   const title = row.indexOf('Text(row.title)');
@@ -117,7 +117,7 @@ test('news rows render the iOS-style hierarchy on one shared surface', () => {
   const body = row.indexOf('Text(row.body)');
   assert.ok(row.indexOf('Text(row.avatarText)') >= 0 && title > 0 && source > title && body > source,
     'avatar, then title, then source, then excerpt');
-  assert.match(row.slice(title, source), /fontWeight\(FontWeight\.Bold\)[\s\S]*Text\(row\.date\)/);
+  assert.match(row.slice(title, source), /fontWeight\(FontWeight\.Medium\)[\s\S]*Text\(row\.date\)/);
   assert.match(row, /Span\(row\.tag\)[\s\S]*textBackgroundStyle/);
   assert.match(row, /if \(!last\) \{\s*Divider\(\)/);
   assert.match(page, /this\.newsRow\(item, this\.rowModel\(item\), index === this\.items\.length - 1\)/);

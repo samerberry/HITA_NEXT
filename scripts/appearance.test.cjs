@@ -172,7 +172,7 @@ test('system bars follow the effective theme and preserve transparent insets', a
   env.store.attachWindow(env.nativeWindow);
   env.store.onContentReady();
   await env.flushBars();
-  assert.equal(env.calls.backgrounds.at(-1), '#F4F7FC');
+  assert.equal(env.calls.backgrounds.at(-1), '#F5F6F8');
   assert.equal(env.calls.bars.at(-1).statusBarContentColor, '#14213D');
   await env.store.select('dark');
   await env.flushBars();
@@ -194,7 +194,7 @@ test('wallpaper can adapt system-bar text without changing app appearance and re
   env.store.setPageBarColors('#FFFFFF', '#FFFFFF');
   await env.flushBars();
   assert.equal(env.calls.bars.at(-1).statusBarContentColor, '#FFFFFF');
-  assert.equal(env.calls.backgrounds.at(-1), '#F4F7FC');
+  assert.equal(env.calls.backgrounds.at(-1), '#F5F6F8');
   const count = env.calls.bars.length;
   env.store.setPageBarColors('#FFFFFF', '#FFFFFF');
   await env.flushBars();
@@ -287,8 +287,8 @@ test('appearance matches surrounding settings rows and reveals choices only when
   // Bind state inside the builder: value parameters freeze labels and arrow rotation.
   assert.doesNotMatch(setting, /this\.moreNavigationRow\(/);
   const row = home.slice(home.indexOf('  moreNavigationRow('));
-  for (const style of ['.width(40)', '.height(40)', '.borderRadius(20)', '.fontSize(22)',
-    '.fontSize(14)', '.fontSize(12)', '.height(56)', '.padding({ left: 16, right: 16 })',
+  for (const style of ['.width(40)', '.height(40)', '.borderRadius(20)', '.fontSize(HitaDesign.title)',
+    '.fontSize(HitaDesign.body)', '.fontSize(HitaDesign.label)', '.constraintSize({ minHeight: HitaDesign.rowMinHeight })', '.padding({ left: 16, right: 16 })',
     '.margin({ left: 12 })', '.backgroundColor(COLOR_NAV_ACTIVE)']) {
     assert.ok(row.includes(style), `Reference row: ${style}`);
     assert.ok(setting.includes(style), `Appearance row: ${style}`);

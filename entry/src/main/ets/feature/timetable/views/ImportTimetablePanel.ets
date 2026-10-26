@@ -1,3 +1,4 @@
+import { HitaDesign } from '../../../common/theme/HitaDesign';
 /** Android-style timetable import configuration page. */
 import { common } from '@kit.AbilityKit';
 import { RdbHelper } from '../../../common/db/RdbHelper';
@@ -22,7 +23,7 @@ import { HitaColors } from '../../../common/theme/HitaColors';
 
 const HEADER_HEIGHT: number = 64;
 const PAGE_BG: ResourceColor = $r('app.color.hita_page');
-const PAGE_BG_RGB: string = '244,247,252';
+const PAGE_BG_RGB: string = '245,246,248';
 const CARD_BG: ResourceColor = $r('app.color.hita_surface');
 const TEXT_PRIMARY: ResourceColor = $r('app.color.hita_text');
 const TEXT_SECONDARY: ResourceColor = $r('app.color.hita_text_secondary');
@@ -291,7 +292,7 @@ export struct ImportTimetablePanel {
       } else if (this.error.length > 0 && this.terms.length === 0) {
         Column() {
           Text(this.error)
-            .fontSize(16)
+            .fontSize(HitaDesign.body)
             .fontColor(TEXT_PRIMARY);
         }
         .width('100%')
@@ -306,13 +307,13 @@ export struct ImportTimetablePanel {
             this.scheduleCard();
             if (this.error.length > 0) {
               Text(this.error)
-                .fontSize(13)
+                .fontSize(HitaDesign.caption)
                 .fontColor($r('app.color.hita_error_c23b4a'))
                 .width('100%');
             }
             if (this.message.length > 0) {
               Text(this.message)
-                .fontSize(13)
+                .fontSize(HitaDesign.caption)
                 .fontColor($r('app.color.hita_success'))
                 .width('100%');
             }
@@ -343,14 +344,14 @@ export struct ImportTimetablePanel {
           })
             .margin({ right: 12 });
           Text('导入课表')
-            .fontSize(22)
-            .fontWeight(FontWeight.Bold)
+            .fontSize(HitaDesign.title)
+            .fontWeight(FontWeight.Medium)
             .fontColor(TEXT_PRIMARY)
             .layoutWeight(1)
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis });
           Text(this.importing ? '导入中' : '导入')
-            .fontSize(13)
+            .fontSize(HitaDesign.caption)
             .fontWeight(FontWeight.Medium)
             .fontColor(CompatibleMaterialModifier.foreground($r('app.color.hita_primary_3390ec')))
             .height(32)
@@ -385,37 +386,39 @@ export struct ImportTimetablePanel {
   private termCard() {
     Column() {
       Text('导入学期')
-        .fontSize(13)
+        .fontSize(HitaDesign.caption)
         .fontColor(TEXT_SECONDARY)
         .width('100%');
       Row() {
         Column() {
           Text(this.selectedTerm() === undefined ? '未选择学期' : (this.selectedTerm() as EasTermItem).name)
-            .fontSize(17)
+            .fontSize(HitaDesign.body)
             .fontWeight(FontWeight.Medium)
             .fontColor(TEXT_PRIMARY)
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis });
           Text(this.selectedTerm() === undefined ? '点击选择教务学期' :
             (this.selectedTerm() as EasTermItem).getCode())
-            .fontSize(12)
+            .fontSize(HitaDesign.label)
             .fontColor(TEXT_SECONDARY)
             .margin({ top: 4 });
         }
         .layoutWeight(1)
         .alignItems(HorizontalAlign.Start);
-        Text('›')
-          .fontSize(24)
-          .fontColor(TEXT_SECONDARY);
+        SymbolGlyph($r('sys.symbol.chevron_right'))
+          .fontSize(12)
+          .fontColor([TEXT_SECONDARY])
+          .width(16).height(24).flexShrink(0)
+          .accessibilityLevel('no');
       }
       .width('100%')
       .margin({ top: 10 })
       .onClick(() => this.chooseTerm());
     }
     .width('100%')
-    .padding(18)
+    .padding(HitaDesign.inset)
     .backgroundColor(CARD_BG)
-    .borderRadius(18);
+    .borderRadius(HitaDesign.cardRadius);
   }
 
   @Builder
@@ -423,17 +426,17 @@ export struct ImportTimetablePanel {
     Row() {
       Column() {
         Text('开学日期 · 第一教学周周一')
-          .fontSize(13)
+          .fontSize(HitaDesign.caption)
           .fontColor(TEXT_SECONDARY);
         Text(this.detailsLoading ? '读取校历中' : this.startTime > 0 ?
           ImportTimetablePanel.dateText(this.startTime) : '请选择日期')
-          .fontSize(18)
+          .fontSize(HitaDesign.section)
           .fontWeight(FontWeight.Medium)
           .fontColor(TEXT_PRIMARY)
-          .margin({ top: 6 });
+          .margin({ top: 8 });
         if (this.dateNotice.length > 0) {
           Text(this.dateNotice)
-            .fontSize(12)
+            .fontSize(HitaDesign.label)
             .fontColor($r('app.color.hita_warning'))
             .margin({ top: 4 });
         }
@@ -445,9 +448,9 @@ export struct ImportTimetablePanel {
         .fontColor([HitaColors.primary]);
     }
     .width('100%')
-    .padding(18)
+    .padding(HitaDesign.inset)
     .backgroundColor(CARD_BG)
-    .borderRadius(18)
+    .borderRadius(HitaDesign.cardRadius)
     .onClick(() => this.chooseStartDate());
   }
 
@@ -456,17 +459,17 @@ export struct ImportTimetablePanel {
     Column() {
       Row() {
         Text('每日节次')
-          .fontSize(18)
-          .fontWeight(FontWeight.Bold)
+          .fontSize(HitaDesign.section)
+          .fontWeight(FontWeight.Medium)
           .fontColor(TEXT_PRIMARY)
           .layoutWeight(1);
         Text(this.schedule.length.toString() + ' 节')
-          .fontSize(13)
+          .fontSize(HitaDesign.caption)
           .fontColor(TEXT_SECONDARY);
       }
       .width('100%');
       Text('点击任意一节可修改开始或结束时间')
-        .fontSize(12)
+        .fontSize(HitaDesign.label)
         .fontColor(TEXT_SECONDARY)
         .width('100%')
         .margin({ top: 5, bottom: 10 });
@@ -475,8 +478,8 @@ export struct ImportTimetablePanel {
           Row() {
             Stack() {
               Text((index + 1).toString())
-                .fontSize(14)
-                .fontWeight(FontWeight.Bold)
+                .fontSize(HitaDesign.caption)
+                .fontWeight(FontWeight.Medium)
                 .fontColor(HitaColors.primary);
             }
             .width(34)
@@ -486,19 +489,21 @@ export struct ImportTimetablePanel {
             .alignContent(Alignment.Center);
             Column() {
               Text('第 ' + (index + 1).toString() + ' 节')
-                .fontSize(15)
+                .fontSize(HitaDesign.body)
                 .fontColor(TEXT_PRIMARY);
               Text(period.from.toString() + ' - ' + period.to.toString())
-                .fontSize(13)
+                .fontSize(HitaDesign.caption)
                 .fontColor(TEXT_SECONDARY)
-                .margin({ top: 3 });
+                .margin({ top: 4 });
             }
             .layoutWeight(1)
             .alignItems(HorizontalAlign.Start)
             .margin({ left: 12 });
-            Text('›')
-              .fontSize(22)
-              .fontColor($r('app.color.hita_text_hint_a3adbb'));
+            SymbolGlyph($r('sys.symbol.chevron_right'))
+              .fontSize(12)
+              .fontColor([$r('app.color.hita_text_hint_a3adbb')])
+              .width(16).height(24).flexShrink(0)
+              .accessibilityLevel('no');
           }
           .width('100%')
           .height(58)
@@ -515,9 +520,9 @@ export struct ImportTimetablePanel {
       .width('100%');
     }
     .width('100%')
-    .padding(18)
+    .padding(HitaDesign.inset)
     .backgroundColor(CARD_BG)
-    .borderRadius(18);
+    .borderRadius(HitaDesign.cardRadius);
   }
 
   private static dateText(timestamp: number): string {

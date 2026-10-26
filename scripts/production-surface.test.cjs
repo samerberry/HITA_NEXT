@@ -242,10 +242,10 @@ test('the window fills the status bar instead of leaving a white top inset', () 
   assert.match(ability, /setWindowLayoutFullScreen\(true\)/);
   assert.match(ability, /AppearanceStore\.getInstance\(\)\.attachWindow\(mainWindow\)/);
   const appearance = fs.readFileSync(path.join(etsRoot, 'common/theme/AppearanceStore.ets'), 'utf8');
-  assert.match(appearance, /setWindowBackgroundColor\(dark \? '#101214' : '#F4F7FC'\)/);
+  assert.match(appearance, /setWindowBackgroundColor\(dark \? '#101214' : '#F5F6F8'\)/);
   assert.match(appearance, /statusBarColor: '#00000000'/);
   const colors = fs.readFileSync(path.join(root, 'entry/src/main/resources/base/element/color.json'), 'utf8');
-  assert.match(colors, /"name": "start_window_background"[\s\S]*?"value": "#F4F7FC"/);
+  assert.match(colors, /"name": "start_window_background"[\s\S]*?"value": "#F5F6F8"/);
   const home = fs.readFileSync(path.join(etsRoot, 'pages/Home.ets'), 'utf8');
   const tabPage = home.slice(home.indexOf('function tabPage'), home.indexOf('class TimetableMarqueeCallback'));
   assert.match(tabPage, /SafeAreaEdge\.BOTTOM/);

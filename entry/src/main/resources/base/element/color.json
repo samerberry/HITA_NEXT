@@ -1,6 +1,9 @@
 {
   "color": [
-    { "name": "hita_widget_accent", "value": "#2365B2" },
+    {
+      "name": "hita_widget_accent",
+      "value": "#2365B2"
+    },
     {
       "name": "hita_immersive_sheet_card",
       "value": "#8CFFFFFF"
@@ -11,15 +14,15 @@
     },
     {
       "name": "hita_immersive_hero_tint",
-      "value": "#D92365B2"
+      "value": "#EB0068D9"
     },
     {
       "name": "hita_page",
-      "value": "#F4F7FC"
+      "value": "#F5F6F8"
     },
     {
       "name": "hita_page_f6f7fa",
-      "value": "#F6F7FA"
+      "value": "#F5F6F8"
     },
     {
       "name": "hita_page_f5f6f8",
@@ -31,15 +34,15 @@
     },
     {
       "name": "hita_surface_soft",
-      "value": "#F6F8FC"
+      "value": "#F5F6F8"
     },
     {
       "name": "hita_surface_soft_f8fafd",
-      "value": "#F8FAFD"
+      "value": "#F5F6F8"
     },
     {
       "name": "hita_surface_soft_f4f7fb",
-      "value": "#F4F7FB"
+      "value": "#F5F6F8"
     },
     {
       "name": "hita_control",
@@ -63,191 +66,191 @@
     },
     {
       "name": "hita_text",
-      "value": "#14213D"
+      "value": "#181C24"
     },
     {
       "name": "hita_text_1a1a1a",
-      "value": "#1A1A1A"
+      "value": "#181C24"
     },
     {
       "name": "hita_text_1d2b45",
-      "value": "#1D2B45"
+      "value": "#181C24"
     },
     {
       "name": "hita_text_202633",
-      "value": "#202633"
+      "value": "#181C24"
     },
     {
       "name": "hita_text_202b45",
-      "value": "#202B45"
+      "value": "#181C24"
     },
     {
       "name": "hita_text_242a36",
-      "value": "#242A36"
+      "value": "#181C24"
     },
     {
       "name": "hita_text_303746",
-      "value": "#303746"
+      "value": "#181C24"
     },
     {
       "name": "hita_text_333333",
-      "value": "#333333"
+      "value": "#181C24"
     },
     {
       "name": "hita_text_secondary",
-      "value": "#4E5C72"
+      "value": "#626873"
     },
     {
       "name": "hita_text_secondary_566276",
-      "value": "#566276"
+      "value": "#626873"
     },
     {
       "name": "hita_text_secondary_5a6880",
-      "value": "#5A6880"
+      "value": "#626873"
     },
     {
       "name": "hita_text_secondary_6b7a90",
-      "value": "#6B7A90"
+      "value": "#626873"
     },
     {
       "name": "hita_text_secondary_72809a",
-      "value": "#72809A"
+      "value": "#626873"
     },
     {
       "name": "hita_text_secondary_788196",
-      "value": "#788196"
+      "value": "#626873"
     },
     {
       "name": "hita_text_secondary_7b8190",
-      "value": "#7B8190"
+      "value": "#626873"
     },
     {
       "name": "hita_text_secondary_7b8498",
-      "value": "#7B8498"
+      "value": "#626873"
     },
     {
       "name": "hita_text_secondary_808080",
-      "value": "#808080"
+      "value": "#626873"
     },
     {
       "name": "hita_text_hint",
-      "value": "#8B93A3"
+      "value": "#767D89"
     },
     {
       "name": "hita_text_hint_9aa2b1",
-      "value": "#9AA2B1"
+      "value": "#767D89"
     },
     {
       "name": "hita_text_hint_a0a7b5",
-      "value": "#A0A7B5"
+      "value": "#767D89"
     },
     {
       "name": "hita_text_hint_a3adbb",
-      "value": "#A3ADBB"
+      "value": "#767D89"
     },
     {
       "name": "hita_text_hint_a9b4c2",
-      "value": "#A9B4C2"
+      "value": "#767D89"
     },
     {
       "name": "hita_text_hint_b0b4ba",
-      "value": "#B0B4BA"
+      "value": "#767D89"
     },
     {
       "name": "hita_text_hint_b2b8c4",
-      "value": "#B2B8C4"
+      "value": "#767D89"
     },
     {
       "name": "hita_text_hint_b7c7d9",
-      "value": "#B7C7D9"
+      "value": "#767D89"
     },
     {
       "name": "hita_primary",
-      "value": "#2E86E8"
+      "value": "#0068D9"
     },
     {
       "name": "hita_primary_3390ec",
-      "value": "#3390EC"
+      "value": "#0068D9"
     },
     {
       "name": "hita_selected",
-      "value": "#E3EEFC"
+      "value": "#E8F3FF"
     },
     {
       "name": "hita_selected_e4f0ff",
-      "value": "#E4F0FF"
+      "value": "#E8F3FF"
     },
     {
       "name": "hita_selected_e8f1fb",
-      "value": "#E8F1FB"
+      "value": "#E8F3FF"
     },
     {
       "name": "hita_selected_e8f3fd",
-      "value": "#E8F3FD"
+      "value": "#E8F3FF"
     },
     {
       "name": "hita_selected_eaf3fd",
-      "value": "#EAF3FD"
+      "value": "#E8F3FF"
     },
     {
       "name": "hita_selected_ebf4fc",
-      "value": "#EBF4FC"
+      "value": "#E8F3FF"
     },
     {
       "name": "hita_selected_dceaf8",
-      "value": "#DCEAF8"
+      "value": "#E8F3FF"
     },
     {
       "name": "hita_selected_cfe3fa",
-      "value": "#CFE3FA"
+      "value": "#E8F3FF"
     },
     {
       "name": "hita_divider",
-      "value": "#D7DCE5"
+      "value": "#E8EAED"
     },
     {
       "name": "hita_divider_d7e0ec",
-      "value": "#D7E0EC"
+      "value": "#E8EAED"
     },
     {
       "name": "hita_divider_dce4f0",
-      "value": "#DCE4F0"
+      "value": "#E8EAED"
     },
     {
       "name": "hita_divider_dde4ee",
-      "value": "#DDE4EE"
+      "value": "#E8EAED"
     },
     {
       "name": "hita_divider_e3eaf2",
-      "value": "#E3EAF2"
+      "value": "#E8EAED"
     },
     {
       "name": "hita_divider_edf1f7",
-      "value": "#EDF1F7"
+      "value": "#E8EAED"
     },
     {
       "name": "hita_divider_eef1f5",
-      "value": "#EEF1F5"
+      "value": "#E8EAED"
     },
     {
       "name": "hita_divider_eef1f6",
-      "value": "#EEF1F6"
+      "value": "#E8EAED"
     },
     {
       "name": "hita_divider_e8e8e8",
-      "value": "#E8E8E8"
+      "value": "#E8EAED"
     },
     {
       "name": "hita_divider_c5cdd8",
-      "value": "#C5CDD8"
+      "value": "#E8EAED"
     },
     {
       "name": "hita_divider_c9d1dd",
-      "value": "#C9D1DD"
+      "value": "#E8EAED"
     },
     {
       "name": "hita_divider_c9d2de",
-      "value": "#C9D2DE"
+      "value": "#E8EAED"
     },
     {
       "name": "hita_error",
@@ -339,11 +342,11 @@
     },
     {
       "name": "start_window_background",
-      "value": "#F4F7FC"
+      "value": "#F5F6F8"
     },
     {
       "name": "hita_primary_fill",
-      "value": "#2E86E8"
+      "value": "#0068D9"
     },
     {
       "name": "hita_error_fill",
@@ -356,6 +359,18 @@
     {
       "name": "hita_hero_chip",
       "value": "#5AA2EE"
+    },
+    {
+      "name": "hita_on_primary",
+      "value": "#FFFFFF"
+    },
+    {
+      "name": "hita_on_primary_secondary",
+      "value": "#E2EFFF"
+    },
+    {
+      "name": "hita_card_shadow",
+      "value": "#08000000"
     }
   ]
 }

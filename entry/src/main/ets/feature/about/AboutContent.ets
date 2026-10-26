@@ -1,3 +1,4 @@
+import { HitaDesign } from '../../common/theme/HitaDesign';
 /**
  * 关于页与隐私政策的全部文案。改名单、致谢或政策条款时只改这里，页面只负责排版。
  * 隐私政策正文与华为协议托管服务上的版本保持一致（见 PRIVACY_POLICY_URL）。
@@ -54,9 +55,8 @@ export class AboutContent {
     return [
       new AboutContributor('蒋国贤', 'samerberry', $r('app.media.avatar_samerberry'),
         'https://github.com/samerberry'),
-      // 用户名主页当前返回 404，头像按提交记录中的 GitHub 用户 ID 下载。
-      new AboutContributor('刘震宇', 'shafa1145', $r('app.media.avatar_shafa1145'),
-        'https://github.com/shafa1145'),
+      new AboutContributor('刘震宇', 'sofa1145', $r('app.media.avatar_shafa1145'),
+        'https://github.com/sofa1145'),
       new AboutContributor('肖丁荣', 'xdInternet', $r('app.media.avatar_xdinternet'),
         'https://github.com/xdInternet')
     ];

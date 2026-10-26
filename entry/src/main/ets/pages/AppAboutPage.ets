@@ -1,3 +1,4 @@
+import { HitaDesign } from '../common/theme/HitaDesign';
 /**
  * AppAboutPage.ets — 关于：应用信息、制作者、鸣谢与隐私政策入口。
  * 结构参考 HITA Aura 的“关于 HITA Aura”与 HITA Android 的关于页，文案集中在 AboutContent。
@@ -12,7 +13,7 @@ import { AboutContent, AboutContributor, AboutCredit } from '../feature/about/Ab
 
 const HEADER_HEIGHT: number = 60;
 const PAGE_BG: ResourceColor = $r('app.color.hita_page_f6f7fa');
-const PAGE_BG_RGB: string = '246,247,250';
+const PAGE_BG_RGB: string = '245,246,248';
 const CARD_BG: ResourceColor = $r('app.color.hita_surface');
 const TEXT_PRIMARY: ResourceColor = $r('app.color.hita_text_1a1a1a');
 const TEXT_SECONDARY: ResourceColor = $r('app.color.hita_text_secondary_566276');
@@ -77,7 +78,7 @@ struct AppAboutPage {
           .borderRadius(16);
 
           Text(AboutContent.DISCLAIMER)
-            .fontSize(12)
+            .fontSize(HitaDesign.label)
             .fontColor(TEXT_SECONDARY)
             .margin({ top: 24, bottom: 32 });
         }
@@ -100,8 +101,8 @@ struct AppAboutPage {
           })
             .margin({ right: 12 })
           Text('关于')
-            .fontSize(20)
-            .fontWeight(FontWeight.Bold)
+            .fontSize(HitaDesign.title)
+            .fontWeight(FontWeight.Medium)
             .fontColor(TEXT_PRIMARY)
             .layoutWeight(1)
             .maxLines(1)
@@ -126,25 +127,25 @@ struct AppAboutPage {
       Image($r('app.media.app_icon'))
         .width(84)
         .height(84)
-        .borderRadius(20)
+        .borderRadius(HitaDesign.cardRadius)
         .shadow({ radius: 12, color: '#1A000000', offsetY: 4 });
       Text(AboutContent.APP_NAME)
-        .fontSize(22)
-        .fontWeight(FontWeight.Bold)
+        .fontSize(HitaDesign.title)
+        .fontWeight(FontWeight.Medium)
         .fontColor(TEXT_PRIMARY)
         .margin({ top: 14 });
       if (this.version.length > 0) {
         Text('版本 ' + this.version)
-          .fontSize(13)
+          .fontSize(HitaDesign.caption)
           .fontColor(TEXT_SECONDARY)
           .margin({ top: 4 });
       }
       Text(AboutContent.TAGLINE)
-        .fontSize(13)
+        .fontSize(HitaDesign.caption)
         .fontColor(TEXT_SECONDARY)
         .margin({ top: 10 });
       Text('隐私政策')
-        .fontSize(13)
+        .fontSize(HitaDesign.caption)
         .fontWeight(FontWeight.Medium)
         .fontColor(PRIMARY)
         .backgroundColor($r('app.color.hita_selected'))
@@ -161,8 +162,8 @@ struct AppAboutPage {
   @Builder
   sectionTitle(title: string) {
     Text(title)
-      .fontSize(18)
-      .fontWeight(FontWeight.Bold)
+      .fontSize(HitaDesign.section)
+      .fontWeight(FontWeight.Medium)
       .fontColor(TEXT_PRIMARY)
       .margin({ top: 20, bottom: 8 })
       .alignSelf(ItemAlign.Start);
@@ -181,23 +182,23 @@ struct AppAboutPage {
         .accessibilityText(person.name + ' 的头像');
       Column() {
         Text(person.name)
-          .fontSize(15)
+          .fontSize(HitaDesign.body)
           .fontWeight(FontWeight.Medium)
           .fontColor(TEXT_PRIMARY)
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis });
         Text(person.github)
-          .fontSize(12)
+          .fontSize(HitaDesign.label)
           .fontColor(TEXT_SECONDARY)
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
-          .margin({ top: 3 });
+          .margin({ top: 4 });
       }
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start)
       .margin({ left: 12, right: 8 });
       Text('GitHub')
-        .fontSize(12)
+        .fontSize(HitaDesign.label)
         .fontColor(PRIMARY);
     }
     .width('100%')
@@ -211,18 +212,20 @@ struct AppAboutPage {
     Row() {
       Column() {
         Text(credit.title)
-          .fontSize(14)
+          .fontSize(HitaDesign.caption)
           .fontColor(TEXT_PRIMARY);
         Text(credit.detail)
-          .fontSize(12)
+          .fontSize(HitaDesign.label)
           .fontColor(TEXT_SECONDARY)
-          .margin({ top: 3 });
+          .margin({ top: 4 });
       }
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start);
-      Text('›')
-        .fontSize(23)
-        .fontColor(TEXT_SECONDARY);
+      SymbolGlyph($r('sys.symbol.chevron_right'))
+        .fontSize(12)
+        .fontColor([TEXT_SECONDARY])
+        .width(16).height(24).flexShrink(0)
+        .accessibilityLevel('no');
     }
     .width('100%')
     .padding({ left: 16, right: 16, top: 12, bottom: 12 })

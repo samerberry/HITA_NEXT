@@ -103,7 +103,8 @@ function summaryHarness() {
     updateTodayHighlights() {}
     drawTimetableNow() {}
     static defaultCanvasColor() { return 1; }
-    ${homeMethod('  async onPageShow()', '  onPageHide()')}
+    ${homeMethod('  async onPageShow()', '  private async reloadBackupState()')}
+    async reloadBackupState() {}
     ${homeMethod('  async refreshSummaries(', '  private classReminderSubtitle()')}
   }`;
   const page = new Function('RdbHelper', 'EasSessionStore', 'TimetableSelectionStore', 'TimetableResolver',

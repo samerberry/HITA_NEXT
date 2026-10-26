@@ -1,3 +1,4 @@
+import { HitaDesign } from '../common/theme/HitaDesign';
 import { CalendarSyncStore } from '../feature/timetable/data/CalendarSyncStore';
 import { ScheduleSyncService } from '../feature/timetable/data/ScheduleSyncService';
 import { CourseDetailContent } from '../feature/timetable/views/CourseDetailContent';
@@ -60,6 +61,7 @@ import { NextClassWidgetService } from '../feature/widget/NextClassWidgetService
 import { WidgetBackgroundPage } from '../feature/widget/WidgetBackgroundPage';
 import { ImportTimetablePanel } from '../feature/timetable/views/ImportTimetablePanel';
 import { ExamPage } from './ExamPage';
+import { BackupPanel } from '../feature/backup/BackupPanel';
 import { ScorePage } from './ScorePage';
 import { CreditPage } from './CreditPage';
 import { EmptyClassroomPage } from './EmptyClassroomPage';
@@ -108,7 +110,7 @@ const TAB_TIMETABLE: number = 1;
 const NAV_TAB_COUNT: number = 3;
 const MORE_HEADER_HEIGHT: number = 56;
 const TIMETABLE_CHROME_FALLBACK: number = 200;
-const COLOR_SURFACE_RGB: string = '244,247,252';
+const COLOR_SURFACE_RGB: string = '245,246,248';
 // 周切换：位移超过页宽的该比例即翻周；位移较短时抬手速度够快（vp/s）同样翻周。
 const TIMETABLE_SWIPE_RATIO: number = 0.08;
 const TIMETABLE_FLING_VELOCITY: number = 400;
@@ -156,6 +158,8 @@ struct Home {
   @State widgetBackgroundSet: boolean = false;
   @State widgetBackgroundSheetOpen: boolean = false;
   @State importTimetableSheetOpen: boolean = false;
+  @State backupSheetOpen: boolean = false;
+  @State backupBusy: boolean = false;
   @State academicPanelOpen: boolean = false;
   @State academicPanelKind: number = 0;
   @State widgetBackgroundDirty: boolean = false;
@@ -333,6 +337,8 @@ struct Home {
     this.checkTimetableUpdate();
   }
 
+  private backupRevision: number = 0;
+
   async onPageShow(): Promise<void> {
     this.pageVisible = true;
     this.courseDeleteEffects.resume();
@@ -340,11 +346,38 @@ struct Home {
     this.startClock();
     this.widgetBackgroundSet = WidgetBackgroundStore.hasBackground(
       this.getUIContext().getHostContext() as common.Context);
+    await this.reloadBackupState();
     const preserveWeek: boolean = this.returningFromCourseEditor;
     this.returningFromCourseEditor = false;
     await this.refreshSummaries(preserveWeek);
     await this.openPendingReminder();
     this.checkTimetableUpdate();
+  }
+
+  private async reloadBackupState(): Promise<void> {
+    const backupRevision = AppStorage.get<number>('hita_backup_revision') ?? 0;
+    if (backupRevision !== this.backupRevision) {
+      this.backupRevision = backupRevision;
+      const ctx = this.getUIContext().getHostContext() as common.Context;
+      const background = TimetableBackgroundStore.load(ctx);
+      this.timetableBgUri = background.imagePath ? TimetableBackgroundStore.toDisplayUri(background.imagePath) : '';
+      this.timetableVideoUri = background.videoPath ? 'file://' + background.videoPath : '';
+      this.loadTimetableWallpaperColors(background.imagePath);
+      this.timetableTextColor = await TimetableSelectionStore.getInstance().loadTextColor(TimetableTheme.AUTO_TEXT);
+      this.timetableDisplay = await TimetableDisplayStore.getInstance().load();
+      this.timetableMaskDepth = this.timetableDisplay.wallpaperMask;
+      this.classReminderEnabled = await ClassReminderStore.getInstance().loadEnabled();
+      this.reminderLeadMinutes = await ClassReminderStore.getInstance().loadLeadMinutes();
+      this.examReminderEnabled = await ClassReminderStore.getInstance().loadExamEnabled();
+      this.examReminderLeadMinutes = await ClassReminderStore.getInstance().loadExamLeadMinutes();
+      this.drawTimetableNow();
+    }
+  }
+
+  private async onBackupRestored(): Promise<void> {
+    await this.reloadBackupState();
+    this.widgetBackgroundSet = WidgetBackgroundStore.hasBackground(this.getUIContext().getHostContext() as common.Context);
+    await this.refreshSummaries();
   }
 
   onPageHide(): void {
@@ -1361,10 +1394,11 @@ struct Home {
     return !this.skippingCourse && this.pageVisible && !this.tabTransitionRunning && !this.activeSheetVisible &&
       !this.sessionSheetOpen && !this.loginSheetOpen && !this.courseSheetOpen &&
       !this.calendarExportSheetOpen && !this.timetableDisplayOpen && !this.widgetBackgroundSheetOpen &&
-      !this.importTimetableSheetOpen && !this.academicPanelOpen;
+      !this.importTimetableSheetOpen && !this.academicPanelOpen && !this.backupSheetOpen;
   }
 
   private closeActiveSheet(): void {
+    if (this.backupSheetOpen && this.backupBusy) return;
     // Invalidate pending reads immediately, but retain content until the exit animation ends.
     this.sheetRequestGeneration++;
     this.sessionSheetLoading = false;
@@ -1386,6 +1420,12 @@ struct Home {
       return;
     }
     this.importTimetableSheetOpen = true;
+    this.activeSheetVisible = true;
+  }
+
+  private openBackupSheet(): void {
+    if (!this.canOpenSheet()) return;
+    this.backupSheetOpen = true;
     this.activeSheetVisible = true;
   }
 
@@ -1676,8 +1716,8 @@ struct Home {
   }
 
   private todayHeroHeight(): number {
-    if (this.activeClass !== undefined) return 176;
-    return this.nextClass !== undefined ? 160 : 136;
+    if (this.activeClass !== undefined) return 196;
+    return this.nextClass !== undefined ? 180 : 156;
   }
 
   private heroTag(): string {
@@ -2108,12 +2148,14 @@ struct Home {
       this.selectedNav = index;
     })
     .bindSheet($$this.activeSheetVisible, this.activeSheet(), CompatibleSheetMaterial.options({
-      height: this.widgetBackgroundSheetOpen || this.importTimetableSheetOpen || this.academicPanelOpen ? SheetSize.LARGE :
+      height: this.backupSheetOpen ? SheetSize.MEDIUM :
+        this.widgetBackgroundSheetOpen || this.importTimetableSheetOpen || this.academicPanelOpen ? SheetSize.LARGE :
         (this.loginSheetOpen ? SheetSize.LARGE : SheetSize.FIT_CONTENT),
       // The first detent is the initial selection, so start expanded and allow collapsing to medium.
-      detents: this.widgetBackgroundSheetOpen || this.importTimetableSheetOpen || this.academicPanelOpen ?
+      detents: this.backupSheetOpen ? [SheetSize.MEDIUM, SheetSize.LARGE] :
+        this.widgetBackgroundSheetOpen || this.importTimetableSheetOpen || this.academicPanelOpen ?
         [SheetSize.LARGE, SheetSize.MEDIUM] : undefined,
-      scrollSizeMode: this.widgetBackgroundSheetOpen || this.importTimetableSheetOpen || this.academicPanelOpen ?
+      scrollSizeMode: this.backupSheetOpen || this.widgetBackgroundSheetOpen || this.importTimetableSheetOpen || this.academicPanelOpen ?
         ScrollSizeMode.CONTINUOUS : undefined,
       dragBar: true,
       // Every sheet owns its header control; the system close bubble overlaps
@@ -2122,10 +2164,14 @@ struct Home {
       preferType: SheetType.BOTTOM,
       backgroundColor: COLOR_SURFACE,
       maskColor: $r('app.color.hita_sheet_mask'),
-      shouldDismiss: this.widgetBackgroundSheetOpen ? (sheetDismiss: SheetDismiss) => {
+      shouldDismiss: this.backupSheetOpen ? (sheetDismiss: SheetDismiss) => {
+        if (!this.backupBusy) sheetDismiss.dismiss();
+      } : this.widgetBackgroundSheetOpen ? (sheetDismiss: SheetDismiss) => {
         this.confirmWidgetBackgroundDismiss(() => sheetDismiss.dismiss());
       } : undefined,
-      onWillSpringBackWhenDismiss: this.widgetBackgroundSheetOpen ? (springBack: SpringBackAction) => {
+      onWillSpringBackWhenDismiss: this.backupSheetOpen ? (springBack: SpringBackAction) => {
+        if (this.backupBusy) springBack.springBack();
+      } : this.widgetBackgroundSheetOpen ? (springBack: SpringBackAction) => {
         // Defer the rebound until confirmation is declined; successful dismissals close directly.
         this.widgetBackgroundSpringBack = () => springBack.springBack();
       } : undefined,
@@ -2139,6 +2185,8 @@ struct Home {
         this.loginSheetOpen = false;
         this.widgetBackgroundSheetOpen = false;
         this.importTimetableSheetOpen = false;
+        this.backupSheetOpen = false;
+        this.backupBusy = false;
         this.academicPanelOpen = false;
         this.academicPanelKind = 0;
         this.widgetBackgroundDirty = false;
@@ -2154,7 +2202,7 @@ struct Home {
       }
     }, this.loginSheetOpen || this.sessionSheetOpen || this.courseSheetOpen || this.timetableDisplayOpen ||
       this.calendarExportSheetOpen || this.widgetBackgroundSheetOpen || this.importTimetableSheetOpen ||
-      this.academicPanelOpen,
+      this.academicPanelOpen || this.backupSheetOpen,
     !this.timetableDisplayOpen));
   }
 
@@ -2181,7 +2229,7 @@ struct Home {
   @Builder
   activeSheet() {
     SheetContent({ fillHeight: this.loginSheetOpen || this.widgetBackgroundSheetOpen || this.importTimetableSheetOpen ||
-      this.academicPanelOpen }) {
+      this.academicPanelOpen || this.backupSheetOpen }) {
       if (this.loginSheetOpen) {
         EasLoginPage({
           campusCode: this.loginCampusCode,
@@ -2229,6 +2277,13 @@ struct Home {
         })
           .width('100%')
           .height('100%');
+      } else if (this.backupSheetOpen) {
+        BackupPanel({
+          presentedAsSheet: true,
+          onClose: () => this.closeActiveSheet(),
+          onBusyChanged: (busy: boolean) => { this.backupBusy = busy; },
+          onRestored: () => { void this.onBackupRestored(); }
+        }).width('100%').height('100%');
       } else if (this.academicPanelOpen && this.academicPanelKind === 1) {
         ExamPage({ presentedAsSheet: true, onClose: () => this.closeActiveSheet() })
           .width('100%').height('100%');
@@ -2271,14 +2326,14 @@ struct Home {
   calendarExportConfirmationSheet(timetable: EasTimetable) {
     Column() {
       Text('同步至手机日历')
-        .fontSize(21)
-        .fontWeight(FontWeight.Bold)
+        .fontSize(HitaDesign.title)
+        .fontWeight(FontWeight.Medium)
         .fontColor(COLOR_TEXT_PRIMARY)
         .width('100%')
         .margin({ bottom: 20 });
 
       Text(timetable.name)
-        .fontSize(17)
+        .fontSize(HitaDesign.body)
         .fontWeight(FontWeight.Medium)
         .fontColor(COLOR_TEXT_PRIMARY)
         .width('100%')
@@ -2286,7 +2341,7 @@ struct Home {
         .textOverflow({ overflow: TextOverflow.Ellipsis });
       Row() {
         Text('自动同步')
-          .fontSize(16)
+          .fontSize(HitaDesign.body)
           .fontColor(COLOR_TEXT_PRIMARY)
           .layoutWeight(1);
         Toggle({ type: ToggleType.Switch, isOn: this.calendarExportSyncEnabled })
@@ -2303,7 +2358,7 @@ struct Home {
       if (this.calendarSyncEnabled && (this.calendarSyncStatus.indexOf('未完成') >= 0 ||
         this.calendarSyncStatus.indexOf('提醒已关闭') >= 0)) {
         Text(this.calendarSyncStatus)
-          .fontSize(12)
+          .fontSize(HitaDesign.label)
           .lineHeight(18)
           .fontColor(COLOR_TEXT_SECONDARY)
           .width('100%')
@@ -2313,7 +2368,7 @@ struct Home {
       ImmersiveHeader({ barHeight: 46 }) {
         Row({ space: 12 }) {
           Button('取消', { type: ButtonType.Capsule })
-            .fontSize(15)
+            .fontSize(HitaDesign.body)
             .fontWeight(FontWeight.Medium)
             .fontColor(CompatibleMaterialModifier.foreground(COLOR_TEXT_SECONDARY))
             .backgroundColor($r('app.color.hita_control'))
@@ -2325,7 +2380,7 @@ struct Home {
             .enabled(!this.calendarExporting)
             .onClick(() => this.cancelCalendarExport());
           Button('保存', { type: ButtonType.Capsule })
-            .fontSize(15)
+            .fontSize(HitaDesign.body)
             .fontWeight(FontWeight.Medium)
             .fontColor(CompatibleMaterialModifier.foreground('#FFFFFF'))
             .backgroundColor($r('app.color.hita_primary_fill'))
@@ -2381,7 +2436,7 @@ struct Home {
             ListItem() {
               if (CompatibleSheetMaterial.isEnabled()) {
                 ImmersiveEventCard({ content: () => { this.eventRow(event, true); } })
-                  .opacity(event.to <= this.nowTick ? 0.55 : 1)
+                  .opacity(1)
               } else {
                 this.eventRow(event);
               }
@@ -2391,7 +2446,8 @@ struct Home {
       }
       .width('100%')
       .layoutWeight(1)
-      .padding({ left: 16, right: 16 })
+      .constraintSize({ maxWidth: HitaDesign.contentMaxWidth })
+      .padding({ left: HitaDesign.inset, right: HitaDesign.inset })
       // Reach the screen bottom; the last card still clears the dock when scrolled to the end.
       .contentStartOffset(8)
       .contentEndOffset(this.dockPageInset() + 16)
@@ -2407,22 +2463,22 @@ struct Home {
   todayHeader() {
     Column() {
       Text(Home.greeting(this.nowTick))
-        .fontSize(13)
+        .fontSize(HitaDesign.caption)
         .fontColor(COLOR_TEXT_SECONDARY);
       Row() {
         Text((new Date(this.nowTick).getMonth() + 1).toString() + '月' +
           new Date(this.nowTick).getDate().toString() + '日')
-          .fontSize(28)
+          .fontSize(HitaDesign.display)
           .fontWeight(FontWeight.Bold)
           .fontColor(COLOR_TEXT_PRIMARY);
         Text(DOW_FULL[EasTimeTools.getDow(this.nowTick)])
-          .fontSize(15)
+          .fontSize(HitaDesign.body)
           .fontColor(COLOR_TEXT_SECONDARY)
-          .margin({ left: 10, bottom: 3 });
+          .margin({ left: 12, bottom: 4 });
         Blank();
         if (this.currentWeekNumber() > 0) {
           Text('第 ' + this.currentWeekNumber().toString() + ' 周')
-            .fontSize(13)
+            .fontSize(HitaDesign.caption)
             .fontWeight(FontWeight.Medium)
             .fontColor(COLOR_PRIMARY)
             .backgroundColor(COLOR_NAV_ACTIVE)
@@ -2437,7 +2493,7 @@ struct Home {
     }
     .width('100%')
     .alignItems(HorizontalAlign.Start)
-    .padding({ left: 20, right: 20, top: 12 + this.statusBarInset, bottom: 4 });
+    .padding({ left: HitaDesign.inset, right: HitaDesign.inset, top: 16 + this.statusBarInset, bottom: 12 });
   }
 
   @Builder
@@ -2445,33 +2501,33 @@ struct Home {
     Column() {
       Row() {
         Text(this.heroTag())
-          .fontSize(12)
+          .fontSize(HitaDesign.label)
           .fontWeight(FontWeight.Medium)
-          .fontColor('#FFFFFF')
+          .fontColor($r('app.color.hita_on_primary'))
           .backgroundColor($r('app.color.hita_hero_chip'))
           .borderRadius(11)
           .padding({ left: 9, right: 9, top: 3, bottom: 3 });
         Blank();
         if (this.todayClassCount() > 0) {
           Text('已上 ' + this.completedClassCount().toString() + ' / ' + this.todayClassCount().toString() + ' 节')
-            .fontSize(12)
-            .fontColor('#DCEEFF');
+            .fontSize(HitaDesign.label)
+            .fontColor($r('app.color.hita_on_primary_secondary'));
         }
       }
       .width('100%');
 
       if (this.heroEvent() !== undefined) {
         Text((this.heroEvent() as EasEventItem).name)
-          .fontSize(22)
-          .fontWeight(FontWeight.Bold)
-          .fontColor('#FFFFFF')
+          .fontSize(HitaDesign.title)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.hita_on_primary'))
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .margin({ top: 12 });
         Text(Home.placeTeacher(this.heroEvent() as EasEventItem).length > 0 ?
           Home.placeTeacher(this.heroEvent() as EasEventItem) : '地点未填写')
-          .fontSize(13)
-          .fontColor('#DCEEFF')
+          .fontSize(HitaDesign.caption)
+          .fontColor($r('app.color.hita_on_primary_secondary'))
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .margin({ top: 4 });
@@ -2480,24 +2536,24 @@ struct Home {
           Text() {
             Span(this.heroMinutesLeft() >= 60 ? Math.floor(this.heroMinutesLeft() / 60).toString() : '')
               .fontSize(30)
-              .fontWeight(FontWeight.Bold)
-              .fontColor('#FFFFFF');
+              .fontWeight(FontWeight.Medium)
+              .fontColor($r('app.color.hita_on_primary'));
             Span(this.heroMinutesLeft() >= 60 ? ' 小时 ' : '')
-              .fontSize(13)
-              .fontColor('#DCEEFF');
+              .fontSize(HitaDesign.caption)
+              .fontColor($r('app.color.hita_on_primary_secondary'));
             Span((this.heroMinutesLeft() % 60).toString())
               .fontSize(30)
-              .fontWeight(FontWeight.Bold)
-              .fontColor('#FFFFFF');
+              .fontWeight(FontWeight.Medium)
+              .fontColor($r('app.color.hita_on_primary'));
             Span(' 分钟' + this.heroCountdownSuffix())
-              .fontSize(13)
-              .fontColor('#DCEEFF');
+              .fontSize(HitaDesign.caption)
+              .fontColor($r('app.color.hita_on_primary_secondary'));
           }
           Blank();
           Text(EasTimeTools.printTime((this.heroEvent() as EasEventItem).from) + ' - ' +
             EasTimeTools.printTime((this.heroEvent() as EasEventItem).to))
-            .fontSize(13)
-            .fontColor('#FFFFFF')
+            .fontSize(HitaDesign.caption)
+            .fontColor($r('app.color.hita_on_primary'))
             .margin({ bottom: 5 });
         }
         .width('100%')
@@ -2512,18 +2568,18 @@ struct Home {
         }
       } else {
         Text(this.heroIdleTitle())
-          .fontSize(22)
-          .fontWeight(FontWeight.Bold)
-          .fontColor('#FFFFFF')
+          .fontSize(HitaDesign.title)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.hita_on_primary'))
           .margin({ top: 12 });
         Blank();
         Row() {
           SymbolGlyph($r('sys.symbol.calendar'))
-            .fontSize(15)
-            .fontColor(['#DCEEFF']);
+            .fontSize(HitaDesign.body)
+            .fontColor([$r('app.color.hita_on_primary_secondary')]);
           Text(this.tomorrowText())
-            .fontSize(13)
-            .fontColor('#FFFFFF')
+            .fontSize(HitaDesign.caption)
+            .fontColor($r('app.color.hita_on_primary'))
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
             .layoutWeight(1)
@@ -2535,7 +2591,7 @@ struct Home {
     .width('100%')
     .height(this.todayHeroHeight())
     .alignItems(HorizontalAlign.Start)
-    .padding({ left: 18, right: 18, top: 16, bottom: 16 })
+    .padding(20)
     .backgroundColor($r('app.color.hita_primary_fill'))
     .borderRadius(24)
     .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_primary_fill'), true));
@@ -2551,13 +2607,13 @@ struct Home {
         .backgroundColor(COLOR_EXAM);
       Column() {
         Text(exam.name)
-          .fontSize(15)
+          .fontSize(HitaDesign.body)
           .fontWeight(FontWeight.Medium)
           .fontColor(COLOR_TEXT_PRIMARY)
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis });
         Text(Home.examWhenText(exam))
-          .fontSize(12)
+          .fontSize(HitaDesign.label)
           .fontColor(COLOR_TEXT_SECONDARY)
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -2567,7 +2623,7 @@ struct Home {
       .alignItems(HorizontalAlign.Start)
       .margin({ left: 12, right: 12 });
       Text(Home.examDistanceText(exam, this.nowTick))
-        .fontSize(13)
+        .fontSize(HitaDesign.caption)
         .fontWeight(FontWeight.Medium)
         .fontColor(COLOR_EXAM)
         .backgroundColor($r('app.color.hita_error_surface'))
@@ -2575,10 +2631,10 @@ struct Home {
         .padding({ left: 10, right: 10, top: 5, bottom: 5 });
     }
     .width('100%')
-    .padding({ left: 14, right: 14, top: 14, bottom: 14 })
+    .padding(HitaDesign.inset)
     .backgroundColor(COLOR_CARD)
     .borderRadius(16)
-    .border({ width: 1, color: $r('app.color.hita_divider_edf1f7') })
+    .border({ width: 0, color: $r('app.color.hita_divider_edf1f7') })
     .alignItems(VerticalAlign.Center)
     .onClick(() => {
       this.getUIContext().getRouter().pushUrl({ url: 'pages/ExamPage' });
@@ -2589,12 +2645,12 @@ struct Home {
   todaySectionHeader() {
     Row() {
       Text('今日安排')
-        .fontSize(15)
+        .fontSize(HitaDesign.body)
         .fontWeight(FontWeight.Medium)
         .fontColor(COLOR_TEXT_PRIMARY);
       Blank();
       Text(this.todayItems.length.toString() + ' 项')
-        .fontSize(12)
+        .fontSize(HitaDesign.label)
         .fontColor(COLOR_TEXT_HINT);
     }
     .width('100%')
@@ -2606,11 +2662,11 @@ struct Home {
   emptyToday() {
     Column() {
       Text('还没有可展示的课表')
-        .fontSize(16)
+        .fontSize(HitaDesign.body)
         .fontWeight(FontWeight.Medium)
         .fontColor(COLOR_TEXT_PRIMARY);
       Text('可在“更多”中导入或新建课表')
-        .fontSize(13)
+        .fontSize(HitaDesign.caption)
         .fontColor(COLOR_TEXT_SECONDARY)
         .margin({ top: 6 });
     }
@@ -2631,11 +2687,11 @@ struct Home {
 
       Column() {
         Text(EasTimeTools.printTime(event.from))
-          .fontSize(15)
+          .fontSize(HitaDesign.body)
           .fontWeight(FontWeight.Medium)
           .fontColor(COLOR_TEXT_PRIMARY);
         Text(EasTimeTools.printTime(event.to))
-          .fontSize(12)
+          .fontSize(HitaDesign.label)
           .fontColor(COLOR_TEXT_HINT)
           .margin({ top: 2 });
       }
@@ -2646,7 +2702,7 @@ struct Home {
       Column() {
         Row() {
           Text(event.name)
-            .fontSize(16)
+            .fontSize(HitaDesign.body)
             .fontWeight(FontWeight.Medium)
             .fontColor(event.type === EasEventType.EXAM ? COLOR_EXAM : COLOR_TEXT_PRIMARY)
             .layoutWeight(1)
@@ -2654,7 +2710,7 @@ struct Home {
             .textOverflow({ overflow: TextOverflow.Ellipsis });
           if (Home.todayChipText(event, this.nowTick).length > 0) {
             Text(Home.todayChipText(event, this.nowTick))
-              .fontSize(11)
+              .fontSize(HitaDesign.label)
               .fontColor(Home.todayChipColor(event, this.nowTick))
               .backgroundColor(Home.todayChipBg(event, this.nowTick))
               .borderRadius(9)
@@ -2666,7 +2722,7 @@ struct Home {
         .alignItems(VerticalAlign.Center);
         if (Home.placeTeacher(event).length > 0) {
           Text(Home.placeTeacher(event))
-            .fontSize(12)
+            .fontSize(HitaDesign.label)
             .fontColor(COLOR_TEXT_SECONDARY)
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -2686,14 +2742,14 @@ struct Home {
       .margin({ left: 12 });
     }
     .width('100%')
-    .padding({ left: 14, right: 14, top: 14, bottom: 14 })
+    .padding(HitaDesign.inset)
     .alignItems(VerticalAlign.Center)
     .backgroundColor(immersive ? Color.Transparent : COLOR_CARD)
     .borderRadius(16)
     .border({ width: event.containsTimestamp(this.nowTick) ? 1.5 : 1,
       color: event.containsTimestamp(this.nowTick) ? $r('app.color.hita_focus') : $r('app.color.hita_divider_edf1f7') })
     .clip(true)
-    .opacity(!immersive && event.to <= this.nowTick ? 0.55 : 1)
+    .opacity(1)
     .hitTestBehavior(immersive ? HitTestMode.Transparent : HitTestMode.Default)
     .margin({ bottom: immersive ? 0 : 2 });
   }
@@ -2702,7 +2758,7 @@ struct Home {
   emptyTimetableActions() {
     Row({ space: 10 }) {
       Button(this.sessionInfo === undefined ? '登录教务' : '导入课表')
-        .fontSize(14)
+        .fontSize(HitaDesign.caption)
         .height(40)
         .fontColor('#FFFFFF')
         .backgroundColor($r('app.color.hita_primary_fill'))
@@ -2715,7 +2771,7 @@ struct Home {
           }
         });
       Button('课表管理')
-        .fontSize(14)
+        .fontSize(HitaDesign.caption)
         .height(40)
         .fontColor(COLOR_PRIMARY)
         .backgroundColor(COLOR_NAV_ACTIVE)
@@ -2732,14 +2788,14 @@ struct Home {
       Text(this.timetableHeaderMonth())
         .width(TIMETABLE_GUTTER_WIDTH)
         .fontSize(11)
-        .fontWeight(FontWeight.Bold)
+        .fontWeight(FontWeight.Medium)
         .fontColor(this.timetableInk('date'))
         .textAlign(TextAlign.Center)
       ForEach(DOW_NAMES, (name: string, dayIndex: number) => {
         Column() {
           Text(name)
             .fontSize(this.timetableHeaderIsToday(dayIndex) ? 11 : 10)
-            .fontWeight(FontWeight.Bold)
+            .fontWeight(FontWeight.Medium)
             .fontColor(this.timetableInk('date'))
           Text(this.timetableHeaderDate(dayIndex))
             .fontSize(10)
@@ -2932,7 +2988,7 @@ struct Home {
               Text(this.currentTimetable === undefined ? '时间表' :
                 '第' + this.timetableWeek.toString() + '周')
                 .fontSize(34)
-                .fontWeight(FontWeight.Bold)
+                .fontWeight(FontWeight.Medium)
                 .fontColor(this.timetableInk())
                 .maxLines(1)
                 .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -3120,6 +3176,7 @@ struct Home {
               this.currentTimetable === undefined ? '暂无课表' : this.currentTimetable.name, () => {
                 this.requestCalendarExport();
               });
+
           }
           .width('100%')
           .padding({ top: 4, bottom: 4 })
@@ -3174,6 +3231,8 @@ struct Home {
               '校园网站与课程攻略', () => {
                 this.getUIContext().getRouter().pushUrl({ url: 'pages/PortalsPage' });
               });
+            this.moreNavigationRow($r('sys.symbol.doc_plaintext'), '备份与恢复',
+              '课表、设置与背景', () => this.openBackupSheet());
             this.moreNavigationRow($r('sys.symbol.doc_plaintext'), '公告',
               '版本更新 · 服务与故障通知', () => {
                 this.getUIContext().getRouter().pushUrl({ url: 'pages/NoticesPage' });
@@ -3193,7 +3252,8 @@ struct Home {
         .width('100%')
         // Single source of truth for the tab's horizontal inset: every card,
         // title and shortcut row below spans this padded content area.
-        .padding({ left: 16, right: 16 });
+        .padding({ left: HitaDesign.inset, right: HitaDesign.inset })
+        .constraintSize({ maxWidth: HitaDesign.contentMaxWidth });
       }
       .width('100%')
       .height('100%')
@@ -3212,8 +3272,8 @@ struct Home {
 
       Row() {
         Text('功能中心')
-          .fontSize(24)
-          .fontWeight(FontWeight.Bold)
+          .fontSize(HitaDesign.display)
+          .fontWeight(FontWeight.Medium)
           .fontColor(COLOR_TEXT_PRIMARY)
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis });
@@ -3251,7 +3311,7 @@ struct Home {
       Row() {
         Stack() {
           SymbolGlyph($r('sys.symbol.clock'))
-            .fontSize(22)
+            .fontSize(HitaDesign.title)
             .fontColor([COLOR_PRIMARY]);
         }
         .width(40)
@@ -3261,27 +3321,29 @@ struct Home {
         .backgroundColor(COLOR_NAV_ACTIVE);
         Column() {
           Text('桌面服务卡片')
-            .fontSize(14)
+            .fontSize(HitaDesign.body)
             .fontColor(COLOR_TEXT_PRIMARY)
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis });
           Text('下一节课倒计时')
-            .fontSize(12)
+            .fontSize(HitaDesign.label)
             .fontColor(COLOR_TEXT_SECONDARY)
-            .margin({ top: 2 })
+            .margin({ top: 4 })
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis });
         }
         .layoutWeight(1)
         .alignItems(HorizontalAlign.Start)
         .margin({ left: 12 });
-        Text('›')
-          .fontSize(23)
-          .fontColor(COLOR_TEXT_SECONDARY)
+        SymbolGlyph($r('sys.symbol.chevron_right'))
+          .fontSize(12)
+          .fontColor([COLOR_TEXT_SECONDARY])
+          .width(16).height(24).flexShrink(0)
+          .accessibilityLevel('no')
           .rotate({ angle: this.widgetMenuExpanded ? 90 : 0 });
       }
       .width('100%')
-      .height(56)
+      .constraintSize({ minHeight: HitaDesign.rowMinHeight })
       .padding({ left: 16, right: 16 })
       .alignItems(VerticalAlign.Center)
       .accessibilityDescription(this.widgetMenuExpanded ? '已展开' : '已收起')
@@ -3297,14 +3359,16 @@ struct Home {
           Column() {
             Row() {
               Text('设置桌面服务卡片')
-                .fontSize(15)
+                .fontSize(HitaDesign.body)
                 .fontColor(CompatibleSheetMaterial.isEnabled() ? CompatibleMaterialModifier.foreground(COLOR_TEXT_PRIMARY) :
                   COLOR_TEXT_PRIMARY)
                 .layoutWeight(1)
                 .maxLines(1);
-              Text('›')
-                .fontSize(20)
-                .fontColor($r('app.color.hita_text_hint_b2b8c4'))
+              SymbolGlyph($r('sys.symbol.chevron_right'))
+                .fontSize(12)
+                .fontColor([$r('app.color.hita_text_hint_b2b8c4')])
+                .width(16).height(24).flexShrink(0)
+                .accessibilityLevel('no')
                 .margin({ left: 6 });
             }
             .width('100%')
@@ -3315,14 +3379,16 @@ struct Home {
             });
             Row() {
               Text('自定义背景')
-                .fontSize(15)
+                .fontSize(HitaDesign.body)
                 .fontColor(CompatibleSheetMaterial.isEnabled() ? CompatibleMaterialModifier.foreground(COLOR_TEXT_PRIMARY) :
                   COLOR_TEXT_PRIMARY)
                 .layoutWeight(1)
                 .maxLines(1);
-              Text('›')
-                .fontSize(20)
-                .fontColor($r('app.color.hita_text_hint_b2b8c4'))
+              SymbolGlyph($r('sys.symbol.chevron_right'))
+                .fontSize(12)
+                .fontColor([$r('app.color.hita_text_hint_b2b8c4')])
+                .width(16).height(24).flexShrink(0)
+                .accessibilityLevel('no')
                 .margin({ left: 6 });
             }
             .width('100%')
@@ -3365,7 +3431,7 @@ struct Home {
       Row() {
         Stack() {
           SymbolGlyph($r('sys.symbol.moon'))
-            .fontSize(22)
+            .fontSize(HitaDesign.title)
             .fontColor([COLOR_PRIMARY]);
         }
         .width(40)
@@ -3375,28 +3441,30 @@ struct Home {
         .backgroundColor(COLOR_NAV_ACTIVE);
         Column() {
           Text('深色模式')
-            .fontSize(14)
+            .fontSize(HitaDesign.body)
             .fontColor(COLOR_TEXT_PRIMARY)
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis });
           Text(this.appearanceMode === AppearanceMode.DARK ? '已开启' :
             (this.appearanceMode === AppearanceMode.LIGHT ? '已关闭' : '跟随系统'))
-            .fontSize(12)
+            .fontSize(HitaDesign.label)
             .fontColor(COLOR_TEXT_SECONDARY)
-            .margin({ top: 2 })
+            .margin({ top: 4 })
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis });
         }
         .layoutWeight(1)
         .alignItems(HorizontalAlign.Start)
         .margin({ left: 12 });
-        Text('›')
-          .fontSize(23)
-          .fontColor(COLOR_TEXT_SECONDARY)
+        SymbolGlyph($r('sys.symbol.chevron_right'))
+          .fontSize(12)
+          .fontColor([COLOR_TEXT_SECONDARY])
+          .width(16).height(24).flexShrink(0)
+          .accessibilityLevel('no')
           .rotate({ angle: this.appearanceExpanded ? 90 : 0 });
       }
       .width('100%')
-      .height(56)
+      .constraintSize({ minHeight: HitaDesign.rowMinHeight })
       .padding({ left: 16, right: 16 })
       .alignItems(VerticalAlign.Center)
       .accessibilityDescription(this.appearanceExpanded ? '已展开' : '已收起')
@@ -3442,7 +3510,7 @@ struct Home {
           }
         });
       Text(label)
-        .fontSize(13)
+        .fontSize(HitaDesign.caption)
         .fontColor(CompatibleSheetMaterial.isEnabled() ? CompatibleMaterialModifier.foreground(COLOR_TEXT_PRIMARY) :
           COLOR_TEXT_PRIMARY)
         .maxLines(1);
@@ -3468,8 +3536,8 @@ struct Home {
       Column() {
         Text(this.sessionInfo === undefined ? '?' :
           (this.sessionInfo.name.length > 0 ? this.sessionInfo.name.substring(0, 1) : 'U'))
-          .fontSize(18)
-          .fontWeight(FontWeight.Bold)
+          .fontSize(HitaDesign.section)
+          .fontWeight(FontWeight.Medium)
           .fontColor('#FFFFFF');
       }
       .width(40)
@@ -3486,8 +3554,8 @@ struct Home {
           (this.sessionInfo.name.length > 0 ? this.sessionInfo.name :
             (this.sessionInfo.username.length > 0 ? this.sessionInfo.username :
               (this.sessionInfo.stuId.length > 0 ? this.sessionInfo.stuId : '已登录教务'))))
-          .fontSize(16)
-          .fontWeight(FontWeight.Bold)
+          .fontSize(HitaDesign.body)
+          .fontWeight(FontWeight.Medium)
           .fontColor(COLOR_TEXT_PRIMARY);
         Text(this.sessionInfo === undefined ? '点击进行教务登录' :
           this.sessionInfo.loginExpired ? Home.campusName(this.sessionInfo.campus) + ' · 点击重新登录' :
@@ -3495,7 +3563,7 @@ struct Home {
             Home.campusName(this.sessionInfo.campus) +
             (this.sessionInfo.school.length > 0 ? ' · ' + this.sessionInfo.school : '') +
             (this.sessionInfo.major.length > 0 ? ' · ' + this.sessionInfo.major : '')))
-          .fontSize(12)
+          .fontSize(HitaDesign.label)
           .fontColor(COLOR_TEXT_SECONDARY)
           .margin({ top: 4 })
           .maxLines(2)
@@ -3504,9 +3572,11 @@ struct Home {
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start)
       .margin({ left: 12 });
-      Text('›')
-        .fontSize(24)
-        .fontColor(COLOR_TEXT_SECONDARY);
+      SymbolGlyph($r('sys.symbol.chevron_right'))
+        .fontSize(12)
+        .fontColor([COLOR_TEXT_SECONDARY])
+        .width(16).height(24).flexShrink(0)
+        .accessibilityLevel('no');
     }
     .width('100%')
     .padding(16)
@@ -3563,11 +3633,11 @@ struct Home {
             .margin({ right: 12 });
           Column() {
             Text('教务认证')
-              .fontSize(22)
-              .fontWeight(FontWeight.Bold)
+              .fontSize(HitaDesign.title)
+              .fontWeight(FontWeight.Medium)
               .fontColor(COLOR_TEXT_PRIMARY);
             Text(this.sessionSheetInfo === undefined ? '请登录教务账号以继续' : '当前教务会话')
-              .fontSize(13)
+              .fontSize(HitaDesign.caption)
               .fontColor(COLOR_TEXT_SECONDARY)
               .margin({ top: 4 });
           }
@@ -3581,7 +3651,7 @@ struct Home {
 
       Column() {
         Text('认证校区')
-          .fontSize(12)
+          .fontSize(HitaDesign.label)
           .fontWeight(FontWeight.Medium)
           .fontColor(COLOR_TEXT_SECONDARY)
           .width('100%');
@@ -3609,8 +3679,8 @@ struct Home {
           Stack() {
             Text(this.sessionSheetInfo.name.length > 0 ?
               this.sessionSheetInfo.name.substring(0, 1) : 'U')
-              .fontSize(18)
-              .fontWeight(FontWeight.Bold)
+              .fontSize(HitaDesign.section)
+              .fontWeight(FontWeight.Medium)
               .fontColor('#FFFFFF');
           }
           .width(48)
@@ -3621,14 +3691,14 @@ struct Home {
           Column() {
             Text(this.sessionSheetInfo.name.length > 0 ? this.sessionSheetInfo.name :
               (this.sessionSheetInfo.stuId.length > 0 ? this.sessionSheetInfo.stuId : '教务账号'))
-              .fontSize(17)
-              .fontWeight(FontWeight.Bold)
+              .fontSize(HitaDesign.body)
+              .fontWeight(FontWeight.Medium)
               .fontColor(COLOR_TEXT_PRIMARY)
               .maxLines(1)
               .textOverflow({ overflow: TextOverflow.Ellipsis });
             Text(Home.campusName(this.sessionSheetInfo.campus) +
               (this.sessionSheetInfo.stuId.length > 0 ? ' · ' + this.sessionSheetInfo.stuId : ''))
-              .fontSize(13)
+              .fontSize(HitaDesign.caption)
               .fontColor(COLOR_TEXT_SECONDARY)
               .margin({ top: 4 });
           }
@@ -3637,7 +3707,7 @@ struct Home {
           .margin({ left: 12 });
 
           Text(this.sessionSheetStatus)
-            .fontSize(12)
+            .fontSize(HitaDesign.label)
             .fontWeight(FontWeight.Medium)
             .fontColor(this.sessionSheetStatus === EasSessionStatus.SAVED ? $r('app.color.hita_success') :
               this.sessionSheetStatus === EasSessionStatus.EXPIRED ? $r('app.color.hita_error') :
@@ -3660,7 +3730,7 @@ struct Home {
           Button('重新登录')
             .layoutWeight(1)
             .height(46)
-            .fontSize(15)
+            .fontSize(HitaDesign.body)
             .fontWeight(FontWeight.Medium)
             .fontColor(COLOR_PRIMARY)
             .backgroundColor(COLOR_NAV_ACTIVE)
@@ -3671,7 +3741,7 @@ struct Home {
           Button('退出登录')
             .layoutWeight(1)
             .height(46)
-            .fontSize(15)
+            .fontSize(HitaDesign.body)
             .fontWeight(FontWeight.Medium)
             .fontColor($r('app.color.hita_error'))
             .backgroundColor($r('app.color.hita_error_surface'))
@@ -3687,7 +3757,7 @@ struct Home {
           Row() {
             Stack() {
               SymbolGlyph($r('sys.symbol.lock_shield'))
-                .fontSize(22)
+                .fontSize(HitaDesign.title)
                 .fontColor([COLOR_PRIMARY]);
             }
             .width(42)
@@ -3697,11 +3767,11 @@ struct Home {
             .alignContent(Alignment.Center);
             Column() {
               Text('登录教务系统')
-                .fontSize(16)
-                .fontWeight(FontWeight.Bold)
+                .fontSize(HitaDesign.body)
+                .fontWeight(FontWeight.Medium)
                 .fontColor(COLOR_TEXT_PRIMARY);
               Text('将打开对应校区的官方认证页')
-                .fontSize(12)
+                .fontSize(HitaDesign.label)
                 .fontColor(COLOR_TEXT_SECONDARY)
                 .margin({ top: 3 });
             }
@@ -3714,7 +3784,7 @@ struct Home {
           Button('网页登录')
             .width('100%')
             .height(46)
-            .fontSize(15)
+            .fontSize(HitaDesign.body)
             .fontWeight(FontWeight.Medium)
             .fontColor('#FFFFFF')
             .backgroundColor($r('app.color.hita_primary_fill'))
@@ -3726,10 +3796,10 @@ struct Home {
 
           Row() {
             SymbolGlyph($r('sys.symbol.lock_shield'))
-              .fontSize(14)
+              .fontSize(HitaDesign.caption)
               .fontColor([COLOR_TEXT_HINT]);
             Text('HITA 不保存您的教务密码')
-              .fontSize(12)
+              .fontSize(HitaDesign.label)
               .fontColor(COLOR_TEXT_HINT)
               .margin({ left: 6 });
           }
@@ -3758,7 +3828,7 @@ struct Home {
           this.sessionSheetCampus === code ? COLOR_PRIMARY : $r('app.color.hita_text_hint_a9b4c2')))
         .strokeWidth(1.5);
       Text(label)
-        .fontSize(15)
+        .fontSize(HitaDesign.body)
         .fontWeight(this.sessionSheetCampus === code ? FontWeight.Medium : FontWeight.Regular)
         .fontColor(this.sessionSheetCampus === code ? COLOR_TEXT_PRIMARY : COLOR_TEXT_SECONDARY)
         .margin({ left: 7 });
@@ -3778,7 +3848,7 @@ struct Home {
     Row() {
       Stack() {
         SymbolGlyph(options.symbol)
-          .fontSize(22)
+          .fontSize(HitaDesign.title)
           .fontColor([COLOR_PRIMARY]);
       }
       .width(40)
@@ -3788,13 +3858,14 @@ struct Home {
       .backgroundColor(COLOR_NAV_ACTIVE);
       Column() {
         Text(options.title)
-          .fontSize(12)
-          .fontColor(COLOR_TEXT_SECONDARY)
+          .fontSize(HitaDesign.body)
+          .fontWeight(FontWeight.Medium)
+          .fontColor(COLOR_TEXT_PRIMARY)
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis });
         Text(options.subtitle)
-          .fontSize(14)
-          .fontColor(COLOR_TEXT_PRIMARY)
+          .fontSize(HitaDesign.label)
+          .fontColor(COLOR_TEXT_SECONDARY)
           .margin({ top: 4 })
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis });
@@ -3807,7 +3878,7 @@ struct Home {
     // exactly equal on narrow devices.
     .width(0)
     .layoutWeight(1)
-    .height(80)
+    .constraintSize({ minHeight: 88 })
     .padding({ left: 12, right: 12 })
     .alignItems(VerticalAlign.Center)
     .backgroundColor(COLOR_CARD)
@@ -3818,10 +3889,10 @@ struct Home {
   @Builder
   moreSectionTitle(title: string) {
     Text(title)
-      .fontSize(18)
-      .fontWeight(FontWeight.Bold)
+      .fontSize(HitaDesign.section)
+      .fontWeight(FontWeight.Medium)
       .fontColor(COLOR_TEXT_PRIMARY)
-      .margin({ top: 16, bottom: 4 })
+      .margin({ top: HitaDesign.sectionGap, bottom: HitaDesign.gap })
       .alignSelf(ItemAlign.Start);
   }
 
@@ -3831,7 +3902,7 @@ struct Home {
       Row() {
         Stack() {
           SymbolGlyph($r('sys.symbol.bell'))
-            .fontSize(22)
+            .fontSize(HitaDesign.title)
             .fontColor([COLOR_PRIMARY]);
         }
         .width(40)
@@ -3841,15 +3912,15 @@ struct Home {
         .backgroundColor(COLOR_NAV_ACTIVE);
         Column() {
           Text('课程与考试提醒')
-            .fontSize(14)
+            .fontSize(HitaDesign.body)
             .fontColor(COLOR_TEXT_PRIMARY)
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis });
           if (this.classReminderSubtitle().length > 0) {
             Text(this.examReminderEnabled ? this.classReminderSubtitle() + ' · 考试前 ' + this.examReminderLeadMinutes.toString() + ' 分钟' : this.classReminderSubtitle())
-              .fontSize(12)
+              .fontSize(HitaDesign.label)
               .fontColor(COLOR_TEXT_SECONDARY)
-              .margin({ top: 2 })
+              .margin({ top: 4 })
               .maxLines(1)
               .textOverflow({ overflow: TextOverflow.Ellipsis });
           }
@@ -3857,13 +3928,15 @@ struct Home {
         .layoutWeight(1)
         .alignItems(HorizontalAlign.Start)
         .margin({ left: 12 });
-        Text('›')
-          .fontSize(23)
-          .fontColor(COLOR_TEXT_SECONDARY)
+        SymbolGlyph($r('sys.symbol.chevron_right'))
+          .fontSize(12)
+          .fontColor([COLOR_TEXT_SECONDARY])
+          .width(16).height(24).flexShrink(0)
+          .accessibilityLevel('no')
           .rotate({ angle: this.reminderExpanded ? 90 : 0 });
       }
       .width('100%')
-      .height(56)
+      .constraintSize({ minHeight: HitaDesign.rowMinHeight })
       .padding({ left: 16, right: 16 })
       .alignItems(VerticalAlign.Center)
       .accessibilityDescription(this.reminderExpanded ? '已展开' : '已收起')
@@ -3880,15 +3953,15 @@ struct Home {
             Row() {
               Column() {
                 Text('开启课程提醒')
-                  .fontSize(15)
+                  .fontSize(HitaDesign.body)
                   .fontColor(CompatibleSheetMaterial.isEnabled() ? CompatibleMaterialModifier.foreground(COLOR_TEXT_PRIMARY) :
                     COLOR_TEXT_PRIMARY)
                   .maxLines(1);
                 Text('应用在前台或后台运行时会通知。')
-                  .fontSize(12)
+                  .fontSize(HitaDesign.label)
                   .fontColor(COLOR_TEXT_SECONDARY)
-                  .margin({ top: 2 })
-                  .maxLines(1);
+                  .margin({ top: 4 })
+                  .maxLines(2);
               }
               .layoutWeight(1)
               .alignItems(HorizontalAlign.Start);
@@ -3906,17 +3979,17 @@ struct Home {
             .alignItems(VerticalAlign.Center);
             Row({ space: 8 }) {
               Text('提醒时间')
-                .fontSize(15)
+                .fontSize(HitaDesign.body)
                 .fontColor(CompatibleSheetMaterial.isEnabled() ? CompatibleMaterialModifier.foreground(COLOR_TEXT_PRIMARY) :
                   COLOR_TEXT_PRIMARY)
                 .layoutWeight(1);
               Text('上课前 ' + this.reminderLeadMinutes.toString() + ' 分钟')
-                .fontSize(13)
+                .fontSize(HitaDesign.caption)
                 .fontColor(CompatibleSheetMaterial.isEnabled() ? CompatibleMaterialModifier.foreground(COLOR_PRIMARY) :
                   COLOR_PRIMARY)
                 .maxLines(1);
               SymbolGlyph($r('sys.symbol.chevron_right'))
-                .fontSize(12)
+                .fontSize(HitaDesign.label)
                 .fontColor([COLOR_TEXT_SECONDARY])
                 .width(16)
                 .height(20);
@@ -3930,7 +4003,7 @@ struct Home {
             Divider().color($r('app.color.hita_divider')).margin({ top: 2, bottom: 2 });
             Row() {
               Text('开启考试提醒')
-                .fontSize(15)
+                .fontSize(HitaDesign.body)
                 .fontColor(CompatibleSheetMaterial.isEnabled() ? CompatibleMaterialModifier.foreground(COLOR_TEXT_PRIMARY) :
                   COLOR_TEXT_PRIMARY)
                 .layoutWeight(1);
@@ -3940,16 +4013,16 @@ struct Home {
             }.width('100%').constraintSize({ minHeight: 48 }).alignItems(VerticalAlign.Center);
             Row({ space: 8 }) {
               Text('考试提醒时间')
-                .fontSize(15)
+                .fontSize(HitaDesign.body)
                 .fontColor(CompatibleSheetMaterial.isEnabled() ? CompatibleMaterialModifier.foreground(COLOR_TEXT_PRIMARY) :
                   COLOR_TEXT_PRIMARY)
                 .layoutWeight(1);
               Text('考试前 ' + this.examReminderLeadMinutes.toString() + ' 分钟')
-                .fontSize(13)
+                .fontSize(HitaDesign.caption)
                 .fontColor(CompatibleSheetMaterial.isEnabled() ? CompatibleMaterialModifier.foreground(COLOR_PRIMARY) :
                   COLOR_PRIMARY)
                 .maxLines(1);
-              SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(12).fontColor([COLOR_TEXT_SECONDARY]).width(16).height(20);
+              SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(HitaDesign.label).fontColor([COLOR_TEXT_SECONDARY]).width(16).height(20);
             }.width('100%').constraintSize({ minHeight: 48 }).alignItems(VerticalAlign.Center).enabled(!this.reminderBusy)
             .onClick(() => { this.showExamReminderTimePicker(); });
           }
@@ -3984,7 +4057,7 @@ struct Home {
     Row() {
       Stack() {
         SymbolGlyph(symbol)
-          .fontSize(22)
+          .fontSize(HitaDesign.title)
           .fontColor([COLOR_PRIMARY]);
       }
       .width(40)
@@ -3994,15 +4067,15 @@ struct Home {
       .backgroundColor(COLOR_NAV_ACTIVE);
       Column() {
         Text(title)
-          .fontSize(14)
+          .fontSize(HitaDesign.body)
           .fontColor(COLOR_TEXT_PRIMARY)
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis });
         if (subtitle.length > 0) {
           Text(subtitle)
-            .fontSize(12)
+            .fontSize(HitaDesign.label)
             .fontColor(COLOR_TEXT_SECONDARY)
-            .margin({ top: 2 })
+            .margin({ top: 4 })
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis });
         }
@@ -4010,12 +4083,14 @@ struct Home {
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start)
       .margin({ left: 12 });
-      Text('›')
-        .fontSize(23)
-        .fontColor(COLOR_TEXT_SECONDARY);
+      SymbolGlyph($r('sys.symbol.chevron_right'))
+        .fontSize(12)
+        .fontColor([COLOR_TEXT_SECONDARY])
+        .width(16).height(24).flexShrink(0)
+        .accessibilityLevel('no');
     }
     .width('100%')
-    .height(56)
+    .constraintSize({ minHeight: HitaDesign.rowMinHeight })
     .padding({ left: 16, right: 16 })
     .alignItems(VerticalAlign.Center)
     .onClick(action);

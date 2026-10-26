@@ -30,7 +30,7 @@ export class HeaderFade {
     return mixed.join(',');
   }
 
-  /** rgb 形如 '244,247,252'。 */
+  /** rgb 形如 '245,246,248'。 */
   static rgba(rgb: string, alpha: number): string {
     return 'rgba(' + rgb + ',' + alpha.toFixed(3) + ')';
   }

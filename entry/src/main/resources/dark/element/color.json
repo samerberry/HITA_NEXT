@@ -1,6 +1,9 @@
 {
   "color": [
-    { "name": "hita_widget_accent", "value": "#91BFFF" },
+    {
+      "name": "hita_widget_accent",
+      "value": "#91BFFF"
+    },
     {
       "name": "hita_immersive_sheet_card",
       "value": "#8C24272B"
@@ -11,7 +14,7 @@
     },
     {
       "name": "hita_immersive_hero_tint",
-      "value": "#D9254D80"
+      "value": "#E0254D80"
     },
     {
       "name": "hita_page",
@@ -31,15 +34,15 @@
     },
     {
       "name": "hita_surface_soft",
-      "value": "#23272C"
+      "value": "#25292F"
     },
     {
       "name": "hita_surface_soft_f8fafd",
-      "value": "#23272C"
+      "value": "#25292F"
     },
     {
       "name": "hita_surface_soft_f4f7fb",
-      "value": "#23272C"
+      "value": "#25292F"
     },
     {
       "name": "hita_control",
@@ -203,51 +206,51 @@
     },
     {
       "name": "hita_divider",
-      "value": "#3A414B"
+      "value": "#363D47"
     },
     {
       "name": "hita_divider_d7e0ec",
-      "value": "#3A414B"
+      "value": "#363D47"
     },
     {
       "name": "hita_divider_dce4f0",
-      "value": "#3A414B"
+      "value": "#363D47"
     },
     {
       "name": "hita_divider_dde4ee",
-      "value": "#3A414B"
+      "value": "#363D47"
     },
     {
       "name": "hita_divider_e3eaf2",
-      "value": "#3A414B"
+      "value": "#363D47"
     },
     {
       "name": "hita_divider_edf1f7",
-      "value": "#3A414B"
+      "value": "#363D47"
     },
     {
       "name": "hita_divider_eef1f5",
-      "value": "#3A414B"
+      "value": "#363D47"
     },
     {
       "name": "hita_divider_eef1f6",
-      "value": "#3A414B"
+      "value": "#363D47"
     },
     {
       "name": "hita_divider_e8e8e8",
-      "value": "#3A414B"
+      "value": "#363D47"
     },
     {
       "name": "hita_divider_c5cdd8",
-      "value": "#3A414B"
+      "value": "#363D47"
     },
     {
       "name": "hita_divider_c9d1dd",
-      "value": "#3A414B"
+      "value": "#363D47"
     },
     {
       "name": "hita_divider_c9d2de",
-      "value": "#3A414B"
+      "value": "#363D47"
     },
     {
       "name": "hita_error",
@@ -356,6 +359,18 @@
     {
       "name": "hita_hero_chip",
       "value": "#2B5684"
+    },
+    {
+      "name": "hita_on_primary",
+      "value": "#FFFFFF"
+    },
+    {
+      "name": "hita_on_primary_secondary",
+      "value": "#E2EFFF"
+    },
+    {
+      "name": "hita_card_shadow",
+      "value": "#00000000"
     }
   ]
 }

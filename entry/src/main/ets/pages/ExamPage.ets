@@ -1,3 +1,4 @@
+import { HitaDesign } from '../common/theme/HitaDesign';
 import { SheetContent } from '../common/components/SheetContent';
 /**
  * ExamPage.ets — 考试查询。
@@ -35,7 +36,7 @@ import { EventEditorForm } from './AddEventPage';
 
 const HEADER_HEIGHT: number = 60;
 const PAGE_BG: ResourceColor = $r('app.color.hita_page_f6f7fa');
-const PAGE_BG_RGB: string = '246,247,250';
+const PAGE_BG_RGB: string = '245,246,248';
 const DETAIL_ICON_SIZE: number = 38;
 const DETAIL_TEXT_GAP: number = 12;
 const DEFAULT_EXAM_COLOR: number = 0xFFB24B63;
@@ -517,7 +518,7 @@ export struct ExamPage {
             .height(36)
             .color($r('app.color.hita_primary_3390ec'))
           Text('正在刷新考试安排…')
-            .fontSize(13)
+            .fontSize(HitaDesign.caption)
             .fontColor($r('app.color.hita_text_secondary_808080'))
         }
         .width('100%')
@@ -528,7 +529,7 @@ export struct ExamPage {
       } else if (this.loadError && this.exams.length === 0) {
         Row() {
           Text('考试安排加载失败')
-            .fontSize(14)
+            .fontSize(HitaDesign.caption)
             .fontColor($r('app.color.hita_error'))
             .layoutWeight(1)
           Button('重试')
@@ -540,14 +541,14 @@ export struct ExamPage {
       } else if (!this.loadError && this.exams.length === 0 && this.remoteExams.length === 0) {
         Column() {
           Text(this.queryWarning ? '考试查询失败' : '暂无考试安排')
-            .fontSize(16)
+            .fontSize(HitaDesign.body)
             .fontWeight(FontWeight.Medium)
             .fontColor($r('app.color.hita_text_1a1a1a'))
             .width('100%')
             .textAlign(TextAlign.Center)
           Text(this.queryMsg.length > 0 ? this.queryMsg :
             (this.hasSession ? '可点右上角“查询”刷新，或手动添加考试' : '登录教务后可查询考试，也可手动添加'))
-            .fontSize(13)
+            .fontSize(HitaDesign.caption)
             .fontColor(this.queryWarning ? $r('app.color.hita_error') : $r('app.color.hita_text_secondary_808080'))
             .width('100%')
             .textAlign(TextAlign.Center)
@@ -569,7 +570,7 @@ export struct ExamPage {
           if (this.queryContext.length > 0) {
             ListItem() {
               Text(this.queryContext)
-                .fontSize(12)
+                .fontSize(HitaDesign.label)
                 .fontColor($r('app.color.hita_text_secondary_72809a'))
                 .width('100%')
             }
@@ -577,7 +578,7 @@ export struct ExamPage {
           if (this.queryWarning && this.queryMsg.length > 0) {
             ListItem() {
               Text(this.queryMsg)
-                .fontSize(12)
+                .fontSize(HitaDesign.label)
                 .fontColor(this.queryWarning ? $r('app.color.hita_error') :
                   $r('app.color.hita_text_secondary_72809a'))
                 .width('100%')
@@ -587,7 +588,7 @@ export struct ExamPage {
             ListItem() {
               Row() {
                 Text('考试安排加载失败')
-                  .fontSize(14)
+                  .fontSize(HitaDesign.caption)
                   .fontColor($r('app.color.hita_error'))
                   .layoutWeight(1)
                 Button('重试')
@@ -599,7 +600,7 @@ export struct ExamPage {
           if (this.upcoming.length > 0) {
             ListItem() {
               Text('即将到来')
-                .fontSize(13)
+                .fontSize(HitaDesign.caption)
                 .fontWeight(FontWeight.Medium)
                 .fontColor($r('app.color.hita_text_secondary_72809a'))
             }
@@ -624,7 +625,7 @@ export struct ExamPage {
           if (this.past.length > 0) {
             ListItem() {
               Text('已结束')
-                .fontSize(13)
+                .fontSize(HitaDesign.caption)
                 .fontWeight(FontWeight.Medium)
                 .fontColor($r('app.color.hita_text_secondary_72809a'))
             }
@@ -655,7 +656,7 @@ export struct ExamPage {
       if (!this.preparingQuery && !this.querying && this.queryContext.length > 0 &&
         this.exams.length === 0 && this.remoteExams.length === 0) {
         Text(this.queryContext)
-          .fontSize(12)
+          .fontSize(HitaDesign.label)
           .fontColor($r('app.color.hita_text_secondary_72809a'))
           .width('100%')
           .padding({ left: 16, right: 16 })
@@ -676,8 +677,8 @@ export struct ExamPage {
           })
             .margin({ right: 12 })
           Text('考试查询')
-            .fontSize(20)
-            .fontWeight(FontWeight.Bold)
+            .fontSize(HitaDesign.title)
+            .fontWeight(FontWeight.Medium)
             .fontColor($r('app.color.hita_text_1a1a1a'))
             .layoutWeight(1)
             .maxLines(1)
@@ -734,14 +735,14 @@ export struct ExamPage {
       Column() {
         Row() {
           Text(it.name)
-            .fontSize(16)
+            .fontSize(HitaDesign.body)
             .fontWeight(FontWeight.Medium)
             .fontColor($r('app.color.hita_text_242a36'))
             .layoutWeight(1)
             .maxLines(2)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
           Text(ExamSchedule.remainingLabel(it.from, it.to, Date.now()))
-            .fontSize(11)
+            .fontSize(HitaDesign.label)
             .fontColor($r('app.color.hita_error'))
             .padding({ left: 8, right: 8, top: 2, bottom: 2 })
             .backgroundColor($r('app.color.hita_error_surface_fdecec'))
@@ -752,7 +753,7 @@ export struct ExamPage {
 
         Text(ExamPage.dateOf(it.from) + ' · ' + ExamPage.timeOf(it.from) + ' - ' +
           ExamPage.timeOf(it.to))
-          .fontSize(13)
+          .fontSize(HitaDesign.caption)
           .fontColor($r('app.color.hita_text_secondary_7b8498'))
           .width('100%')
           .margin({ top: 7 })
@@ -760,7 +761,7 @@ export struct ExamPage {
           .textOverflow({ overflow: TextOverflow.Ellipsis })
 
         Text(it.place.length > 0 ? '地点：' + it.place : '地点：待定')
-          .fontSize(13)
+          .fontSize(HitaDesign.caption)
           .fontColor($r('app.color.hita_text_hint_9aa2b1'))
           .width('100%')
           .margin({ top: 4 })
@@ -789,14 +790,14 @@ export struct ExamPage {
       Column() {
         Row() {
           Text(remote.courseName)
-            .fontSize(16)
+            .fontSize(HitaDesign.body)
             .fontWeight(FontWeight.Medium)
             .fontColor($r('app.color.hita_text_242a36'))
             .layoutWeight(1)
             .maxLines(2)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
           Text('教务')
-            .fontSize(11)
+            .fontSize(HitaDesign.label)
             .fontColor($r('app.color.hita_primary_3390ec'))
             .padding({ left: 8, right: 8, top: 2, bottom: 2 })
             .backgroundColor($r('app.color.hita_selected_ebf4fc'))
@@ -807,7 +808,7 @@ export struct ExamPage {
 
         Text((remote.examDate.length > 0 ? remote.examDate : '日期待定') +
           (remote.examTime.length > 0 ? ' · ' + remote.examTime : ''))
-          .fontSize(13)
+          .fontSize(HitaDesign.caption)
           .fontColor($r('app.color.hita_text_secondary_7b8498'))
           .width('100%')
           .margin({ top: 7 })
@@ -815,7 +816,7 @@ export struct ExamPage {
           .textOverflow({ overflow: TextOverflow.Ellipsis })
 
         Text(remote.examLocation.length > 0 ? '地点：' + remote.examLocation : '地点：待定')
-          .fontSize(13)
+          .fontSize(HitaDesign.caption)
           .fontColor($r('app.color.hita_text_hint_9aa2b1'))
           .width('100%')
           .margin({ top: 4 })
@@ -872,13 +873,13 @@ export struct ExamPage {
             this.examColorEditing ? this.examColorPreview : ExamPage.examColor(event))))
         Column() {
           Text(event.name)
-            .fontSize(21)
-            .fontWeight(FontWeight.Bold)
+            .fontSize(HitaDesign.title)
+            .fontWeight(FontWeight.Medium)
             .fontColor($r('app.color.hita_text_202b45'))
             .maxLines(2)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
           Text('考试详情')
-            .fontSize(13)
+            .fontSize(HitaDesign.caption)
             .fontColor($r('app.color.hita_text_secondary_72809a'))
             .margin({ top: 4 })
         }
@@ -888,7 +889,7 @@ export struct ExamPage {
         this.examColorButton(ExamPage.examColor(event))
         if (!this.examColorEditing) {
           Text('编辑')
-            .fontSize(14)
+            .fontSize(HitaDesign.caption)
             .fontColor($r('app.color.hita_primary_3390ec'))
             .fontWeight(FontWeight.Medium)
             .padding({ left: 8, right: 8, top: 8, bottom: 8 })
@@ -924,17 +925,17 @@ export struct ExamPage {
         Row() {
           Blank()
           Text('删除考试')
-            .fontSize(14)
+            .fontSize(HitaDesign.caption)
             .fontColor($r('app.color.hita_error'))
             .fontWeight(FontWeight.Medium)
             .padding({ left: 14, right: 14, top: 9, bottom: 9 })
             .backgroundColor($r('app.color.hita_error_surface_fdecec'))
-            .borderRadius(18)
+            .borderRadius(HitaDesign.cardRadius)
             .enabled(this.pendingDeleteId.length === 0)
             .onClick(() => this.confirmDeleteExam(event))
         }
         .width('100%')
-        .margin({ top: 6 })
+        .margin({ top: 8 })
       }
     }
     .width('100%')
@@ -953,13 +954,13 @@ export struct ExamPage {
             this.examColorEditing ? this.examColorPreview : this.remoteExamColor(item))))
         Column() {
           Text(item.courseName)
-            .fontSize(21)
-            .fontWeight(FontWeight.Bold)
+            .fontSize(HitaDesign.title)
+            .fontWeight(FontWeight.Medium)
             .fontColor($r('app.color.hita_text_202b45'))
             .maxLines(2)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
           Text('考试详情')
-            .fontSize(13)
+            .fontSize(HitaDesign.caption)
             .fontColor($r('app.color.hita_text_secondary_72809a'))
             .margin({ top: 4 })
         }
@@ -998,13 +999,13 @@ export struct ExamPage {
           Row() {
             Blank()
             Button('导入到课表', { type: ButtonType.Capsule })
-              .fontSize(14)
+              .fontSize(HitaDesign.caption)
               .fontColor(CompatibleMaterialModifier.foreground('#FFFFFF'))
               .fontWeight(FontWeight.Medium)
               .height(36)
               .padding({ left: 14, right: 14 })
               .backgroundColor($r('app.color.hita_primary_fill'))
-              .borderRadius(18)
+              .borderRadius(HitaDesign.cardRadius)
               .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_primary_fill')))
               .enabled(!this.openingEditor)
               .onClick(() => this.importRemoteExam(item))
@@ -1023,7 +1024,7 @@ export struct ExamPage {
   private examColorButton(color: number) {
     Button({ type: ButtonType.Circle }) {
       SymbolGlyph($r('sys.symbol.paintpalette'))
-        .fontSize(22)
+        .fontSize(HitaDesign.title)
         .fontColor([$r('app.color.hita_primary_3390ec')])
     }
     .width(44)
@@ -1053,10 +1054,10 @@ export struct ExamPage {
       .alignContent(Alignment.Center)
       Column() {
         Text(label)
-          .fontSize(12)
+          .fontSize(HitaDesign.label)
           .fontColor($r('app.color.hita_text_secondary_72809a'))
         Text(value)
-          .fontSize(17)
+          .fontSize(HitaDesign.body)
           .fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.hita_text_202b45'))
           .margin({ top: 2 })
@@ -1075,7 +1076,7 @@ export struct ExamPage {
   @Builder
   private headerAction(label: string, enabled: boolean, onAction: () => void) {
     Text(label)
-      .fontSize(13)
+      .fontSize(HitaDesign.caption)
       .fontWeight(FontWeight.Medium)
       .fontColor(CompatibleMaterialModifier.foreground($r('app.color.hita_primary_3390ec')))
       .height(32)

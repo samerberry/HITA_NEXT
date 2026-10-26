@@ -1,3 +1,4 @@
+import { HitaDesign } from '../common/theme/HitaDesign';
 import { SheetContent } from '../common/components/SheetContent';
 import { common } from '@kit.AbilityKit';
 import { HeaderBackButton } from '../common/components/HeaderBackButton';
@@ -348,13 +349,13 @@ export struct EmptyClassroomPage {
           if (this.presentedAsSheet) this.onClose();
           else this.getUIContext().getRouter().back();
         } })
-          Text('空教室查询').fontSize(20).fontWeight(FontWeight.Bold).fontColor(TEXT).layoutWeight(1)
+          Text('空教室查询').fontSize(HitaDesign.title).fontWeight(FontWeight.Medium).fontColor(TEXT).layoutWeight(1)
             .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
           Button({ type: ButtonType.Circle }) {
             if (this.loading || this.querying) {
               LoadingProgress().width(22).height(22).color(PRIMARY)
             } else {
-              SymbolGlyph($r('sys.symbol.arrow_clockwise')).fontSize(22)
+              SymbolGlyph($r('sys.symbol.arrow_clockwise')).fontSize(HitaDesign.title)
                 .fontColor([CompatibleMaterialModifier.foreground(PRIMARY)])
             }
           }
@@ -371,10 +372,10 @@ export struct EmptyClassroomPage {
         this.selector(2, '选择周次', FlexAlign.End, () => this.chooseWeek())
       }.width('100%').padding({ left: 12, right: 12 }).backgroundColor($r('app.color.hita_surface')).borderRadius(16)
       if (this.cachedAt > 0) {
-        Text(this.cacheLabel()).fontSize(12).fontColor(SECONDARY).padding({ left: 8, right: 8 }).width('100%')
+        Text(this.cacheLabel()).fontSize(HitaDesign.label).fontColor(SECONDARY).padding({ left: 8, right: 8 }).width('100%')
       }
       if (this.error.length > 0) {
-        Text(this.error).fontSize(14).fontColor(SECONDARY).textAlign(TextAlign.Center)
+        Text(this.error).fontSize(HitaDesign.caption).fontColor(SECONDARY).textAlign(TextAlign.Center)
           .width('100%').padding(20)
       }
       Stack({ alignContent: Alignment.Center }) {
@@ -387,7 +388,7 @@ export struct EmptyClassroomPage {
         if ((this.loading || this.querying) && this.rooms.length === 0) {
           LoadingProgress().width(40).height(40).color(PRIMARY)
         } else if (this.queried && this.rooms.length === 0 && this.error.length === 0) {
-          Text('该教学楼本周暂无教室数据').fontSize(14).fontColor(SECONDARY)
+          Text('该教学楼本周暂无教室数据').fontSize(HitaDesign.caption).fontColor(SECONDARY)
         }
       }.layoutWeight(1).width('100%')
     }.padding({ top: this.presentedAsSheet ? 0 : this.statusBarInset, left: 12, right: 12 })
@@ -406,8 +407,8 @@ export struct EmptyClassroomPage {
   @Builder
   private selector(kind: number, description: string, alignment: FlexAlign, action: () => void) {
     Row({ space: 4 }) {
-      Text(this.filterLabel(kind)).fontSize(14).fontColor(TEXT).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).flexShrink(1)
-      SymbolGlyph($r('sys.symbol.chevron_down')).fontSize(12).fontColor([SECONDARY])
+      Text(this.filterLabel(kind)).fontSize(HitaDesign.caption).fontColor(TEXT).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).flexShrink(1)
+      SymbolGlyph($r('sys.symbol.chevron_down')).fontSize(HitaDesign.label).fontColor([SECONDARY])
     }.height(52).layoutWeight(1).justifyContent(alignment).enabled(!this.loading)
       .accessibilityText(description + '，' + this.filterLabel(kind)).onClick(action)
   }
@@ -415,8 +416,8 @@ export struct EmptyClassroomPage {
   @Builder
   private roomCard(room: ClassroomRoom) {
     Row({ space: 8 }) {
-      Text(room.name).fontSize(16).fontColor(TEXT).layoutWeight(1).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
-      Text(this.roomState(room)).fontSize(14).fontWeight(FontWeight.Bold)
+      Text(room.name).fontSize(HitaDesign.body).fontColor(TEXT).layoutWeight(1).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+      Text(this.roomState(room)).fontSize(HitaDesign.caption).fontWeight(FontWeight.Medium)
         .fontColor(this.roomState(room) === '空闲' ? PRIMARY : SECONDARY)
         .backgroundColor(this.roomState(room) === '空闲' ? $r('app.color.hita_selected') : $r('app.color.hita_control'))
         .padding({ left: 10, right: 10, top: 4, bottom: 4 }).borderRadius(16)
@@ -429,14 +430,14 @@ export struct EmptyClassroomPage {
     SheetContent({ fillHeight: true }) {
       Column({ space: 16 }) {
         Row({ space: 8 }) {
-          Text(this.detailRoom.name + ' 空闲情况').fontSize(24).fontWeight(FontWeight.Bold).fontColor(TEXT)
+          Text(this.detailRoom.name + ' 空闲情况').fontSize(HitaDesign.title).fontWeight(FontWeight.Medium).fontColor(TEXT)
             .layoutWeight(1).maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
           Text(this.termLabel() + '\n第 ' + this.selectedWeek.toString() + ' 周')
-            .fontSize(12).fontColor(SECONDARY).padding(8).borderRadius(12).backgroundColor($r('app.color.hita_control'))
+            .fontSize(HitaDesign.label).fontColor(SECONDARY).padding(8).borderRadius(12).backgroundColor($r('app.color.hita_control'))
         }.width('100%')
         Row({ space: 4 }) {
           ForEach(DAYS, (day: string, index: number) => {
-            Text(day).fontSize(14).height(34).layoutWeight(1).textAlign(TextAlign.Center).borderRadius(17)
+            Text(day).fontSize(HitaDesign.caption).height(34).layoutWeight(1).textAlign(TextAlign.Center).borderRadius(17)
               .fontColor(this.detailDay === index + 1 ? PRIMARY : SECONDARY)
               .backgroundColor(this.detailDay === index + 1 ? $r('app.color.hita_selected') : Color.Transparent)
               .onClick(() => this.selectDay(index + 1))
@@ -447,11 +448,11 @@ export struct EmptyClassroomPage {
           ForEach(this.detailRows, (row: ClassroomScheduleRow) => {
             ListItem() {
               Row({ space: 8 }) {
-                Text('第 ' + row.number.toString() + ' 节').fontSize(16).fontColor(TEXT).layoutWeight(1)
-                Text(row.time).fontSize(14).fontColor(SECONDARY).padding(8).borderRadius(8)
+                Text('第 ' + row.number.toString() + ' 节').fontSize(HitaDesign.body).fontColor(TEXT).layoutWeight(1)
+                Text(row.time).fontSize(HitaDesign.caption).fontColor(SECONDARY).padding(8).borderRadius(8)
                   .backgroundColor($r('app.color.hita_control'))
                 Blank().layoutWeight(1)
-                Text(row.state).fontSize(14).fontWeight(FontWeight.Bold).width(40).height(40).borderRadius(20)
+                Text(row.state).fontSize(HitaDesign.caption).fontWeight(FontWeight.Medium).width(40).height(40).borderRadius(HitaDesign.cardRadius)
                   .textAlign(TextAlign.Center).fontColor(row.state === '空' ? PRIMARY : SECONDARY)
                   .backgroundColor(row.state === '空' ? $r('app.color.hita_selected') : $r('app.color.hita_control'))
               }.width('100%').padding({ right: 12 })

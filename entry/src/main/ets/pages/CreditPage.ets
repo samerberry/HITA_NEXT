@@ -1,3 +1,4 @@
+import { HitaDesign } from '../common/theme/HitaDesign';
 import { common } from '@kit.AbilityKit';
 import { RdbHelper } from '../common/db/RdbHelper';
 import { EasSubjectType, EasTermSubject } from '../common/model/timetable/TimetableModels';
@@ -246,7 +247,7 @@ export struct CreditPage {
   private metric(label: string, value: string, valueSize: number = 18, accent: boolean = false) {
     Column({ space: 4 }) {
       Text(label).fontSize(valueSize >= 24 ? 14 : 12).fontColor($r('app.color.hita_text_secondary'))
-      Text(value).fontSize(valueSize).fontWeight(FontWeight.Bold)
+      Text(value).fontSize(valueSize).fontWeight(FontWeight.Medium)
         .fontColor(accent ? $r('app.color.hita_primary') : $r('app.color.hita_text'))
     }.layoutWeight(1).alignItems(HorizontalAlign.Start)
   }
@@ -254,8 +255,8 @@ export struct CreditPage {
   @Builder
   private section(title: string, count: string) {
     Row({ space: 12 }) {
-      Text(title).fontSize(18).fontWeight(FontWeight.Bold).fontColor($r('app.color.hita_text')).layoutWeight(1)
-      Text(count).fontSize(13).fontColor($r('app.color.hita_text_secondary'))
+      Text(title).fontSize(HitaDesign.section).fontWeight(FontWeight.Medium).fontColor($r('app.color.hita_text')).layoutWeight(1)
+      Text(count).fontSize(HitaDesign.caption).fontColor($r('app.color.hita_text_secondary'))
     }.width('100%').padding({ top: 14, bottom: 4 })
   }
 
@@ -263,13 +264,13 @@ export struct CreditPage {
   private officialSummary() {
     Column({ space: 16 }) {
       Row({ space: 8 }) {
-        Text(creditNumber(this.progress.completed)).fontSize(32).fontWeight(FontWeight.Bold)
+        Text(creditNumber(this.progress.completed)).fontSize(32).fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.hita_primary'))
-        Text('/ ' + creditNumber(this.progress.required) + ' 学分').fontSize(15).fontColor($r('app.color.hita_text_secondary'))
+        Text('/ ' + creditNumber(this.progress.required) + ' 学分').fontSize(HitaDesign.body).fontColor($r('app.color.hita_text_secondary'))
           .layoutWeight(1)
         if (this.progress.required !== undefined && this.progress.required > 0 && this.progress.completed !== undefined) {
           Text(Math.floor(creditPercent(this.progress.completed, this.progress.required)) + '%')
-            .fontSize(18).fontWeight(FontWeight.Medium).fontColor($r('app.color.hita_text'))
+            .fontSize(HitaDesign.section).fontWeight(FontWeight.Medium).fontColor($r('app.color.hita_text'))
         }
       }.width('100%')
       if (this.progress.required !== undefined && this.progress.required > 0 && this.progress.completed !== undefined) {
@@ -282,37 +283,37 @@ export struct CreditPage {
         this.metric('仍需完成', creditNumber(this.progress.remaining))
       }.width('100%')
       if (this.courseCounts()) {
-        Text(this.courseCounts()).fontSize(13).fontColor($r('app.color.hita_text_secondary')).width('100%')
+        Text(this.courseCounts()).fontSize(HitaDesign.caption).fontColor($r('app.color.hita_text_secondary')).width('100%')
       }
       if (this.progress.average !== undefined || this.progress.rank !== undefined) {
         Text('平均学分绩 ' + creditNumber(this.progress.average) + (this.progress.rank !== undefined ?
           ' · 专业排名 ' + creditNumber(this.progress.rank) + ' / ' + creditNumber(this.progress.cohortSize) : ''))
-          .fontSize(13).fontColor($r('app.color.hita_text_secondary')).width('100%')
+          .fontSize(HitaDesign.caption).fontColor($r('app.color.hita_text_secondary')).width('100%')
       }
-    }.width('100%').padding(18).borderRadius(16).backgroundColor($r('app.color.hita_surface'))
+    }.width('100%').padding(HitaDesign.inset).borderRadius(16).backgroundColor($r('app.color.hita_surface'))
   }
 
   @Builder
   private requirementCard(item: CreditRequirement) {
     Column({ space: 12 }) {
       Row({ space: 12 }) {
-        Text(item.name).fontSize(16).fontWeight(FontWeight.Medium).fontColor($r('app.color.hita_text')).layoutWeight(1)
-        Text(item.passed ? '已完成要求' : '还需 ' + creditNumber(item.remaining) + ' 学分').fontSize(12)
+        Text(item.name).fontSize(HitaDesign.body).fontWeight(FontWeight.Medium).fontColor($r('app.color.hita_text')).layoutWeight(1)
+        Text(item.passed ? '已完成要求' : '还需 ' + creditNumber(item.remaining) + ' 学分').fontSize(HitaDesign.label)
           .fontColor(item.passed ? $r('app.color.hita_primary') : $r('app.color.hita_text_secondary')).constraintSize({ maxWidth: 128 })
       }.width('100%')
       Text(['方向：' + (item.direction || '无'), item.language, item.nature].filter((value: string) => value.length > 0).join(' · '))
-        .fontSize(12).fontColor($r('app.color.hita_text_secondary')).width('100%')
+        .fontSize(HitaDesign.label).fontColor($r('app.color.hita_text_secondary')).width('100%')
       Row({ space: 8 }) {
         this.metric('要求学分', creditNumber(item.required))
         this.metric('完成学分', creditNumber(item.completed))
         this.metric('剩余学分', creditNumber(item.remaining))
       }.width('100%')
       if (item.hours !== undefined) {
-        Text('完成学时 ' + item.hours).fontSize(12).fontColor($r('app.color.hita_text_secondary')).width('100%')
+        Text('完成学时 ' + item.hours).fontSize(HitaDesign.label).fontColor($r('app.color.hita_text_secondary')).width('100%')
       }
       if (item.earnedMooc > 0 || item.creditedMooc > 0) {
         Text('MOOC 实修 ' + creditNumber(item.earnedMooc) + ' 学分 · 计入 ' + creditNumber(item.creditedMooc) + ' 学分')
-          .fontSize(12).fontColor($r('app.color.hita_text_secondary')).width('100%')
+          .fontSize(HitaDesign.label).fontColor($r('app.color.hita_text_secondary')).width('100%')
       }
     }.width('100%').padding(16).borderRadius(12).backgroundColor($r('app.color.hita_surface'))
   }
@@ -322,16 +323,16 @@ export struct CreditPage {
     Column() {
       Row({ space: 12 }) {
         Column({ space: 5 }) {
-          Text(group.name).fontSize(16).fontWeight(FontWeight.Medium).fontColor($r('app.color.hita_text'))
+          Text(group.name).fontSize(HitaDesign.body).fontWeight(FontWeight.Medium).fontColor($r('app.color.hita_text'))
           if (this.groupDetail(group)) {
-            Text(this.groupDetail(group)).fontSize(13).fontColor($r('app.color.hita_text_secondary'))
+            Text(this.groupDetail(group)).fontSize(HitaDesign.caption).fontColor($r('app.color.hita_text_secondary'))
           }
         }.layoutWeight(1).alignItems(HorizontalAlign.Start)
-        Text(group.passed ? '已完成要求' : '仍需完成').fontSize(12)
+        Text(group.passed ? '已完成要求' : '仍需完成').fontSize(HitaDesign.label)
           .fontColor(group.passed ? $r('app.color.hita_primary') : $r('app.color.hita_text_secondary'))
         if (!group.hasChildren) {
           SymbolGlyph(this.expanded.includes(group.id) ? $r('sys.symbol.chevron_up') : $r('sys.symbol.chevron_down'))
-            .fontSize(16).fontColor([$r('app.color.hita_text_secondary')])
+            .fontSize(HitaDesign.body).fontColor([$r('app.color.hita_text_secondary')])
         }
       }.width('100%').padding(16).onClick(() => { if (!group.hasChildren) this.toggleGroup(group); })
         .accessibilityText(group.name + '，' + this.groupDetail(group) + (group.hasChildren ? '' : '，展开课程'))
@@ -339,22 +340,22 @@ export struct CreditPage {
         if (this.groupLoading.includes(group.id)) {
           LoadingProgress().width(28).height(28).margin(12)
         } else if (this.groupErrors.has(group.id)) {
-          Text(this.groupErrors.get(group.id) ?? '').fontSize(13).fontColor($r('app.color.hita_error')).padding(16)
+          Text(this.groupErrors.get(group.id) ?? '').fontSize(HitaDesign.caption).fontColor($r('app.color.hita_error')).padding(16)
             .onClick(() => this.loadGroup(group)).accessibilityText('重新查询课组课程')
         } else if (this.groupLoaded.includes(group.id) && group.courses.length === 0) {
-          Text('暂无课组课程').fontSize(13).fontColor($r('app.color.hita_text_secondary')).padding(16)
+          Text('暂无课组课程').fontSize(HitaDesign.caption).fontColor($r('app.color.hita_text_secondary')).padding(16)
         }
         ForEach(group.courses, (course: CreditGroupCourse) => {
           Divider().color($r('app.color.hita_surface_soft'))
           Row({ space: 12 }) {
             Column({ space: 5 }) {
-              Text(course.name).fontSize(14).fontColor($r('app.color.hita_text'))
+              Text(course.name).fontSize(HitaDesign.caption).fontColor($r('app.color.hita_text'))
               Text([course.code, course.term, course.nature].filter((v: string) => v.length > 0).join(' · '))
-                .fontSize(12).fontColor($r('app.color.hita_text_secondary'))
+                .fontSize(HitaDesign.label).fontColor($r('app.color.hita_text_secondary'))
             }.layoutWeight(1).alignItems(HorizontalAlign.Start)
             Column({ space: 5 }) {
-              Text(creditNumber(course.credits) + ' 学分').fontSize(13).fontColor($r('app.color.hita_text'))
-              Text(course.completed ? '已修' : '未修').fontSize(12)
+              Text(creditNumber(course.credits) + ' 学分').fontSize(HitaDesign.caption).fontColor($r('app.color.hita_text'))
+              Text(course.completed ? '已修' : '未修').fontSize(HitaDesign.label)
                 .fontColor(course.completed ? $r('app.color.hita_primary') : $r('app.color.hita_text_secondary'))
             }.alignItems(HorizontalAlign.End)
           }.width('100%').padding(16)
@@ -367,14 +368,14 @@ export struct CreditPage {
   private recordRow(course: CreditCourseRecord) {
     Row({ space: 12 }) {
       Column({ space: 6 }) {
-        Text(course.name).fontSize(15).fontWeight(FontWeight.Medium).fontColor($r('app.color.hita_text'))
+        Text(course.name).fontSize(HitaDesign.body).fontWeight(FontWeight.Medium).fontColor($r('app.color.hita_text'))
         Text([course.code, course.term, course.teacher].filter((value: string) => value.length > 0).join(' · '))
-          .fontSize(12).fontColor($r('app.color.hita_text_secondary'))
+          .fontSize(HitaDesign.label).fontColor($r('app.color.hita_text_secondary'))
       }.layoutWeight(1).alignItems(HorizontalAlign.Start)
       Column({ space: 5 }) {
-        Text(creditNumber(course.credits) + ' 学分').fontSize(15).fontWeight(FontWeight.Medium).fontColor($r('app.color.hita_primary'))
+        Text(creditNumber(course.credits) + ' 学分').fontSize(HitaDesign.body).fontWeight(FontWeight.Medium).fontColor($r('app.color.hita_primary'))
         if (course.score) {
-          Text(course.score).fontSize(13).fontColor($r('app.color.hita_text_secondary'))
+          Text(course.score).fontSize(HitaDesign.caption).fontColor($r('app.color.hita_text_secondary'))
         }
       }.alignItems(HorizontalAlign.End)
     }.width('100%').padding({ top: 12, bottom: 12 })
@@ -398,12 +399,12 @@ export struct CreditPage {
   @Builder
   private categoryCard(category: LocalCreditCategory) {
     Column({ space: 8 }) {
-      Row({ space: 10 }) {
+      Row({ space: HitaDesign.gap }) {
         Row().width(10).height(10).borderRadius(5).backgroundColor(creditTypeColor(category.type))
-        Text(creditTypeName(category.type)).fontSize(16).fontWeight(FontWeight.Medium).fontColor($r('app.color.hita_text')).layoutWeight(1)
-        Text(creditNumber(category.credits) + ' 学分').fontSize(16).fontWeight(FontWeight.Medium).fontColor($r('app.color.hita_primary'))
+        Text(creditTypeName(category.type)).fontSize(HitaDesign.body).fontWeight(FontWeight.Medium).fontColor($r('app.color.hita_text')).layoutWeight(1)
+        Text(creditNumber(category.credits) + ' 学分').fontSize(HitaDesign.body).fontWeight(FontWeight.Medium).fontColor($r('app.color.hita_primary'))
         Button({ type: ButtonType.Circle }) {
-          SymbolGlyph($r('sys.symbol.pencil_line')).fontSize(18).fontColor([$r('app.color.hita_text_secondary')])
+          SymbolGlyph($r('sys.symbol.pencil_line')).fontSize(HitaDesign.section).fontColor([$r('app.color.hita_text_secondary')])
         }.width(32).height(32).backgroundColor($r('app.color.hita_surface_soft'))
           .accessibilityText('设置' + creditTypeName(category.type) + '学分目标').onClick(() => this.editGoal(category))
       }.width('100%')
@@ -411,26 +412,26 @@ export struct CreditPage {
         Progress({ value: creditPercent(category.credits, category.goal), total: 100, type: ProgressType.Linear })
           .width('100%').color(creditTypeColor(category.type)).backgroundColor($r('app.color.hita_surface_soft'))
         Text(creditNumber(category.credits) + ' / ' + creditNumber(category.goal) + ' 学分')
-          .fontSize(12).fontColor($r('app.color.hita_text_secondary')).width('100%')
+          .fontSize(HitaDesign.label).fontColor($r('app.color.hita_text_secondary')).width('100%')
       }
       Row() {
-        Text(category.subjects.length + ' 门课程').fontSize(13).fontColor($r('app.color.hita_text_secondary')).layoutWeight(1)
-        Text(this.expanded.includes(category.type) ? '收起明细' : '查看明细').fontSize(13).fontColor($r('app.color.hita_primary'))
+        Text(category.subjects.length + ' 门课程').fontSize(HitaDesign.caption).fontColor($r('app.color.hita_text_secondary')).layoutWeight(1)
+        Text(this.expanded.includes(category.type) ? '收起明细' : '查看明细').fontSize(HitaDesign.caption).fontColor($r('app.color.hita_primary'))
         SymbolGlyph(this.expanded.includes(category.type) ? $r('sys.symbol.chevron_up') : $r('sys.symbol.chevron_down'))
-          .fontSize(14).fontColor([$r('app.color.hita_primary')]).margin({ left: 6 })
+          .fontSize(HitaDesign.caption).fontColor([$r('app.color.hita_primary')]).margin({ left: 6 })
       }.width('100%').height(36).onClick(() => this.toggle(category.type))
       if (this.expanded.includes(category.type)) {
         ForEach(category.fields, (field: CreditField) => {
           Row({ space: 12 }) {
-            Text(field.name).layoutWeight(1).fontSize(13).fontColor($r('app.color.hita_text_secondary'))
-            Text(creditNumber(field.credits) + ' 学分').fontSize(13).fontColor($r('app.color.hita_text_secondary'))
+            Text(field.name).layoutWeight(1).fontSize(HitaDesign.caption).fontColor($r('app.color.hita_text_secondary'))
+            Text(creditNumber(field.credits) + ' 学分').fontSize(HitaDesign.caption).fontColor($r('app.color.hita_text_secondary'))
           }.width('100%')
         }, (field: CreditField) => field.name)
         Divider().color($r('app.color.hita_surface_soft'))
         ForEach(category.subjects, (subject: EasTermSubject) => {
           Row({ space: 12 }) {
-            Text(subject.name).fontSize(14).fontColor($r('app.color.hita_text')).layoutWeight(1)
-            Text(creditNumber(subject.credit) + ' 学分').fontSize(13).fontColor($r('app.color.hita_text_secondary'))
+            Text(subject.name).fontSize(HitaDesign.caption).fontColor($r('app.color.hita_text')).layoutWeight(1)
+            Text(creditNumber(subject.credit) + ' 学分').fontSize(HitaDesign.caption).fontColor($r('app.color.hita_text_secondary'))
           }.width('100%').padding({ top: 4, bottom: 4 })
         }, (subject: EasTermSubject) => subject.id)
       }
@@ -444,11 +445,11 @@ export struct CreditPage {
         .selected(this.termIndex).value(this.terms[this.termIndex]?.name || this.progress.term || '教务当前学期')
         .width('100%').enabled(this.terms.length > 0).onSelect((index: number) => this.selectTerm(index))
       if (this.termNotice) {
-        Text(this.termNotice).fontSize(12).fontColor($r('app.color.hita_text_secondary')).width('100%')
+        Text(this.termNotice).fontSize(HitaDesign.label).fontColor($r('app.color.hita_text_secondary')).width('100%')
       }
       this.officialSummary()
       ForEach(this.progress.notices, (notice: string) => {
-        Text(notice).fontSize(13).fontColor($r('app.color.hita_text_secondary')).width('100%')
+        Text(notice).fontSize(HitaDesign.caption).fontColor($r('app.color.hita_text_secondary')).width('100%')
       })
       if (this.progress.categories.length > 0) {
         this.section('学分类别要求', this.progress.categories.length + ' 项')
@@ -468,27 +469,27 @@ export struct CreditPage {
           this.recordRow(course)
         }, (course: CreditCourseRecord) => course.id)
         if (this.visibleRecords < this.progress.records.length) {
-          Text('展开更多明细').fontSize(14).fontColor($r('app.color.hita_primary')).width('100%').height(44)
+          Text('展开更多明细').fontSize(HitaDesign.caption).fontColor($r('app.color.hita_primary')).width('100%').height(44)
             .textAlign(TextAlign.Center).onClick(() => { this.visibleRecords += 50; })
         } else if (this.progress.records.length > 10) {
-          Text('收起课程明细').fontSize(14).fontColor($r('app.color.hita_primary')).width('100%').height(44)
+          Text('收起课程明细').fontSize(HitaDesign.caption).fontColor($r('app.color.hita_primary')).width('100%').height(44)
             .textAlign(TextAlign.Center).onClick(() => { this.visibleRecords = 10; })
         }
       }
       if (this.loading) {
         Row({ space: 8 }) {
           LoadingProgress().width(20).height(20)
-          Text('正在读取详细信息…').fontSize(13).fontColor($r('app.color.hita_text_secondary'))
+          Text('正在读取详细信息…').fontSize(HitaDesign.caption).fontColor($r('app.color.hita_text_secondary'))
         }.width('100%').justifyContent(FlexAlign.Center)
       }
-      Text('数据来源：深圳教务个人培养方案').fontSize(12).fontColor($r('app.color.hita_text_secondary')).width('100%').margin({ top: 8 })
+      Text('数据来源：深圳教务个人培养方案').fontSize(HitaDesign.label).fontColor($r('app.color.hita_text_secondary')).width('100%').margin({ top: 8 })
     } else {
       this.localSummary()
       ForEach(this.local.categories, (category: LocalCreditCategory) => {
         this.categoryCard(category)
       }, (category: LocalCreditCategory) => category.type)
       Text('数据来源于全部本地课表科目，重复课程只计一次。课表学分不代表已获学分或毕业审核结果。')
-        .fontSize(12).lineHeight(20).fontColor($r('app.color.hita_text_secondary')).width('100%').margin({ top: 8 })
+        .fontSize(HitaDesign.label).lineHeight(20).fontColor($r('app.color.hita_text_secondary')).width('100%').margin({ top: 8 })
     }
   }
 
@@ -504,9 +505,9 @@ export struct CreditPage {
         Column({ space: 16 }) {
           if (this.loading) {
             LoadingProgress().width(32).height(32)
-            Text('正在读取学分…').fontSize(14).fontColor($r('app.color.hita_text_secondary'))
+            Text('正在读取学分…').fontSize(HitaDesign.caption).fontColor($r('app.color.hita_text_secondary'))
           } else {
-            Text(this.errorText || '暂无科目数据，请先导入课表').fontSize(16)
+            Text(this.errorText || '暂无科目数据，请先导入课表').fontSize(HitaDesign.body)
               .fontColor($r('app.color.hita_text_secondary')).textAlign(TextAlign.Center)
           }
         }.width('100%').justifyContent(FlexAlign.Start)
@@ -520,7 +521,7 @@ export struct CreditPage {
             if (this.presentedAsSheet) this.onClose();
             else this.getUIContext().getRouter().back();
           } })
-          Text(this.official ? '培养方案完成度' : '学分统计').fontSize(20).fontWeight(FontWeight.Bold)
+          Text(this.official ? '培养方案完成度' : '学分统计').fontSize(HitaDesign.title).fontWeight(FontWeight.Medium)
             .fontColor($r('app.color.hita_text')).layoutWeight(1).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
           Button({ type: ButtonType.Circle }) {
             SymbolGlyph($r('sys.symbol.arrow_clockwise')).fontSize(20)

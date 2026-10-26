@@ -1,3 +1,4 @@
+import { HitaDesign } from '../common/theme/HitaDesign';
 /**
  * AssistantPage.ets — 功能中心「助手」：课表问答 + 可选云端大模型。
  * 顶部抬头与功能中心相同：Scroll 占位 + 渐隐遮罩 + 覆盖标题。
@@ -22,7 +23,7 @@ const COLOR_TEXT_PRIMARY: ResourceColor = $r('app.color.hita_text');
 const COLOR_TEXT_SECONDARY: ResourceColor = $r('app.color.hita_text_secondary');
 const COLOR_TEXT_HINT: ResourceColor = $r('app.color.hita_text_secondary_5a6880');
 const COLOR_NAV_ACTIVE: ResourceColor = $r('app.color.hita_selected');
-const SURFACE_RGB: string = '244,247,252';
+const SURFACE_RGB: string = '245,246,248';
 const HEADER_BODY: number = 56;
 
 @Entry
@@ -186,7 +187,7 @@ struct AssistantPage {
                   .height(18)
                   .color(COLOR_PRIMARY);
                 Text('思考中…')
-                  .fontSize(13)
+                  .fontSize(HitaDesign.caption)
                   .fontColor(COLOR_TEXT_SECONDARY);
               }
               .padding({ left: 14, right: 14, top: 10, bottom: 10 })
@@ -236,8 +237,8 @@ struct AssistantPage {
             })
               .margin({ right: 12 });
             Text('助手')
-              .fontSize(20)
-              .fontWeight(FontWeight.Bold)
+              .fontSize(HitaDesign.title)
+              .fontWeight(FontWeight.Medium)
               .fontColor(COLOR_TEXT_PRIMARY)
               .maxLines(1)
               .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -274,7 +275,7 @@ struct AssistantPage {
   headerButton(symbol: Resource, label: string, action: () => void) {
     Button({ type: ButtonType.Circle }) {
       SymbolGlyph(symbol)
-        .fontSize(18)
+        .fontSize(HitaDesign.section)
         .fontColor([CompatibleMaterialModifier.foreground(COLOR_PRIMARY)]);
     }
     .width(40)
@@ -290,11 +291,11 @@ struct AssistantPage {
   settingsPanel() {
     Column() {
       Text('云端大模型（可选）')
-        .fontSize(15)
+        .fontSize(HitaDesign.body)
         .fontWeight(FontWeight.Medium)
         .fontColor(COLOR_TEXT_PRIMARY);
       Text('课表问题始终由本地数据回答；填写 API Key 后，其他问题会连同未来 7 天课表摘要发送给所选模型。')
-        .fontSize(12)
+        .fontSize(HitaDesign.label)
         .fontColor(COLOR_TEXT_SECONDARY)
         .lineHeight(18)
         .margin({ top: 4 });
@@ -314,7 +315,7 @@ struct AssistantPage {
         .width('100%')
         .padding(4)
         .backgroundColor($r('app.color.hita_control_eaf0f7'))
-        .borderRadius(14)
+        .borderRadius(HitaDesign.cardRadius)
         .margin({ top: 12 });
       }
       TextInput({ placeholder: this.provider === AssistantProvider.ZHIPU ? '智谱开放平台 API Key' : 'DeepSeek API Key',
@@ -328,7 +329,7 @@ struct AssistantPage {
           this.apiKeyDraft = value;
         });
       ImmersiveHeader({ barHeight: 52 }) {
-        Row({ space: 10 }) {
+        Row({ space: HitaDesign.gap }) {
           Button('取消', { type: ButtonType.Capsule })
             .width(0)
             .layoutWeight(1)
@@ -365,7 +366,7 @@ struct AssistantPage {
   @Builder
   providerOption(provider: AssistantProvider) {
     Text(AssistantSettings.providerName(provider))
-      .fontSize(14)
+      .fontSize(HitaDesign.caption)
       .fontWeight(this.provider === provider ? FontWeight.Medium : FontWeight.Regular)
       .fontColor(this.provider === provider ? COLOR_TEXT_PRIMARY : COLOR_TEXT_SECONDARY)
       .textAlign(TextAlign.Center)
@@ -384,7 +385,7 @@ struct AssistantPage {
       Row() {
         Blank();
         Text(message.content)
-          .fontSize(15)
+          .fontSize(HitaDesign.body)
           .fontColor('#FFFFFF')
           .lineHeight(22)
           .padding({ left: 14, right: 14, top: 10, bottom: 10 })
@@ -397,15 +398,15 @@ struct AssistantPage {
     } else {
       Column() {
         Text(message.content)
-          .fontSize(15)
+          .fontSize(HitaDesign.body)
           .fontColor(COLOR_TEXT_PRIMARY)
           .lineHeight(22)
           .copyOption(CopyOptions.LocalDevice);
         if (message.source.length > 0) {
           Text('来自 ' + message.source)
-            .fontSize(11)
+            .fontSize(HitaDesign.label)
             .fontColor(COLOR_TEXT_HINT)
-            .margin({ top: 6 });
+            .margin({ top: 8 });
         }
       }
       .alignItems(HorizontalAlign.Start)
@@ -421,7 +422,7 @@ struct AssistantPage {
     Flex({ wrap: FlexWrap.Wrap }) {
       ForEach(AssistantService.SUGGESTIONS, (suggestion: string) => {
         Text(suggestion)
-          .fontSize(13)
+          .fontSize(HitaDesign.caption)
           .fontColor(COLOR_PRIMARY)
           .padding({ left: 12, right: 12, top: 7, bottom: 7 })
           .backgroundColor(COLOR_NAV_ACTIVE)
@@ -454,7 +455,7 @@ struct AssistantPage {
         });
       Button({ type: ButtonType.Circle }) {
         SymbolGlyph($r('sys.symbol.paperplane_fill'))
-          .fontSize(18)
+          .fontSize(HitaDesign.section)
           .fontColor(['#FFFFFF']);
       }
       .width(44)

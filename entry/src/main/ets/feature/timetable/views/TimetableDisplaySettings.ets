@@ -1,3 +1,4 @@
+import { HitaDesign } from '../../../common/theme/HitaDesign';
 import { ImmersiveHeader } from '../../../common/components/ImmersiveHeader';
 import { CompatibleMaterialModifier } from '../../../common/theme/CompatibleMaterialModifier';
 import { CompatibleSheetMaterial } from '../../../common/theme/CompatibleSheetMaterial';
@@ -104,7 +105,7 @@ export struct TimetableDisplaySettings {
   @Builder
   private colorSetting(title: string, mode: string) {
     Row({ space: 12 }) {
-      Text(title).fontSize(16).fontColor($r('app.color.hita_text')).layoutWeight(1)
+      Text(title).fontSize(HitaDesign.body).fontColor($r('app.color.hita_text')).layoutWeight(1)
       Column() {
         ImmersiveHeader({ barHeight: 40, materialEnabled: CompatibleSheetMaterial.isEnabled() }) {
           Button({ type: ButtonType.Circle }) {
@@ -135,11 +136,11 @@ export struct TimetableDisplaySettings {
                 .accessibilityText('返回显示设置').enabled(!this.saving).onClick(() => { this.editing = ''; })
             }
             Text(this.editing === 'line' ? '背景时间虚线颜色' :
-              (this.editing === 'text' ? '课表文字颜色' : '显示设置')).fontSize(21).fontWeight(FontWeight.Bold)
+              (this.editing === 'text' ? '课表文字颜色' : '显示设置')).fontSize(HitaDesign.title).fontWeight(FontWeight.Medium)
               .fontColor($r('app.color.hita_text')).layoutWeight(1)
             if (this.editing.length === 0) {
               Button({ type: ButtonType.Circle }) {
-                SymbolGlyph($r('sys.symbol.xmark')).fontSize(18)
+                SymbolGlyph($r('sys.symbol.xmark')).fontSize(HitaDesign.section)
                   .fontColor([CompatibleMaterialModifier.foreground($r('app.color.hita_text_secondary'))])
               }.width(40).height(40).backgroundColor($r('app.color.hita_selected'))
                 .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_selected'), false,
@@ -151,7 +152,7 @@ export struct TimetableDisplaySettings {
       }.width('100%').margin({ bottom: 12 })
       if (this.editing.length > 0) {
         Row({ space: 12 }) {
-          Text('自动适应背景').fontSize(16).fontColor($r('app.color.hita_text')).layoutWeight(1)
+          Text('自动适应背景').fontSize(HitaDesign.body).fontColor($r('app.color.hita_text')).layoutWeight(1)
           Toggle({ type: ToggleType.Switch, isOn: this.automaticColor() })
             .selectedColor($r('app.color.hita_primary')).enabled(!this.saving)
             .accessibilityText('自动适应背景').onChange((value: boolean) => this.switchAutomatic(value))
@@ -174,7 +175,7 @@ export struct TimetableDisplaySettings {
         }
       } else {
         Row({ space: 12 }) {
-          Text('绘制背景时间虚线').fontSize(16).fontColor($r('app.color.hita_text')).layoutWeight(1)
+          Text('绘制背景时间虚线').fontSize(HitaDesign.body).fontColor($r('app.color.hita_text')).layoutWeight(1)
           Toggle({ type: ToggleType.Switch, isOn: this.options.drawTimeLines })
             .selectedColor($r('app.color.hita_primary')).enabled(!this.saving)
             .accessibilityText('绘制背景时间虚线').onChange((value: boolean) => this.switchLines(value))
@@ -183,7 +184,7 @@ export struct TimetableDisplaySettings {
         this.colorSetting('背景时间虚线颜色', 'line')
         Divider().color($r('app.color.hita_surface_soft'))
         Row({ space: 12 }) {
-          Text('显示晚间课程提示').fontSize(16).fontColor($r('app.color.hita_text')).layoutWeight(1)
+          Text('显示晚间课程提示').fontSize(HitaDesign.body).fontColor($r('app.color.hita_text')).layoutWeight(1)
           Toggle({ type: ToggleType.Switch, isOn: this.options.eveningHint })
             .selectedColor($r('app.color.hita_primary')).enabled(!this.saving)
             .accessibilityText('显示晚间课程提示').onChange((value: boolean) => this.switchEvening(value))
@@ -191,8 +192,8 @@ export struct TimetableDisplaySettings {
         Divider().color($r('app.color.hita_surface_soft'))
         Column({ space: 4 }) {
           Row() {
-            Text('背景蒙版深度').fontSize(16).fontColor($r('app.color.hita_text')).layoutWeight(1)
-            Text(this.maskValue + '%').fontSize(14).fontColor($r('app.color.hita_primary'))
+            Text('背景蒙版深度').fontSize(HitaDesign.body).fontColor($r('app.color.hita_text')).layoutWeight(1)
+            Text(this.maskValue + '%').fontSize(HitaDesign.caption).fontColor($r('app.color.hita_primary'))
           }.width('100%')
           Slider({ value: this.maskValue, min: 0, max: 80, step: 1 })
             .width('100%').selectedColor($r('app.color.hita_primary')).enabled(!this.saving)
@@ -208,7 +209,7 @@ export struct TimetableDisplaySettings {
         this.colorSetting('课表文字颜色', 'text')
       }
       if (this.errorText.length > 0) {
-        Text(this.errorText).fontSize(13).fontColor($r('app.color.hita_error')).width('100%').margin({ top: 8 })
+        Text(this.errorText).fontSize(HitaDesign.caption).fontColor($r('app.color.hita_error')).width('100%').margin({ top: 8 })
       }
     }.width('100%').padding({ left: 20, right: 20, bottom: 20 })
   }

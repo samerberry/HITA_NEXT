@@ -21,6 +21,7 @@ import {
   EasTimePeriodInDay,
   EasTimetable
 } from '../model/timetable/TimetableModels';
+import { TimetableBackup } from '../model/timetable/TimetableBackup';
 import { CourseDateSelection } from '../../feature/timetable/CourseDateSelection';
 import { normalizeHtmlSpaces } from '../util/HtmlSpaces';
 import { ScheduleChangeSignal } from '../util/ScheduleChangeSignal';
@@ -57,6 +58,8 @@ const CREATE_IMPORT_BASE: string =
   'CREATE TABLE IF NOT EXISTS import_base (' +
   'timetableId TEXT NOT NULL, name TEXT NOT NULL, fromTime INTEGER NOT NULL, toTime INTEGER NOT NULL, ' +
   'signature TEXT NOT NULL)';
+
+const CREATE_BACKUP_RECEIPT: string = 'CREATE TABLE IF NOT EXISTS backup_restore_receipt (id TEXT PRIMARY KEY)';
 
 export class RdbHelper {
   private static instance: RdbHelper | undefined = undefined;
@@ -103,6 +106,7 @@ export class RdbHelper {
     await this.execSql(CREATE_SUBJECT);
     await this.execSql(CREATE_EVENTS);
     await this.execSql(CREATE_IMPORT_BASE);
+    await this.execSql(CREATE_BACKUP_RECEIPT);
     await this.ensureEventColorColumn();
     await this.repairLegacyWeihaiTimetables();
     await this.repairLegacyBenbuTimetables();
@@ -521,17 +525,7 @@ export class RdbHelper {
     const pred: relationalStore.RdbPredicates = new relationalStore.RdbPredicates('timetable');
     pred.orderByDesc('startTime');
     const rs: relationalStore.ResultSet | null = await this.qry(pred);
-    return RdbHelper.readRows(rs, (col: (name: string) => ValueGetter) => {
-      const t: EasTimetable = new EasTimetable();
-      t.id = col('id').str();
-      t.name = col('name').str();
-      t.code = col('code').str();
-      t.startTime = col('startTime').num();
-      t.endTime = col('endTime').num();
-      t.createdAt = col('createdAt').num();
-      t.scheduleStructure = EasTimetable.decodeStructure(col('scheduleStructure').str());
-      return t;
-    });
+    return RdbHelper.readRows(rs, RdbHelper.timetableMapper);
   }
 
   async getTimetableById(id: string, strict: boolean = false): Promise<EasTimetable | undefined> {
@@ -639,22 +633,7 @@ export class RdbHelper {
 
   private async readSubjects(pred: relationalStore.RdbPredicates): Promise<EasTermSubject[]> {
     const rs: relationalStore.ResultSet | null = await this.qry(pred);
-    return RdbHelper.readRows(rs, (col: (name: string) => ValueGetter) => {
-      const s: EasTermSubject = new EasTermSubject();
-      s.id = col('id').str();
-      s.timetableId = col('timetableId').str();
-      s.name = col('name').str();
-      s.type = RdbHelper.subjectTypeOf(col('type').str());
-      s.field = col('field').str();
-      s.credit = col('credit').numD();
-      s.school = col('school').str();
-      s.countInSPA = col('countInSPA').num() !== 0;
-      s.code = col('code').str();
-      s.key = col('key').str();
-      s.createdAt = col('createdAt').num();
-      s.color = col('color').num();
-      return s;
-    });
+    return RdbHelper.readRows(rs, RdbHelper.subjectMapper);
   }
 
   /** 指定科目 id 的 (id,color) 投影（对应 SubjectDao.getSubjectColorsWithId）。 */
@@ -950,6 +929,87 @@ export class RdbHelper {
   // ------------------------------------------------------------------
   // 私有：行 → 模型
   // ------------------------------------------------------------------
+
+  /** A single database snapshot: read failures must never become an apparently empty backup. */
+  async createBackupSnapshot(): Promise<TimetableBackup[]> {
+    const tx = await this.s().createTransaction();
+    try {
+      const tables = RdbHelper.readRows(await tx.query(new relationalStore.RdbPredicates('timetable')
+        .orderByDesc('startTime')), RdbHelper.timetableMapper, true);
+      const result: TimetableBackup[] = [];
+      for (const table of tables) {
+        const item = new TimetableBackup();
+        item.timetable = table;
+        item.subjects = RdbHelper.readRows(await tx.query(new relationalStore.RdbPredicates('subject')
+          .equalTo('timetableId', table.id)), RdbHelper.subjectMapper, true);
+        item.events = RdbHelper.readRows(await tx.query(new relationalStore.RdbPredicates('events')
+          .equalTo('timetableId', table.id)), RdbHelper.eventMapper, true);
+        item.importBase = RdbHelper.readRows(await tx.query(new relationalStore.RdbPredicates('import_base')
+          .equalTo('timetableId', table.id)), (col: (name: string) => ValueGetter): EasImportBaseEntry =>
+          new EasImportBaseEntry(col('name').str(), col('fromTime').num(), col('toTime').num(),
+            col('signature').str()), true);
+        result.push(item);
+      }
+      await tx.commit();
+      return result;
+    } catch (error) {
+      await tx.rollback();
+      throw error as Error;
+    }
+  }
+
+  /** New IDs only. The receipt distinguishes committed restores from interrupted settings writes. */
+  async restoreBackup(items: TimetableBackup[], receipt: string, applySettings: () => Promise<void>): Promise<void> {
+    await this.writeTransaction(async (tx: relationalStore.Transaction): Promise<void> => {
+      for (const item of items) {
+        if (await tx.insert('timetable', RdbHelper.timetableValues(item.timetable)) < 0) throw new Error('Restore failed');
+        for (const subject of item.subjects) {
+          if (await tx.insert('subject', RdbHelper.subjectValues(subject)) < 0) throw new Error('Restore failed');
+        }
+        for (const event of item.events) {
+          if (await tx.insert('events', RdbHelper.eventValues(event)) < 0) throw new Error('Restore failed');
+        }
+        await RdbHelper.replaceImportBase(tx, item.timetable.id, item.importBase);
+      }
+      if (await tx.insert('backup_restore_receipt', { 'id': receipt }) < 0) throw new Error('Restore failed');
+      await applySettings();
+    });
+  }
+
+  async hasBackupReceipt(id: string): Promise<boolean> {
+    const rows = RdbHelper.readRows(await this.s().query(new relationalStore.RdbPredicates('backup_restore_receipt')
+      .equalTo('id', id)), (col: (name: string) => ValueGetter): string => col('id').str(), true);
+    return rows.length === 1;
+  }
+
+  private static timetableMapper(col: (name: string) => ValueGetter): EasTimetable {
+    const t: EasTimetable = new EasTimetable();
+    t.id = col('id').str();
+    t.name = col('name').str();
+    t.code = col('code').str();
+    t.startTime = col('startTime').num();
+    t.endTime = col('endTime').num();
+    t.createdAt = col('createdAt').num();
+    t.scheduleStructure = EasTimetable.decodeStructure(col('scheduleStructure').str());
+    return t;
+  }
+
+  private static subjectMapper(col: (name: string) => ValueGetter): EasTermSubject {
+    const s: EasTermSubject = new EasTermSubject();
+    s.id = col('id').str();
+    s.timetableId = col('timetableId').str();
+    s.name = col('name').str();
+    s.type = RdbHelper.subjectTypeOf(col('type').str());
+    s.field = col('field').str();
+    s.credit = col('credit').numD();
+    s.school = col('school').str();
+    s.countInSPA = col('countInSPA').num() !== 0;
+    s.code = col('code').str();
+    s.key = col('key').str();
+    s.createdAt = col('createdAt').num();
+    s.color = col('color').num();
+    return s;
+  }
 
   private static eventMapper(col: (name: string) => ValueGetter): EasEventItem {
     const e: EasEventItem = new EasEventItem();

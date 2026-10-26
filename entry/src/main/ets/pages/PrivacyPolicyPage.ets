@@ -1,3 +1,4 @@
+import { HitaDesign } from '../common/theme/HitaDesign';
 /**
  * PrivacyPolicyPage.ets — 隐私政策。条款见 AboutContent.policy()。
  */
@@ -10,7 +11,7 @@ import { AboutContent, PolicySection } from '../feature/about/AboutContent';
 
 const HEADER_HEIGHT: number = 60;
 const PAGE_BG: ResourceColor = $r('app.color.hita_page_f6f7fa');
-const PAGE_BG_RGB: string = '246,247,250';
+const PAGE_BG_RGB: string = '245,246,248';
 const TEXT_PRIMARY: ResourceColor = $r('app.color.hita_text_1a1a1a');
 const TEXT_SECONDARY: ResourceColor = $r('app.color.hita_text_secondary_566276');
 
@@ -28,16 +29,16 @@ struct PrivacyPolicyPage {
           Blank().height(HEADER_HEIGHT);
           Column() {
             Text(AboutContent.POLICY_TITLE)
-              .fontSize(18)
-              .fontWeight(FontWeight.Bold)
+              .fontSize(HitaDesign.section)
+              .fontWeight(FontWeight.Medium)
               .fontColor(TEXT_PRIMARY);
             Text('更新日期：' + AboutContent.POLICY_UPDATED)
-              .fontSize(12)
+              .fontSize(HitaDesign.label)
               .fontColor(TEXT_SECONDARY)
-              .margin({ top: 6 });
+              .margin({ top: 8 });
             ForEach(AboutContent.policyIntro(), (paragraph: string) => {
               Text(paragraph)
-                .fontSize(13)
+                .fontSize(HitaDesign.caption)
                 .lineHeight(21)
                 .fontColor(TEXT_SECONDARY)
                 .width('100%')
@@ -53,12 +54,12 @@ struct PrivacyPolicyPage {
             this.sectionCard(section);
           }, (section: PolicySection) => section.title);
           Text('生效日期：' + AboutContent.POLICY_EFFECTIVE)
-            .fontSize(12)
+            .fontSize(HitaDesign.label)
             .fontColor(TEXT_SECONDARY)
             .alignSelf(ItemAlign.Start)
             .margin({ left: 4 });
           Text('查看托管在华为协议服务上的原文')
-            .fontSize(13)
+            .fontSize(HitaDesign.caption)
             .fontColor($r('app.color.hita_primary'))
             .alignSelf(ItemAlign.Start)
             .margin({ left: 4 })
@@ -89,8 +90,8 @@ struct PrivacyPolicyPage {
           })
             .margin({ right: 12 })
           Text('隐私政策')
-            .fontSize(20)
-            .fontWeight(FontWeight.Bold)
+            .fontSize(HitaDesign.title)
+            .fontWeight(FontWeight.Medium)
             .fontColor(TEXT_PRIMARY)
             .layoutWeight(1)
             .maxLines(1)
@@ -113,18 +114,18 @@ struct PrivacyPolicyPage {
   sectionCard(section: PolicySection) {
     Column() {
       Text(section.title)
-        .fontSize(16)
-        .fontWeight(FontWeight.Bold)
+        .fontSize(HitaDesign.body)
+        .fontWeight(FontWeight.Medium)
         .fontColor(TEXT_PRIMARY);
       ForEach(section.items, (item: string) => {
         Row() {
           Text('•')
-            .fontSize(13)
+            .fontSize(HitaDesign.caption)
             .lineHeight(21)
             .fontColor(TEXT_SECONDARY)
             .width(12);
           Text(item)
-            .fontSize(13)
+            .fontSize(HitaDesign.caption)
             .lineHeight(21)
             .fontColor(TEXT_SECONDARY)
             .layoutWeight(1);

@@ -15,7 +15,7 @@ export struct HeaderFadeMask {
   @StorageProp('hita_appearance_dark') darkMode: boolean = false;
   @Prop maskOpacity: number = 0;
   /** 与遮罩下方页面底色一致的 RGB 分量。 */
-  @Prop rgb: string = '244,247,252';
+  @Prop rgb: string = '245,246,248';
   @Prop headerHeight: number = 0;
   @Prop fromBottom: boolean = false;
   @Prop highlight: number = 0;

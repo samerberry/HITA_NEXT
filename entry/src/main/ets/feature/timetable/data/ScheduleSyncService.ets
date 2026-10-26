@@ -15,6 +15,20 @@ export class ScheduleSyncService {
   private static queue: Promise<void> = Promise.resolve();
   private static timer: number = -1;
   private static tick: number = -1;
+  private static restorePaused: boolean = false;
+  private static reminderWork: Promise<void> = Promise.resolve();
+
+  static async pauseForRestore(): Promise<void> {
+    ScheduleSyncService.restorePaused = true;
+    clearTimeout(ScheduleSyncService.timer);
+    await ScheduleSyncService.queue;
+    await ScheduleSyncService.reminderWork.catch(() => {});
+  }
+
+  static resumeAfterRestore(): void {
+    ScheduleSyncService.restorePaused = false;
+    ScheduleSyncService.schedule();
+  }
 
   static attach(context: common.UIAbilityContext): void {
     ScheduleSyncService.context = context;
@@ -34,6 +48,7 @@ export class ScheduleSyncService {
   }
 
   static schedule(): void {
+    if (ScheduleSyncService.restorePaused) return;
     if (ScheduleSyncService.context === undefined) return;
     if (ScheduleSyncService.timer !== -1) clearTimeout(ScheduleSyncService.timer);
     ScheduleSyncService.timer = setTimeout((): void => {
@@ -95,6 +110,7 @@ export class ScheduleSyncService {
 
   static syncNow(): Promise<void> {
     return ScheduleSyncService.enqueue(async (): Promise<void> => {
+      if (ScheduleSyncService.restorePaused) return;
       const context: common.UIAbilityContext | undefined = ScheduleSyncService.context;
       if (context === undefined) return;
       const store: CalendarSyncStore = CalendarSyncStore.getInstance();
@@ -129,7 +145,15 @@ export class ScheduleSyncService {
     });
   }
 
-  static async refreshReminders(): Promise<void> {
+  static refreshReminders(): Promise<void> {
+    if (ScheduleSyncService.restorePaused) return Promise.resolve();
+    const work = ScheduleSyncService.reminderWork.catch(() => {}).then(() => ScheduleSyncService.refreshRemindersNow());
+    ScheduleSyncService.reminderWork = work;
+    return work;
+  }
+
+  private static async refreshRemindersNow(): Promise<void> {
+    if (ScheduleSyncService.restorePaused) return;
     const context: common.UIAbilityContext | undefined = ScheduleSyncService.context;
     if (context === undefined) return;
     const rdb: RdbHelper = RdbHelper.getInstance();

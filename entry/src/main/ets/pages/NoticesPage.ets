@@ -1,3 +1,4 @@
+import { HitaDesign } from '../common/theme/HitaDesign';
 /**
  * NoticesPage.ets — 公告列表（Android AppNoticesActivity 同源）。
  *
@@ -14,7 +15,7 @@ import { AppNotice, AppNoticeCenter } from '../feature/notice/AppNoticeCenter';
 
 const HEADER_HEIGHT: number = 60;
 const PAGE_BG: ResourceColor = $r('app.color.hita_page_f6f7fa');
-const PAGE_BG_RGB: string = '246,247,250';
+const PAGE_BG_RGB: string = '245,246,248';
 
 @Entry
 @Component
@@ -54,7 +55,7 @@ struct NoticesPage {
           .margin({ top: HEADER_HEIGHT + 80 })
       } else if (this.notices.length === 0) {
         Text('暂无公告')
-          .fontSize(14)
+          .fontSize(HitaDesign.caption)
           .fontColor($r('app.color.hita_text_secondary_5a6880'))
           .margin({ top: HEADER_HEIGHT + 60 })
       } else {
@@ -71,8 +72,8 @@ struct NoticesPage {
           })
             .margin({ right: 12 })
           Text('公告')
-            .fontSize(20)
-            .fontWeight(FontWeight.Bold)
+            .fontSize(HitaDesign.title)
+            .fontWeight(FontWeight.Medium)
             .fontColor($r('app.color.hita_text_1a1a1a'))
             .layoutWeight(1)
             .maxLines(1)
@@ -106,15 +107,15 @@ struct NoticesPage {
           Column() {
             Row() {
               Text(notice.title)
-                .fontSize(16)
-                .fontWeight(FontWeight.Bold)
+                .fontSize(HitaDesign.body)
+                .fontWeight(FontWeight.Medium)
                 .fontColor($r('app.color.hita_text_1a1a1a'))
                 .layoutWeight(1)
                 .maxLines(2)
                 .textOverflow({ overflow: TextOverflow.Ellipsis })
               if (notice.isCritical()) {
                 Text('重要')
-                  .fontSize(11)
+                  .fontSize(HitaDesign.label)
                   .fontColor($r('app.color.hita_error'))
                   .padding({ left: 8, right: 8, top: 2, bottom: 2 })
                   .backgroundColor($r('app.color.hita_surface'))
@@ -125,7 +126,7 @@ struct NoticesPage {
             .alignItems(VerticalAlign.Center)
 
             Text(notice.body)
-              .fontSize(13)
+              .fontSize(HitaDesign.caption)
               .lineHeight(20)
               .fontColor(notice.isCritical() ? $r('app.color.hita_error_8c3a3a') : $r('app.color.hita_text_secondary_566276'))
               .width('100%')

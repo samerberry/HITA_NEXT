@@ -136,9 +136,9 @@ test('Home retains one sheet lifecycle for authentication, timetable and calenda
   const home = read('ets/pages/Home.ets');
   assert.equal((home.match(/\.bindSheet\(/g) || []).length, 1);
   assert.match(home, /\.bindSheet\(\$\$this.activeSheetVisible, this.activeSheet\(\), CompatibleSheetMaterial.options\(\{/);
-  assert.match(home, /\}, this.loginSheetOpen \|\| this.sessionSheetOpen \|\| this.courseSheetOpen \|\| this.timetableDisplayOpen \|\|\s*this.calendarExportSheetOpen \|\| this.widgetBackgroundSheetOpen \|\| this.importTimetableSheetOpen \|\|\s*this.academicPanelOpen,\s*!this.timetableDisplayOpen\)\)/);
+  assert.match(home, /\}, this.loginSheetOpen \|\| this.sessionSheetOpen \|\| this.courseSheetOpen \|\| this.timetableDisplayOpen \|\|\s*this.calendarExportSheetOpen \|\| this.widgetBackgroundSheetOpen \|\| this.importTimetableSheetOpen \|\|\s*this.academicPanelOpen \|\| this.backupSheetOpen,\s*!this.timetableDisplayOpen\)\)/);
   assert.match(home, /showClose: false/);
-  assert.match(home, /height: this.widgetBackgroundSheetOpen \|\| this.importTimetableSheetOpen \|\| this.academicPanelOpen \? SheetSize.LARGE :\s*\(this.loginSheetOpen \? SheetSize.LARGE : SheetSize.FIT_CONTENT\)/);
+  assert.match(home, /height: this.backupSheetOpen \? SheetSize.MEDIUM :\s*this.widgetBackgroundSheetOpen \|\| this.importTimetableSheetOpen \|\| this.academicPanelOpen \? SheetSize.LARGE :\s*\(this.loginSheetOpen \? SheetSize.LARGE : SheetSize.FIT_CONTENT\)/);
   assert.match(home, /onWillDisappear: \(\) => \{\s*this.closeActiveSheet\(\)/);
   const detail = read('ets/pages/TimetableDetailPage.ets');
   assert.match(detail, /\.bindSheet\(\$\$this\.sheetVisible, this\.eventSheetContent\(\), CompatibleSheetMaterial.options\(\{/);
@@ -206,15 +206,14 @@ test('course and timetable text color actions share the material footer while re
   assert.match(editor, /timetableBlockColor\(this.color\(\)\)/);
 });
 
-test('Add Course material hosts only the action and leaves the original label branch on other APIs', () => {
+test('Add Course uses one labeled accessible action with gated material and no negative layout margins', () => {
   const detail = read('ets/pages/TimetableDetailPage.ets');
   const info = detail.slice(detail.indexOf('  private infoCard('), detail.indexOf('  private subjectCard('));
-  assert.match(info, /Column\(\) \{\s*Row\(\) \{\s*Column\(\)/);
-  assert.match(info, /if \(CompatibleSheetMaterial.isEnabled\(\)\) \{\s*Column\(\) \{\s*(?:\/\/[^\n]*\n\s*)?ImmersiveHeader\(\{ barHeight: 68 \}\)/);
-  assert.match(info, /\.width\(104\)\s*\.height\(44\)/);
-  assert.match(info, /\.width\(128\)\s*\.height\(68\)/);
-  assert.match(info, /else \{\s*Text\('添加课程'\)[\s\S]*\.height\(32\)/);
-  assert.equal((info.match(/this.openAddEvent\(\)/g) || []).length, 2);
+  assert.match(info, /ImmersiveHeader\(\{ barHeight: 56, materialEnabled: CompatibleSheetMaterial.isEnabled\(\)/);
+  assert.match(info, /Button\('添加课程'[\s\S]*\.height\(HitaDesign.buttonHeight\)/);
+  assert.match(info, /new CompatibleMaterialModifier[\s\S]*CompatibleSheetMaterial.isEnabled\(\)/);
+  assert.doesNotMatch(info, /margin\(\{[^}]*-\d/);
+  assert.equal((info.match(/this.openAddEvent\(\)/g) || []).length, 1);
 });
 
 test('appearance options keep selection, accessibility and saving guards with exact API 26 material gating', () => {

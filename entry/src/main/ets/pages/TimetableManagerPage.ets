@@ -1,7 +1,7 @@
+import { HitaDesign } from '../common/theme/HitaDesign';
 /** Android HITA-style timetable library. */
 import { common } from '@kit.AbilityKit';
 import { deviceInfo } from '@kit.BasicServicesKit';
-import { CirclePaintModifier } from '../common/theme/CirclePaintModifier';
 import { DeleteParticleCard } from '../common/components/DeleteParticleCard';
 import { DeleteEffectController } from '../common/util/DeleteEffectController';
 import { HeaderBackButton } from '../common/components/HeaderBackButton';
@@ -24,7 +24,7 @@ const DOMAIN: number = 0x0000;
 const TAG: string = 'HitaTimetableMgr';
 const HEADER_HEIGHT: number = 64;
 const PAGE_BG: ResourceColor = $r('app.color.hita_page_f6f7fa');
-const PAGE_BG_RGB: string = '246,247,250';
+const PAGE_BG_RGB: string = '245,246,248';
 
 @Entry
 @Component
@@ -39,6 +39,7 @@ struct TimetableManagerPage {
   @State adding: boolean = false;
   @State activeTimetableId: string = '';
   @State fadeOpacity: number = 0;
+  @State contentWidth: number = 360;
   private pageScroller: Scroller = new Scroller();
   private deleteEffects: DeleteEffectController = new DeleteEffectController();
 
@@ -263,148 +264,77 @@ struct TimetableManagerPage {
 
   @Builder
   private timetableCard(timetable: EasTimetable) {
-    Stack({ alignContent: Alignment.TopEnd }) {
-      Column() {
-        Stack() {
-          Circle()
-            .width(120)
-            .height(120)
-            .attributeModifier(new CirclePaintModifier(TimetableManagerPage.seasonLight(timetable.startTime)))
-            .translate({ x: 48, y: -20 })
-          Circle()
-            .width(84)
-            .height(84)
-            .attributeModifier(new CirclePaintModifier(TimetableManagerPage.seasonMain(timetable.startTime)))
-            .translate({ x: 6, y: 28 })
-          Circle()
-            .width(28)
-            .height(28)
-            .attributeModifier(new CirclePaintModifier('#66FFFFFF'))
-            .translate({ x: 50, y: 13 })
-        }
-        .width('100%')
-        .height(150)
-
-        Column() {
-          Text(timetable.name.length > 0 ? timetable.name : '未命名课表')
-            .fontSize(20)
-            .fontWeight(FontWeight.Bold)
-            .fontColor($r('app.color.hita_text_202633'))
-            .maxLines(2)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
-          Text(TimetableManagerPage.dateRange(timetable))
-            .fontSize(12)
-            .fontColor($r('app.color.hita_text_secondary_788196'))
-            .margin({ top: 8 })
-            .maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
-        }
-        .width('100%')
-        .alignItems(HorizontalAlign.Start)
-        .padding({ left: 18, right: 18 })
+    Row({ space: HitaDesign.gap }) {
+      Stack() {
+        SymbolGlyph($r('sys.symbol.calendar'))
+          .fontSize(28).fontColor([HitaColors.primary])
       }
-      .width('100%')
-      .height(260)
-      .backgroundColor($r('app.color.hita_surface'))
-      .borderRadius(24)
-      .shadow({ radius: 12, color: '#10000000', offsetY: 4 })
-      .onClick(() => {
-        this.openTimetable(timetable);
-      })
-      .gesture(
-        LongPressGesture({ repeat: false })
-          .onAction(() => {
-            this.toggleSelection(timetable.id);
-          })
-      )
-
-      if (!this.selectionMode && this.activeTimetableId === timetable.id) {
-        Column() {
-          ImmersiveHeader({ barHeight: 26 }) {
-            Row() {
-              Text('当前')
-                .fontSize(11)
-                .fontWeight(FontWeight.Medium)
-                .fontColor(CompatibleMaterialModifier.foreground(HitaColors.primary))
-            }
-            .width('100%')
-            .height(26)
-            .justifyContent(FlexAlign.Center)
-            .backgroundColor($r('app.color.hita_control'))
-            .borderRadius(13)
-            .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_control')))
-          }
+      .width(56).height(56).borderRadius(HitaDesign.cardRadius)
+      .backgroundColor($r('app.color.hita_selected'))
+      .alignContent(Alignment.Center).flexShrink(0)
+      Column({ space: 8 }) {
+        Text(timetable.name.length > 0 ? timetable.name : '未命名课表')
+          .fontSize(HitaDesign.section).fontWeight(FontWeight.Medium)
+          .fontColor(HitaColors.onSurface).maxLines(2)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+        Text(TimetableManagerPage.dateRange(timetable))
+          .fontSize(HitaDesign.label).fontColor(HitaColors.onSurfaceVariant)
+          .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+        if (!this.selectionMode && this.activeTimetableId === timetable.id) {
+          Text('当前课表').fontSize(HitaDesign.label).fontColor(HitaColors.primary)
+            .padding({ left: 8, right: 8, top: 4, bottom: 4 })
+            .backgroundColor($r('app.color.hita_selected')).borderRadius(8)
         }
-        .width(48)
-        .height(26)
-        .margin({ top: 12, right: 12 })
-        .hitTestBehavior(HitTestMode.BLOCK_DESCENDANTS)
-      }
-
+      }.layoutWeight(1).alignItems(HorizontalAlign.Start)
       if (this.selectionMode) {
-        Row() {
-          Text(this.selected(timetable.id) ? '✓' : '')
-            .fontSize(16)
-            .fontWeight(FontWeight.Bold)
-            .fontColor('#FFFFFF')
-        }
-        .width(30)
-        .height(30)
-        .justifyContent(FlexAlign.Center)
-        .backgroundColor(this.selected(timetable.id) ? HitaColors.primaryFill : $r('app.color.hita_divider'))
-        .borderRadius(15)
-        .margin({ top: 12, right: 12 })
+        Text(this.selected(timetable.id) ? '✓' : '')
+          .fontSize(HitaDesign.body).fontColor(Color.White)
+          .width(28).height(28).textAlign(TextAlign.Center).borderRadius(HitaDesign.cardRadius)
+          .backgroundColor(this.selected(timetable.id) ? HitaColors.primaryFill : HitaColors.divider)
+      } else {
+        SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(12)
+          .fontColor([HitaColors.onSurfaceVariant]).width(16).height(24)
+          .accessibilityLevel('no')
       }
     }
     .width('100%')
-    .height(260)
+    .height(this.activeTimetableId === timetable.id && !this.selectionMode ? 136 : 112)
+    .padding(HitaDesign.inset)
+    .backgroundColor($r('app.color.hita_surface')).borderRadius(HitaDesign.cardRadius)
+    .border({ width: this.selected(timetable.id) ? 2 : 0, color: HitaColors.primary })
+    .accessibilityText(timetable.name + (this.activeTimetableId === timetable.id ? '，当前课表' : ''))
+    .accessibilityDescription('点击查看，长按选择课表')
+    .accessibilitySelected(this.selected(timetable.id))
+    .onClick(() => { this.openTimetable(timetable); })
+    .gesture(LongPressGesture({ repeat: false }).onAction(() => { this.toggleSelection(timetable.id); }))
   }
 
   @Builder
   private addCard() {
-    Column({ space: 14 }) {
-      this.addActionGlyph($r('sys.symbol.plus'), '新建课表', () => {
-        this.createEmptyTimetable();
-      });
-      this.addActionGlyph($r('sys.symbol.repeat_1'), '教务导入', () => {
-        this.openImportPage();
-      });
-      this.addActionGlyph($r('sys.symbol.doc_plaintext'), '导入日历文件', () => {
-        this.importIcs();
-      });
+    Column({ space: 4 }) {
+      this.addActionGlyph($r('sys.symbol.plus'), '新建课表', () => { this.createEmptyTimetable(); });
+      this.addActionGlyph($r('sys.symbol.repeat_1'), '教务导入', () => { this.openImportPage(); });
+      this.addActionGlyph($r('sys.symbol.doc_plaintext'), '导入日历文件', () => { this.importIcs(); });
     }
-    .width('100%')
-    .height(260)
-    .justifyContent(FlexAlign.Center)
-    .backgroundColor($r('app.color.hita_surface'))
-    .borderRadius(24)
-    .border({ width: 1, color: $r('app.color.hita_divider_dde4ee'), style: BorderStyle.Dashed })
+    .width('100%').padding(8).backgroundColor($r('app.color.hita_surface'))
+    .borderRadius(HitaDesign.cardRadius)
   }
 
   @Builder
   private addActionGlyph(symbol: Resource, label: string, action: () => void) {
-    Column() {
-      ImmersiveHeader({ barHeight: 48 }) {
-        Row() {
-          Button({ type: ButtonType.Circle }) {
-            SymbolGlyph(symbol)
-              .fontSize(22)
-              .fontColor([CompatibleMaterialModifier.foreground(HitaColors.primary)]);
-          }
-          .width(48)
-          .height(48)
-          .padding(0)
-          .backgroundColor($r('app.color.hita_selected_e8f3fd'))
-          .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_selected_e8f3fd')))
-          .accessibilityText(label)
-          .enabled(!this.adding && !this.loading && !this.deleting)
-          .onClick(action);
-        }.width('100%').height(48)
-      }
+    Button({ type: ButtonType.Normal }) {
+      Row({ space: HitaDesign.gap }) {
+        SymbolGlyph(symbol).fontSize(20).fontColor([HitaColors.primary]).width(32)
+        Text(label).fontSize(HitaDesign.body).fontColor(HitaColors.onSurface).layoutWeight(1)
+          .textAlign(TextAlign.Start)
+        SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(12)
+          .fontColor([HitaColors.onSurfaceVariant]).width(16).accessibilityLevel('no')
+      }.width('100%')
     }
-    .width(48)
-    .height(48)
-    .flexShrink(0);
+    .width('100%').height(HitaDesign.buttonHeight).padding({ left: 8, right: 8 })
+    .backgroundColor(Color.Transparent).borderRadius(HitaDesign.fieldRadius)
+    .accessibilityText(label).enabled(!this.adding && !this.loading && !this.deleting)
+    .onClick(action)
   }
 
   build() {
@@ -417,6 +347,9 @@ struct TimetableManagerPage {
           .margin({ top: HEADER_HEIGHT + 80 })
       } else {
         Grid(this.pageScroller) {
+          if (!this.selectionMode) {
+            GridItem() { this.addCard() }
+          }
           ForEach(this.timetables, (timetable: EasTimetable) => {
             GridItem() {
               DeleteParticleCard({
@@ -428,15 +361,10 @@ struct TimetableManagerPage {
             }
             .transition(TransitionEffect.OPACITY)
           }, (timetable: EasTimetable) => timetable.id)
-          if (!this.selectionMode) {
-            GridItem() {
-              this.addCard()
-            }
-          }
         }
-        .columnsTemplate('1fr 1fr')
+        .columnsTemplate(this.contentWidth >= 600 ? '1fr 1fr' : '1fr')
         .columnsGap(12)
-        .rowsGap(14)
+        .rowsGap(HitaDesign.gap)
         .width('100%')
         .height('100%')
         .padding({ left: 16, right: 16, top: HEADER_HEIGHT + 8, bottom: 28 })
@@ -467,15 +395,15 @@ struct TimetableManagerPage {
           })
             .margin({ right: 12 });
           Text(this.selectionMode ? '已选择 ' + this.selectedIds.length.toString() + ' 项' : '课表管理')
-            .fontSize(22)
-            .fontWeight(FontWeight.Bold)
+            .fontSize(HitaDesign.title)
+            .fontWeight(FontWeight.Medium)
             .fontColor($r('app.color.hita_text_202633'))
             .layoutWeight(1)
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
           if (this.selectionMode) {
             Text('删除')
-              .fontSize(15)
+              .fontSize(HitaDesign.body)
               .fontWeight(FontWeight.Medium)
               .fontColor(HitaColors.error)
               .padding({ left: 14, right: 14, top: 10, bottom: 10 })
@@ -522,6 +450,7 @@ struct TimetableManagerPage {
     .height('100%')
     .padding({ top: this.statusBarInset })
     .backgroundColor(PAGE_BG)
+    .onAreaChange((_old: Area, area: Area) => { this.contentWidth = Number(area.width); })
   }
 
   private static defaultName(now: number): string {
@@ -543,31 +472,4 @@ struct TimetableManagerPage {
       (day < 10 ? '0' : '') + day.toString();
   }
 
-  private static seasonMain(ms: number): string {
-    const month: number = new Date(ms).getMonth() + 1;
-    if (month >= 3 && month <= 5) {
-      return '#78C99A';
-    }
-    if (month >= 6 && month <= 8) {
-      return '#F4B75B';
-    }
-    if (month >= 9 && month <= 11) {
-      return '#E9876A';
-    }
-    return '#78A9DE';
-  }
-
-  private static seasonLight(ms: number): ResourceColor {
-    const month: number = new Date(ms).getMonth() + 1;
-    if (month >= 3 && month <= 5) {
-      return $r('app.color.hita_success_surface_ddf3e5');
-    }
-    if (month >= 6 && month <= 8) {
-      return $r('app.color.hita_warning_surface');
-    }
-    if (month >= 9 && month <= 11) {
-      return $r('app.color.hita_error_surface_f8dcd4');
-    }
-    return $r('app.color.hita_selected_dceaf8');
-  }
 }

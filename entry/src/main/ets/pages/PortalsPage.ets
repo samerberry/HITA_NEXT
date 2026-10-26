@@ -1,3 +1,4 @@
+import { HitaDesign } from '../common/theme/HitaDesign';
 import { common } from '@kit.AbilityKit';
 import { pasteboard } from '@kit.BasicServicesKit';
 import { HeaderBackButton } from '../common/components/HeaderBackButton';
@@ -11,7 +12,7 @@ import { EasSessionStore, EAS_SESSION_REVISION_KEY } from '../feature/eas/EasSes
 
 const HEADER_HEIGHT: number = 60;
 const PAGE_BG: ResourceColor = $r('app.color.hita_page');
-const PAGE_BG_RGB: string = '244,247,252';
+const PAGE_BG_RGB: string = '245,246,248';
 const COLOR_PRIMARY: ResourceColor = $r('app.color.hita_primary');
 const COLOR_TEXT_PRIMARY: ResourceColor = $r('app.color.hita_text');
 const COLOR_TEXT_SECONDARY: ResourceColor = $r('app.color.hita_text_secondary');
@@ -108,7 +109,7 @@ struct PortalsPage {
       } else if (this.groups.length === 0) {
         Column() {
           Text('请先登录教务系统')
-            .fontSize(15)
+            .fontSize(HitaDesign.body)
             .fontColor(COLOR_TEXT_SECONDARY);
         }
         .width('100%')
@@ -127,15 +128,15 @@ struct PortalsPage {
           })
             .margin({ right: 12 });
           Text('常用入口')
-            .fontSize(20)
-            .fontWeight(FontWeight.Bold)
+            .fontSize(HitaDesign.title)
+            .fontWeight(FontWeight.Medium)
             .fontColor(COLOR_TEXT_PRIMARY)
             .layoutWeight(1)
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis });
           if (this.campus !== undefined) {
             Text(CampusPortal.campusName(this.campus))
-              .fontSize(14)
+              .fontSize(HitaDesign.caption)
               .fontColor(COLOR_TEXT_SECONDARY)
               .margin({ left: 12 });
           }
@@ -185,7 +186,7 @@ struct PortalsPage {
   @Builder
   groupHeader(title: string) {
     Text(title)
-      .fontSize(16)
+      .fontSize(HitaDesign.body)
       .fontWeight(FontWeight.Medium)
       .fontColor(COLOR_TEXT_PRIMARY)
       .width('100%')
@@ -203,20 +204,20 @@ struct PortalsPage {
       .width(40)
       .height(40)
       .flexShrink(0)
-      .borderRadius(20)
+      .borderRadius(HitaDesign.cardRadius)
       .backgroundColor($r('app.color.hita_selected'))
       .alignContent(Alignment.Center);
       Column() {
         Text(portal.title)
-          .fontSize(15)
+          .fontSize(HitaDesign.body)
           .fontWeight(FontWeight.Medium)
           .fontColor(COLOR_TEXT_PRIMARY)
           .maxLines(2)
           .textOverflow({ overflow: TextOverflow.Ellipsis });
         Text(portal.url)
-          .fontSize(12)
+          .fontSize(HitaDesign.label)
           .fontColor(COLOR_TEXT_SECONDARY)
-          .margin({ top: 3 })
+          .margin({ top: 4 })
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis });
       }
@@ -224,7 +225,7 @@ struct PortalsPage {
       .alignItems(HorizontalAlign.Start)
       .margin({ left: 12, right: 12 });
       SymbolGlyph($r('sys.symbol.chevron_right'))
-        .fontSize(16)
+        .fontSize(HitaDesign.body)
         .fontColor([COLOR_TEXT_SECONDARY])
         .flexShrink(0);
     }

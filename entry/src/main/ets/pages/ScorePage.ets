@@ -1,3 +1,4 @@
+import { HitaDesign } from '../common/theme/HitaDesign';
 import { common } from '@kit.AbilityKit';
 import { HeaderBackButton } from '../common/components/HeaderBackButton';
 import { ImmersiveHeader } from '../common/components/ImmersiveHeader';
@@ -143,8 +144,8 @@ export struct ScorePage {
   @Builder
   metric(label: string, value: string) {
     Column({ space: 5 }) {
-      Text(value || '—').fontSize(20).fontWeight(FontWeight.Bold).fontColor($r('app.color.hita_text'))
-      Text(label).fontSize(12).fontColor($r('app.color.hita_text_secondary'))
+      Text(value || '—').fontSize(HitaDesign.title).fontWeight(FontWeight.Medium).fontColor($r('app.color.hita_text'))
+      Text(label).fontSize(HitaDesign.label).fontColor($r('app.color.hita_text_secondary'))
     }.layoutWeight(1).alignItems(HorizontalAlign.Center)
   }
 
@@ -152,7 +153,7 @@ export struct ScorePage {
   statisticsCard() {
     if (this.summary.available()) {
       Column({ space: 14 }) {
-        Text(this.summary.scope).fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.hita_text'))
+        Text(this.summary.scope).fontSize(HitaDesign.caption).fontWeight(FontWeight.Medium).fontColor($r('app.color.hita_text'))
         Row() {
           this.metric('学分绩', this.summary.weightedAverage)
           this.metric('GPA', this.summary.gpa)
@@ -160,20 +161,20 @@ export struct ScorePage {
         }.width('100%')
         if (this.summary.earnedCredits || this.summary.passedCourses) {
           Text('获得学分 ' + (this.summary.earnedCredits || '—') + ' · 通过课程 ' + (this.summary.passedCourses || '—'))
-            .fontSize(12).fontColor($r('app.color.hita_text_secondary'))
+            .fontSize(HitaDesign.label).fontColor($r('app.color.hita_text_secondary'))
         }
         if (this.summary.allCourseWeightedAverage || this.summary.allPassedCourseGpa) {
           Text('全部课程学分绩 ' + (this.summary.allCourseWeightedAverage || '—') +
             ' · 全部及格课程 GPA ' + (this.summary.allPassedCourseGpa || '—'))
-            .fontSize(12).fontColor($r('app.color.hita_text_secondary'))
+            .fontSize(HitaDesign.label).fontColor($r('app.color.hita_text_secondary'))
         }
       }.width('100%').padding(16).borderRadius(16).backgroundColor($r('app.color.hita_surface'))
     }
     if (this.summaryMessage) {
-      Text(this.summaryMessage).fontSize(12).fontColor($r('app.color.hita_text_secondary')).width('100%')
+      Text(this.summaryMessage).fontSize(HitaDesign.label).fontColor($r('app.color.hita_text_secondary')).width('100%')
     }
     Column({ space: 12 }) {
-      Text('当前列表统计 · ' + this.statistics.count + ' 门').fontSize(14).fontWeight(FontWeight.Medium)
+      Text('当前列表统计 · ' + this.statistics.count + ' 门').fontSize(HitaDesign.caption).fontWeight(FontWeight.Medium)
         .fontColor($r('app.color.hita_text')).width('100%')
       if (TYPES[this.typeIndex] !== ScoreTestType.MIDTERM) {
         Row() {
@@ -188,11 +189,11 @@ export struct ScorePage {
       }.width('100%')
       Text('学分合计 ' + this.number(this.statistics.credits) + (TYPES[this.typeIndex] === ScoreTestType.MIDTERM ? '' :
         ' · 通过学分 ' + this.number(this.statistics.passedCredits)))
-        .fontSize(12).fontColor($r('app.color.hita_text_secondary')).width('100%')
+        .fontSize(HitaDesign.label).fontColor($r('app.color.hita_text_secondary')).width('100%')
       Text(TYPES[this.typeIndex] === ScoreTestType.MIDTERM ?
         '期中按原始数值计算，不判定课程是否通过。不同课程可能采用不同满分或折算方式，均分仅供参考。' :
         '均分只统计 0～100 的数值成绩，等级制不换算分数；按百分制及格线估算通过情况。此处不等于教务 GPA、毕业学分或官方排名。')
-        .fontSize(11).lineHeight(18).fontColor($r('app.color.hita_text_secondary')).width('100%')
+        .fontSize(HitaDesign.label).lineHeight(18).fontColor($r('app.color.hita_text_secondary')).width('100%')
     }.width('100%').padding(16).borderRadius(16).backgroundColor($r('app.color.hita_surface'))
   }
 
@@ -225,16 +226,16 @@ export struct ScorePage {
           if (this.loading) {
             Column({ space: 12 }) {
               LoadingProgress().width(40).height(40)
-              Text('正在查询成绩…').fontSize(14).fontColor($r('app.color.hita_text_secondary'))
+              Text('正在查询成绩…').fontSize(HitaDesign.caption).fontColor($r('app.color.hita_text_secondary'))
             }.width('100%').layoutWeight(1).justifyContent(FlexAlign.Center)
           } else if (this.errorText) {
             Column({ space: 18 }) {
-              Text(this.errorText).fontSize(15).fontColor($r('app.color.hita_text')).textAlign(TextAlign.Center)
+              Text(this.errorText).fontSize(HitaDesign.body).fontColor($r('app.color.hita_text')).textAlign(TextAlign.Center)
               Column() {
                 ImmersiveHeader({ barHeight: 52 }) {
                   Row() {
                     Button('重新查询', { type: ButtonType.Capsule })
-                      .width('100%').height(40).fontSize(14).fontWeight(FontWeight.Medium)
+                      .width('100%').height(40).fontSize(HitaDesign.caption).fontWeight(FontWeight.Medium)
                       .fontColor(CompatibleMaterialModifier.foreground('#FFFFFF'))
                       .backgroundColor($r('app.color.hita_primary_fill'))
                       .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_primary_fill')))
@@ -252,19 +253,19 @@ export struct ScorePage {
             this.queryFilters()
             this.statisticsCard()
             if (this.scores.length === 0) {
-              Text('所选学期及成绩类型暂无成绩').fontSize(14).fontColor($r('app.color.hita_text_secondary')).margin(24)
+              Text('所选学期及成绩类型暂无成绩').fontSize(HitaDesign.caption).fontColor($r('app.color.hita_text_secondary')).margin(24)
             }
             ForEach(this.scores, (item: EasCourseScoreItem) => {
               Column({ space: 8 }) {
                 Row({ space: 12 }) {
-                  Text(item.courseName).fontSize(16).fontWeight(FontWeight.Medium).fontColor($r('app.color.hita_text')).layoutWeight(1)
-                  Text(item.displayScore()).fontSize(22).fontWeight(FontWeight.Bold)
+                  Text(item.courseName).fontSize(HitaDesign.body).fontWeight(FontWeight.Medium).fontColor($r('app.color.hita_text')).layoutWeight(1)
+                  Text(item.displayScore()).fontSize(HitaDesign.title).fontWeight(FontWeight.Medium)
                     .fontColor(numericScore(item.displayScore()) >= 0 && numericScore(item.displayScore()) < 60 ?
                       $r('app.color.hita_error') : $r('app.color.hita_primary'))
                 }.width('100%')
                 Text([item.courseCode, item.courseProperty, item.credits + ' 学分'].filter((v: string) => v.length > 0).join(' · '))
-                  .fontSize(12).fontColor($r('app.color.hita_text_secondary')).width('100%')
-              }.width('100%').padding(16).borderRadius(14).backgroundColor($r('app.color.hita_surface'))
+                  .fontSize(HitaDesign.label).fontColor($r('app.color.hita_text_secondary')).width('100%')
+              }.width('100%').padding(16).borderRadius(HitaDesign.cardRadius).backgroundColor($r('app.color.hita_surface'))
                 .onClick(() => this.details(item))
             })
           }.width('100%').padding({ left: 16, right: 16, top: HEADER_HEIGHT, bottom: 16 + this.navBarInset })
@@ -283,10 +284,10 @@ export struct ScorePage {
             if (this.presentedAsSheet) this.onClose();
             else this.getUIContext().getRouter().back();
           } })
-          Text('成绩与统计').fontSize(20).fontWeight(FontWeight.Bold).fontColor($r('app.color.hita_text'))
+          Text('成绩与统计').fontSize(HitaDesign.title).fontWeight(FontWeight.Medium).fontColor($r('app.color.hita_text'))
             .layoutWeight(1).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
           Button('刷新', { type: ButtonType.Capsule })
-            .height(34).fontSize(13).fontWeight(FontWeight.Medium)
+            .height(34).fontSize(HitaDesign.caption).fontWeight(FontWeight.Medium)
             .padding({ left: 12, right: 12 })
             .fontColor(CompatibleMaterialModifier.foreground('#FFFFFF'))
             .backgroundColor($r('app.color.hita_primary_fill'))

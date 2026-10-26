@@ -168,7 +168,7 @@ export class AppearanceStore {
       if (this.mainWindow !== target) {
         return;
       }
-      await target.setWindowBackgroundColor(dark ? '#101214' : '#F4F7FC');
+      await target.setWindowBackgroundColor(dark ? '#101214' : '#F5F6F8');
       await target.setWindowSystemBarProperties({
         statusBarColor: '#00000000',
         statusBarContentColor: status,
