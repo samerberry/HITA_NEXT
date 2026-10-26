@@ -3320,10 +3320,6 @@ struct Home {
                   COLOR_TEXT_PRIMARY)
                 .layoutWeight(1)
                 .maxLines(1);
-              Text(this.widgetBackgroundSet ? '已设置' : '默认')
-                .fontSize(13)
-                .fontWeight(FontWeight.Medium)
-                .fontColor(COLOR_PRIMARY);
               Text('›')
                 .fontSize(20)
                 .fontColor($r('app.color.hita_text_hint_b2b8c4'))
