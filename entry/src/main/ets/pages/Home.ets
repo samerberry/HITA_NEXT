@@ -212,6 +212,7 @@ struct Home {
   @State reminderBusy: boolean = false;
   @State reminderExpanded: boolean = false;
   @State reminderMaterialHeight: number = 260;
+  @State widgetMaterialHeight: number = 140;
   @State reminderLeadMinutes: number = 15;
   @State timetableEvents: EasEventItem[] = [];
   @State timetableWeek: number = 1;
@@ -3290,51 +3291,80 @@ struct Home {
         });
       });
       if (this.widgetMenuExpanded) {
+        ImmersiveHeader({ barHeight: this.widgetMaterialHeight, materialEnabled: CompatibleSheetMaterial.isEnabled() }) {
         Column() {
-          Divider()
-            .color($r('app.color.hita_divider_eef1f6'))
-            .margin({ left: 16, right: 16 });
-          Row() {
-            Text('设置桌面服务卡片')
-              .fontSize(13)
-              .fontColor(COLOR_TEXT_SECONDARY)
+          Column() {
+            Row() {
+              Column() {
+                Text('设置桌面服务卡片')
+                  .fontSize(15)
+                  .fontColor(CompatibleSheetMaterial.isEnabled() ? CompatibleMaterialModifier.foreground(COLOR_TEXT_PRIMARY) :
+                    COLOR_TEXT_PRIMARY)
+                  .maxLines(1);
+                Text('长按桌面 HITA 图标即可添加')
+                  .fontSize(12)
+                  .fontColor(COLOR_TEXT_SECONDARY)
+                  .margin({ top: 2 })
+                  .maxLines(1);
+              }
               .layoutWeight(1)
-              .maxLines(1);
-            Text('›')
-              .fontSize(20)
-              .fontColor($r('app.color.hita_text_hint_b2b8c4'))
-              .margin({ left: 6 });
+              .alignItems(HorizontalAlign.Start);
+              Text('›')
+                .fontSize(20)
+                .fontColor($r('app.color.hita_text_hint_b2b8c4'))
+                .margin({ left: 6 });
+            }
+            .width('100%')
+            .constraintSize({ minHeight: 56 })
+            .alignItems(VerticalAlign.Center)
+            .onClick(() => {
+              this.openDesktopWidgetManager();
+            });
+            Row() {
+              Column() {
+                Text('自定义背景')
+                  .fontSize(15)
+                  .fontColor(CompatibleSheetMaterial.isEnabled() ? CompatibleMaterialModifier.foreground(COLOR_TEXT_PRIMARY) :
+                    COLOR_TEXT_PRIMARY)
+                  .maxLines(1);
+                Text(this.widgetBackgroundSet ? '已设置' : '默认')
+                  .fontSize(12)
+                  .fontColor(COLOR_TEXT_SECONDARY)
+                  .margin({ top: 2 })
+                  .maxLines(1);
+              }
+              .layoutWeight(1)
+              .alignItems(HorizontalAlign.Start);
+              Text('›')
+                .fontSize(20)
+                .fontColor($r('app.color.hita_text_hint_b2b8c4'))
+                .margin({ left: 6 });
+            }
+            .width('100%')
+            .constraintSize({ minHeight: 56 })
+            .alignItems(VerticalAlign.Center)
+            .onClick(() => {
+              this.openWidgetBackgroundSheet();
+            });
           }
           .width('100%')
-          .height(44)
-          .padding({ left: 16, right: 16 })
-          .onClick(() => {
-            this.openDesktopWidgetManager();
-          });
-          Row() {
-            Text('自定义背景')
-              .fontSize(13)
-              .fontColor(COLOR_TEXT_SECONDARY)
-              .layoutWeight(1)
-              .maxLines(1);
-            Text(this.widgetBackgroundSet ? '已设置' : '默认')
-              .fontSize(13)
-              .fontWeight(FontWeight.Medium)
-              .fontColor(COLOR_PRIMARY);
-            Text('›')
-              .fontSize(20)
-              .fontColor($r('app.color.hita_text_hint_b2b8c4'))
-              .margin({ left: 6 });
-          }
-          .width('100%')
-          .height(44)
-          .padding({ left: 16, right: 16 })
-          .onClick(() => {
-            this.openWidgetBackgroundSheet();
-          });
+          .padding({ left: 16, right: 16, top: 4, bottom: 4 })
+          .backgroundColor($r('app.color.hita_control'))
+          .borderRadius(12)
+          .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_control'), false,
+            CompatibleSheetMaterial.isEnabled()))
+          .alignItems(HorizontalAlign.Start);
         }
         .width('100%')
+        .padding({ left: 16, right: 16, top: 6, bottom: 12 })
+        .onAreaChange((_old: Area, area: Area) => {
+          const height: number = Number(area.height);
+          if (height > 0 && Math.abs(height - this.widgetMaterialHeight) > 1) {
+            this.widgetMaterialHeight = height;
+          }
+        })
         .transition(TransitionEffect.OPACITY);
+        }
       }
     }
     .width('100%')
@@ -3856,43 +3886,43 @@ struct Home {
         ImmersiveHeader({ barHeight: this.reminderMaterialHeight, materialEnabled: CompatibleSheetMaterial.isEnabled() }) {
         Column() {
           Column() {
-            Row({ space: 12 }) {
-              Text('开启课程提醒')
-                .fontSize(14)
-                .fontColor(CompatibleSheetMaterial.isEnabled() ? CompatibleMaterialModifier.foreground(COLOR_TEXT_PRIMARY) :
-                  COLOR_TEXT_PRIMARY)
-                .layoutWeight(1);
+            Row() {
+              Column() {
+                Text('开启课程提醒')
+                  .fontSize(15)
+                  .fontColor(CompatibleSheetMaterial.isEnabled() ? CompatibleMaterialModifier.foreground(COLOR_TEXT_PRIMARY) :
+                    COLOR_TEXT_PRIMARY)
+                  .maxLines(1);
+                Text('应用前台或后台运行时都会通知')
+                  .fontSize(12)
+                  .fontColor(COLOR_TEXT_SECONDARY)
+                  .margin({ top: 2 })
+                  .maxLines(1);
+              }
+              .layoutWeight(1)
+              .alignItems(HorizontalAlign.Start);
               Toggle({ type: ToggleType.Switch, isOn: this.classReminderEnabled })
                 .selectedColor(COLOR_PRIMARY)
                 .margin(0)
                 .enabled(!this.reminderBusy)
-                .accessibilityText('开启课程提醒')
+                .accessibilityText('开启课程提醒，应用前台或后台运行时都会通知')
                 .onChange((isOn: boolean) => {
                   void this.setClassReminderEnabled(isOn);
                 });
             }
             .width('100%')
-            .height(40)
+            .constraintSize({ minHeight: 56 })
             .alignItems(VerticalAlign.Center);
-            Text('应用在前台或后台运行时会通知。')
-              .fontSize(12)
-              .lineHeight(18)
-              .fontColor(COLOR_TEXT_SECONDARY)
-              .width('100%')
-              .margin({ top: 2, bottom: 14 });
-            Divider()
-              .strokeWidth(0.5)
-              .color(COLOR_TEXT_SECONDARY)
-              .opacity(0.15);
             Row({ space: 8 }) {
               Text('提醒时间')
-                .fontSize(14)
+                .fontSize(15)
                 .fontColor(CompatibleSheetMaterial.isEnabled() ? CompatibleMaterialModifier.foreground(COLOR_TEXT_PRIMARY) :
                   COLOR_TEXT_PRIMARY)
                 .layoutWeight(1);
               Text('上课前 ' + this.reminderLeadMinutes.toString() + ' 分钟')
                 .fontSize(13)
-                .fontColor(COLOR_TEXT_SECONDARY)
+                .fontColor(CompatibleSheetMaterial.isEnabled() ? CompatibleMaterialModifier.foreground(COLOR_PRIMARY) :
+                  COLOR_PRIMARY)
                 .maxLines(1);
               SymbolGlyph($r('sys.symbol.chevron_right'))
                 .fontSize(12)
@@ -3901,27 +3931,39 @@ struct Home {
                 .height(20);
             }
             .width('100%')
-            .height(48)
+            .constraintSize({ minHeight: 48 })
             .alignItems(VerticalAlign.Center)
             .enabled(!this.reminderBusy)
             .accessibilityText('提醒时间，上课前 ' + this.reminderLeadMinutes.toString() + ' 分钟，点击修改')
             .onClick(() => { this.showReminderTimePicker(); });
-            Divider().strokeWidth(0.5).color(COLOR_TEXT_SECONDARY).opacity(0.15);
+            Divider().color($r('app.color.hita_divider')).margin({ top: 2, bottom: 2 });
             Row() {
-              Text('开启考试提醒').fontSize(14).fontColor(COLOR_TEXT_PRIMARY).layoutWeight(1);
+              Text('开启考试提醒')
+                .fontSize(15)
+                .fontColor(CompatibleSheetMaterial.isEnabled() ? CompatibleMaterialModifier.foreground(COLOR_TEXT_PRIMARY) :
+                  COLOR_TEXT_PRIMARY)
+                .layoutWeight(1);
               Toggle({ type: ToggleType.Switch, isOn: this.examReminderEnabled })
                 .selectedColor(COLOR_PRIMARY).margin(0).enabled(!this.reminderBusy)
                 .onChange((enabled: boolean) => { void this.setExamReminderEnabled(enabled); });
-            }.width('100%').height(48).alignItems(VerticalAlign.Center);
+            }.width('100%').constraintSize({ minHeight: 48 }).alignItems(VerticalAlign.Center);
             Row({ space: 8 }) {
-              Text('考试提醒时间').fontSize(14).fontColor(COLOR_TEXT_PRIMARY).layoutWeight(1);
-              Text('考试前 ' + this.examReminderLeadMinutes.toString() + ' 分钟').fontSize(13).fontColor(COLOR_TEXT_SECONDARY);
+              Text('考试提醒时间')
+                .fontSize(15)
+                .fontColor(CompatibleSheetMaterial.isEnabled() ? CompatibleMaterialModifier.foreground(COLOR_TEXT_PRIMARY) :
+                  COLOR_TEXT_PRIMARY)
+                .layoutWeight(1);
+              Text('考试前 ' + this.examReminderLeadMinutes.toString() + ' 分钟')
+                .fontSize(13)
+                .fontColor(CompatibleSheetMaterial.isEnabled() ? CompatibleMaterialModifier.foreground(COLOR_PRIMARY) :
+                  COLOR_PRIMARY)
+                .maxLines(1);
               SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(12).fontColor([COLOR_TEXT_SECONDARY]).width(16).height(20);
-            }.width('100%').height(48).alignItems(VerticalAlign.Center).enabled(!this.reminderBusy)
-              .onClick(() => this.showExamReminderTimePicker());
+            }.width('100%').constraintSize({ minHeight: 48 }).alignItems(VerticalAlign.Center).enabled(!this.reminderBusy)
+            .onClick(() => { this.showExamReminderTimePicker(); });
           }
           .width('100%')
-          .padding({ left: 14, right: 14, top: 8, bottom: 2 })
+          .padding({ left: 16, right: 16, top: 4, bottom: 4 })
           .backgroundColor($r('app.color.hita_control'))
           .borderRadius(12)
           .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_control'), false,
