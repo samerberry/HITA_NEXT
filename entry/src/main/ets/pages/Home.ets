@@ -211,8 +211,8 @@ struct Home {
   @State classReminderEnabled: boolean = false;
   @State reminderBusy: boolean = false;
   @State reminderExpanded: boolean = false;
-  @State reminderMaterialHeight: number = 260;
-  @State widgetMaterialHeight: number = 140;
+  @State reminderMaterialHeight: number = 231;
+  @State widgetMaterialHeight: number = 122;
   @State reminderLeadMinutes: number = 15;
   @State timetableEvents: EasEventItem[] = [];
   @State timetableWeek: number = 1;
@@ -3296,53 +3296,41 @@ struct Home {
         Column() {
           Column() {
             Row() {
-              Column() {
-                Text('设置桌面服务卡片')
-                  .fontSize(15)
-                  .fontColor(CompatibleSheetMaterial.isEnabled() ? CompatibleMaterialModifier.foreground(COLOR_TEXT_PRIMARY) :
-                    COLOR_TEXT_PRIMARY)
-                  .maxLines(1);
-                Text('长按桌面 HITA 图标即可添加')
-                  .fontSize(12)
-                  .fontColor(COLOR_TEXT_SECONDARY)
-                  .margin({ top: 2 })
-                  .maxLines(1);
-              }
-              .layoutWeight(1)
-              .alignItems(HorizontalAlign.Start);
+              Text('设置桌面服务卡片')
+                .fontSize(15)
+                .fontColor(CompatibleSheetMaterial.isEnabled() ? CompatibleMaterialModifier.foreground(COLOR_TEXT_PRIMARY) :
+                  COLOR_TEXT_PRIMARY)
+                .layoutWeight(1)
+                .maxLines(1);
               Text('›')
                 .fontSize(20)
                 .fontColor($r('app.color.hita_text_hint_b2b8c4'))
                 .margin({ left: 6 });
             }
             .width('100%')
-            .constraintSize({ minHeight: 56 })
+            .constraintSize({ minHeight: 48 })
             .alignItems(VerticalAlign.Center)
             .onClick(() => {
               this.openDesktopWidgetManager();
             });
             Row() {
-              Column() {
-                Text('自定义背景')
-                  .fontSize(15)
-                  .fontColor(CompatibleSheetMaterial.isEnabled() ? CompatibleMaterialModifier.foreground(COLOR_TEXT_PRIMARY) :
-                    COLOR_TEXT_PRIMARY)
-                  .maxLines(1);
-                Text(this.widgetBackgroundSet ? '已设置' : '默认')
-                  .fontSize(12)
-                  .fontColor(COLOR_TEXT_SECONDARY)
-                  .margin({ top: 2 })
-                  .maxLines(1);
-              }
-              .layoutWeight(1)
-              .alignItems(HorizontalAlign.Start);
+              Text('自定义背景')
+                .fontSize(15)
+                .fontColor(CompatibleSheetMaterial.isEnabled() ? CompatibleMaterialModifier.foreground(COLOR_TEXT_PRIMARY) :
+                  COLOR_TEXT_PRIMARY)
+                .layoutWeight(1)
+                .maxLines(1);
+              Text(this.widgetBackgroundSet ? '已设置' : '默认')
+                .fontSize(13)
+                .fontWeight(FontWeight.Medium)
+                .fontColor(COLOR_PRIMARY);
               Text('›')
                 .fontSize(20)
                 .fontColor($r('app.color.hita_text_hint_b2b8c4'))
                 .margin({ left: 6 });
             }
             .width('100%')
-            .constraintSize({ minHeight: 56 })
+            .constraintSize({ minHeight: 48 })
             .alignItems(VerticalAlign.Center)
             .onClick(() => {
               this.openWidgetBackgroundSheet();
@@ -3900,7 +3888,7 @@ struct Home {
                   .fontColor(CompatibleSheetMaterial.isEnabled() ? CompatibleMaterialModifier.foreground(COLOR_TEXT_PRIMARY) :
                     COLOR_TEXT_PRIMARY)
                   .maxLines(1);
-                Text('应用前台或后台运行时都会通知')
+                Text('应用在前台或后台运行时会通知。')
                   .fontSize(12)
                   .fontColor(COLOR_TEXT_SECONDARY)
                   .margin({ top: 2 })
@@ -3912,7 +3900,7 @@ struct Home {
                 .selectedColor(COLOR_PRIMARY)
                 .margin(0)
                 .enabled(!this.reminderBusy)
-                .accessibilityText('开启课程提醒，应用前台或后台运行时都会通知')
+                .accessibilityText('开启课程提醒')
                 .onChange((isOn: boolean) => {
                   void this.setClassReminderEnabled(isOn);
                 });
