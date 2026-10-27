@@ -151,6 +151,7 @@ test('Benbu VPN authentication bootstrap is expired, but generic loading pages a
 
 test('Benbu SDP verification redirects through a variable require re-login instead of reporting missing terms', async () => {
   for (const body of [benbuVpnVerify, benbuVpnVerify.replace(':443', ''),
+    benbuVpnVerify.replace('ivpn.hit.edu.cn', 'vpn.hit.edu.cn'),
     benbuVpnVerify.replaceAll('"', "'"),
     benbuVpnVerify.replaceAll('locationUrl', 'verifyTarget'),
     benbuVpnVerify.replace('location.replace(', 'window.location.assign(')]) {
@@ -167,6 +168,7 @@ test('a VPN URL alone, ordinary redirects, and failed network requests do not pr
     response(benbuVpnVerify.replace('location.replace(locationUrl + sfDomainParam)', 'console.log(locationUrl)')),
     response(benbuVpnVerify.replace('/public/verify?', '/public/verifyHelp?')),
     response(benbuVpnVerify.replace('ivpn.hit.edu.cn', 'example.com')),
+    response(benbuVpnVerify.replace('ivpn.hit.edu.cn', 'vpn.hit.edu.cn.evil.example')),
     response('<!--' + benbuVpnVerify + '-->' + terms('xnxq')),
     response('<script>/* ' + benbuVpnVerify.replace(/<[^>]*>/g, '') + ' */</script>' + terms('xnxq')),
     response('<a href="https://ivpn.hit.edu.cn/controller/v1/public/verify">VPN</a>' + terms('xnxq')),

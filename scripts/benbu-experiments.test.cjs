@@ -242,6 +242,7 @@ test('SSO redirects forward the laboratory cookie without replacing the EAS sess
   try {
     assert.equal((await service.getExperiments(s)).length, 1);
     assert.equal(calls.length, 4);
+    assert.equal(calls[0].target, 'http://jwts-hit-edu-cn.vpn.hit.edu.cn:1080/loginsysj/loginSygl');
     assert.ok(calls.every(x => x.followRedirects === false));
     assert.doesNotMatch(calls[1].cookie, /JSESSIONID=/, 'do not send the teaching system session to the laboratory');
     assert.match(calls[2].cookie, /JSESSIONID=lab/); assert.match(calls[3].cookie, /JSESSIONID=lab/);
@@ -259,6 +260,26 @@ test('an SSO request failure still attempts the laboratory schedule like Android
   try {
     assert.equal((await service.getExperiments(session())).length, 1);
     assert.equal(calls.length, 2);
+  } finally { api.doHttp = original; }
+});
+
+test('the migrated bridge does not forward cookies to unconfigured VPN origins', async () => {
+  const original = api.doHttp;
+  try {
+    for (const location of [
+      'http://unrelated.vpn.hit.edu.cn:1080/sso',
+      'http://jwts-hit-edu-cn.vpn.hit.edu.cn:1081/sso',
+      'http://jwts-hit-edu-cn.vpn.hit.edu.cn.evil.example:1080/sso'
+    ]) {
+      const calls = [];
+      api.doHttp = async target => {
+        calls.push(target);
+        return target.endsWith('loginSygl') ? { statusCode: 302, location } : { statusCode: 200, body: fixture };
+      };
+      assert.equal((await service.getExperiments(session())).length, 1);
+      assert.equal(calls.length, 2);
+      assert.ok(!calls.includes(location));
+    }
   } finally { api.doHttp = original; }
 });
 

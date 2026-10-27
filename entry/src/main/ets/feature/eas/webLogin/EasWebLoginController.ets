@@ -1191,7 +1191,7 @@ export class EasWebLoginController {
         'ids.hit.edu.cn',
         'hit.edu.cn',
         'i-hit-edu-cn.ivpn.hit.edu.cn',
-        'jwts-hit-edu-cn.ivpn.hit.edu.cn',
+        'jwts-hit-edu-cn.vpn.hit.edu.cn',
         'sjjx-hit-edu-cn.ivpn.hit.edu.cn',
         'yjsgl-hit-edu-cn.ivpn.hit.edu.cn',
         'eelabinfo-hit-edu-cn.ivpn.hit.edu.cn',

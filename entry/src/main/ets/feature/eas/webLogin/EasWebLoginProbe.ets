@@ -355,12 +355,13 @@ export function isTrustPortalPage(url: string): boolean {
   return hostOf(url) === 'trust.hitsz.edu.cn' && pathOf(url).startsWith('/portal');
 }
 
-/** isIvpnRedirectPage L2676-2687：仅 BENBU，且 host 精确等于 "ivpn.hit.edu.cn"（大小写敏感）。 */
+/** 仅本部 VPN 网关的精确域名属于登录中转页，兼容旧 iVPN。 */
 export function isIvpnRedirectPage(url: string, campus: EasCampus): boolean {
   if (campus !== EasCampus.BENBU) {
     return false;
   }
-  return hostOf(url) === 'ivpn.hit.edu.cn';
+  const host: string = hostOf(url);
+  return host === 'vpn.hit.edu.cn' || host === 'ivpn.hit.edu.cn';
 }
 
 // ---------------------------------------------------------------------------

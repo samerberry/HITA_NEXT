@@ -39,7 +39,8 @@ export class BenbuExperimentService {
       const endpoint: url.URL = new url.URL(target);
       if ((endpoint.protocol !== 'http:' && endpoint.protocol !== 'https:') ||
         endpoint.username.length > 0 || endpoint.password.length > 0 ||
-        !(endpoint.hostname === 'ivpn.hit.edu.cn' || endpoint.hostname.endsWith('.ivpn.hit.edu.cn'))) {
+        !(endpoint.origin === EasCampusUrls.JWTS_BASE ||
+        endpoint.hostname === 'ivpn.hit.edu.cn' || endpoint.hostname.endsWith('.ivpn.hit.edu.cn'))) {
         break;
       }
       let cookies: Map<string, string> | undefined = jars.get(endpoint.origin);

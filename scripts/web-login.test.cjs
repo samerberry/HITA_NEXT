@@ -58,7 +58,7 @@ function setup(apiVersion = 26) {
     createHttp: () => ({
       request: (url, options) => {
         state.requests++;
-        if (url.includes('jwts-hit-edu-cn.ivpn.hit.edu.cn') && url.includes('/kbcx/queryGrkb')) {
+        if (url.includes('jwts-hit-edu-cn.vpn.hit.edu.cn') && url.includes('/kbcx/queryGrkb')) {
           state.benbuRequests = (state.benbuRequests ?? 0) + 1;
           state.benbuRequest = { url, options };
           if (state.benbuResponse) return state.benbuResponse();
@@ -132,6 +132,28 @@ function setup(apiVersion = 26) {
   }
   return { ctrl, state, web, urls, tick, page, load, timers };
 }
+
+test('Benbu undergraduate login and cookie probes use the new VPN EAS address', () => {
+  const h = setup();
+  const { easWebLoginConfigFor } = h.load('feature/eas/webLogin/EasWebLoginConfig.ets');
+  const cfg = easWebLoginConfigFor('BENBU', '1');
+  const base = 'http://jwts-hit-edu-cn.vpn.hit.edu.cn:1080';
+  assert.equal(cfg.loginUrl, base + '/loginCAS');
+  assert.equal(cfg.jwtsUrl, cfg.loginUrl);
+  assert.ok(cfg.cookieProbeUrls.includes(base + '/kbcx/queryGrkb'));
+  assert.ok(cfg.cookieDomains.includes('jwts-hit-edu-cn.vpn.hit.edu.cn'));
+  assert.equal(easWebLoginConfigFor('BENBU', '2').loginUrl, h.urls.BENBU_LOGIN);
+});
+
+test('Benbu recognizes the new VPN gateway without accepting lookalike or other-campus hosts', () => {
+  const h = setup();
+  const { isIvpnRedirectPage } = h.load('feature/eas/webLogin/EasWebLoginProbe.ets');
+  for (const host of ['vpn.hit.edu.cn', 'ivpn.hit.edu.cn']) {
+    assert.equal(isIvpnRedirectPage('https://' + host + '/login', 'BENBU'), true);
+    assert.equal(isIvpnRedirectPage('https://' + host + '/login', 'WEIHAI'), false);
+    assert.equal(isIvpnRedirectPage('https://' + host + '.evil.example/login', 'BENBU'), false);
+  }
+});
 
 test('returning from authentication to the portal opens EAS again instead of keeping the old navigation latch', async () => {
   const { ctrl, state, urls, page } = setup();
@@ -509,6 +531,7 @@ test('Benbu loginCAS can finish after the timetable endpoint verifies the curren
     h.ctrl.start('BENBU', '1');
     await h.page(h.urls.BENBU_JWTS);
     assert.equal(h.state.benbuRequests, 1);
+    assert.equal(h.state.benbuRequest.url, 'http://jwts-hit-edu-cn.vpn.hit.edu.cn:1080/kbcx/queryGrkb');
     assert.equal(h.state.navigations.at(-1), h.urls.JWTS_BASE + '/loginsysj/loginSygl');
     await completeSjjxPage(h);
     assert.ok(h.state.navigations.some(url => url.startsWith(h.urls.EELABINFO_URL)));
@@ -602,8 +625,9 @@ test('Benbu verification timeout stays bounded and late results cannot finish a 
 test('Benbu authentication, unrelated hosts and graduate pages never use undergraduate verification', async () => {
   for (const [type, url] of [
     ['1', 'https://ids.hit.edu.cn/authserver/login'],
-    ['1', 'http://jwts-hit-edu-cn.ivpn.hit.edu.cn:1080/authserver/reAuthCheck/'],
-    ['1', 'https://jwts-hit-edu-cn.ivpn.hit.edu.cn.evil.example/index'],
+    ['1', 'http://jwts-hit-edu-cn.vpn.hit.edu.cn:1080/authserver/reAuthCheck/'],
+    ['1', 'https://jwts-hit-edu-cn.vpn.hit.edu.cn.evil.example/index'],
+    ['1', 'http://jwts-hit-edu-cn.ivpn.hit.edu.cn:1080/index'],
     ['1', 'https://unrelated.hit.edu.cn/index'],
     ['2', 'http://yjsgl-hit-edu-cn.ivpn.hit.edu.cn:1080/xs/index']
   ]) {

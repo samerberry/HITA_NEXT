@@ -21,7 +21,7 @@ function isBenbuVerificationRedirect(html: string): boolean {
     const script: string = scriptMatch[1].replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/^\s*\/\/[^\r\n]*/gm, '');
     const targets: RegExp =
-      /\b(?:var|let|const)\s+([A-Za-z_$][\w$]*)\s*=\s*["']https:\/\/ivpn\.hit\.edu\.cn(?::443)?\/controller\/v1\/public\/verify(?:\?[^"']*)?["']/gi;
+      /\b(?:var|let|const)\s+([A-Za-z_$][\w$]*)\s*=\s*["']https:\/\/(?:ivpn|vpn)\.hit\.edu\.cn(?::443)?\/controller\/v1\/public\/verify(?:\?[^"']*)?["']/gi;
     let target: RegExpExecArray | null = targets.exec(script);
     while (target !== null) {
       const variable: string = target[1].replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
