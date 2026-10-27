@@ -122,7 +122,7 @@ test('home and timetable import share session selection; active timetable action
   }
   const home = read('pages/Home.ets');
   assert.doesNotMatch(home, /sessionText|gotoCurrentTimetableWeek|TAB_MORE/);
-  assert.match(home, /Blank\(\)\.height\(this\.dockPageInset\(\) \+ 20\)/);
+  assert.match(home, /Blank\(\)\.height\(this\.dockPageInset\(\) \+ HitaDesign\.spaceLg\)/);
   const manager = read('pages/TimetableManagerPage.ets');
   const card = manager.slice(manager.indexOf('  private addCard()'));
   for (const action of ['createEmptyTimetable', 'openImportPage', 'importIcs']) {

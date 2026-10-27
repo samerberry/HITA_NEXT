@@ -12,7 +12,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { EasCampusConfig, EasCampusUrls, EasUserAgent } from './webLogin/EasWebLoginConfig';
 import { EasCampus, EasSession } from './EasSession';
 import { EasSessionStore } from './EasSessionStore';
-import { EasSessionResponse, isExpiredEasResponse, isShenzhenGatewayLoginRedirect } from './EasSessionStatus';
+import { describeExpiredEvidence, EasSessionResponse, expiredEvidence, isShenzhenGatewayLoginRedirect } from './EasSessionStatus';
 
 const TAG: string = 'HitaEasApi';
 const DOMAIN: number = 0x0000;
@@ -109,12 +109,18 @@ export class EasApiClient {
             options.timeoutMs, useCache, true);
         }
       }
-      if (isExpiredEasResponse(resp)) {
+      const evidence: string = expiredEvidence(resp);
+      if (evidence.length > 0) {
+        hilog.info(DOMAIN, TAG, 'Auth failure campus=%{public}s path=%{public}s status=%{public}d attempt=%{public}d evidence=%{public}s',
+          session.campus.toString(), EasApiClient.redirectTarget(path), resp.statusCode, i, evidence);
         const relogin: EasReloginHandler | undefined = this.reloginHandler ?? EasApiClient.defaultReloginHandler;
         if (relogin !== undefined && i + 1 < attempts && await relogin(session, 'session invalid on ' + path)) {
           continue; // 重登成功后用新凭据重试一次
         }
-        await EasSessionStore.getInstance().markExpired(session);
+        hilog.warn(DOMAIN, TAG, 'Marking session expired campus=%{public}s path=%{public}s evidence=%{public}s',
+          session.campus.toString(), EasApiClient.redirectTarget(path), evidence);
+        await EasSessionStore.getInstance().markExpired(session,
+          describeExpiredEvidence(evidence) + '（' + EasApiClient.redirectTarget(path) + '）');
       }
       return resp;
     }

@@ -157,12 +157,12 @@ struct PortalsPage {
 
   @Builder
   portalList() {
-    List({ space: 10, scroller: this.listScroller }) {
+    List({ space: HitaDesign.gap, scroller: this.listScroller }) {
       ListItem() {
         Column().width('100%').height(HEADER_HEIGHT);
       }
       ForEach(this.groups, (group: CampusPortalGroup) => {
-        ListItemGroup({ header: this.groupHeader(group.title), space: 10 }) {
+        ListItemGroup({ header: this.groupHeader(group.title), space: HitaDesign.gap }) {
           ForEach(group.portals, (portal: CampusPortal) => {
             ListItem() {
               this.portalRow(portal);
@@ -232,7 +232,7 @@ struct PortalsPage {
     .width('100%')
     .padding({ left: 16, right: 16, top: 12, bottom: 12 })
     .backgroundColor($r('app.color.hita_surface'))
-    .borderRadius(16)
+    .borderRadius(HitaDesign.cardRadius)
     .accessibilityText(portal.title + '，' + portal.url)
     .gesture(
       GestureGroup(GestureMode.Exclusive,

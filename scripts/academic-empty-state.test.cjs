@@ -36,7 +36,7 @@ test('empty states keep loading and text hints without login or add buttons', ()
   const score = read('ScorePage.ets');
   const examEmpty = emptyBranch(exam, cases[0][1]);
   assert.doesNotMatch(examEmpty, /Button\(|\.onClick\(|openAddExam|\.margin\(\{\s*bottom:/);
-  assert.match(exam, /this\.headerAction\('\u6dfb\u52a0',[\s\S]*?this\.openAddExam\(\)/);
+  assert.match(exam, /HeaderActionButton\(\{ label: '\u6dfb\u52a0',[\s\S]*?this\.openAddExam\(\)/);
   assert.equal((exam.match(/this\.openAddExam\(\)/g) ?? []).length, 1);
   const hint = /Text\((this\.queryMsg[\s\S]*?)\)\s*\.fontSize/.exec(examEmpty);
   assert.ok(hint, 'the empty state must display the query message');

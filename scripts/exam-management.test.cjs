@@ -141,7 +141,7 @@ test('list keeps event identity, filters courses and sorts by time across timeta
   assert.match(source, /\(it: EasEventItem\) => it\.id/);
   assert.match(source, /eventId: this\.sheetEventId/);
   assert.match(source, /onClick\(\(\) => this\.openExamDetail\(it\)\)/);
-  assert.match(source, /\.width\(4\)\s*\.height\(44\)\s*\.borderRadius\(2\)/);
+  assert.match(source, /\.width\(EXAM_RAIL_WIDTH\)\s*\.height\(44\)\s*\.borderRadius\(EXAM_RAIL_WIDTH \/ 2\)/);
   const list = source.slice(source.indexOf('List({ space: 8, scroller: this.pageScroller })'), source.indexOf('.bindSheet('));
   assert.match(list, /this\.examCard\(it\)/);
   assert.doesNotMatch(list, /openEditExam|confirmDeleteExam|sys\.symbol\.trash/);
@@ -152,10 +152,11 @@ test('list keeps event identity, filters courses and sorts by time across timeta
   const editor = read('pages/AddEventPage.ets');
   assert.match(editor, /\.layoutWeight\(1\)/);
   assert.match(editor, /Column\(\) \{[\s\S]*?Button\(this\.loading \? '正在读取'/);
-  assert.match(editor, /\.padding\(\{[\s\S]*?top: 8,[\s\S]*?bottom: 10/);
-  assert.match(source, /this\.headerAction\('查询'/);
-  assert.match(source, /this\.headerAction\('添加'/);
-  assert.match(source, /private headerAction\(label: string, enabled: boolean/);
+  assert.match(editor, /\.padding\(\{[\s\S]*?top: HitaDesign\.spaceXs,[\s\S]*?bottom: HitaDesign\.spaceSm/);
+  // Header actions are components, so their enabled state follows pendingDeleteId and openingEditor.
+  assert.match(source, /HeaderActionButton\(\{ label: '查询', disabled: this\.pendingDeleteId\.length > 0,/);
+  assert.match(source, /HeaderActionButton\(\{ label: '添加', disabled: this\.openingEditor \|\| this\.pendingDeleteId\.length > 0,/);
+  assert.doesNotMatch(source, /private headerAction\(/);
   assert.match(read('pages/TimetableDetailPage.ets'),
     /height: this\.eventSheetMode === 2 \? '78%' : SheetSize\.FIT_CONTENT/);
 });

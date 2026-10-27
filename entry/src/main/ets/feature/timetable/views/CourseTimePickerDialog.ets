@@ -1,3 +1,4 @@
+import { HitaDesign } from '../../../common/theme/HitaDesign';
 import { ImmersiveHeader } from '../../../common/components/ImmersiveHeader';
 import { CompatibleMaterialModifier } from '../../../common/theme/CompatibleMaterialModifier';
 import { CompatiblePickerMaterial } from '../../../common/theme/CompatiblePickerMaterial';
@@ -23,7 +24,7 @@ export struct CourseTimePickerDialog {
   build() {
     Column({ space: 12 }) {
       Text(this.title)
-        .fontSize(18)
+        .fontSize(HitaDesign.section)
         .fontWeight(FontWeight.Medium)
         .fontColor($r('app.color.hita_text_202b45'))
       TimePicker({ selected: new Date(2000, 0, 1, this.hour, this.minute), format: TimePickerFormat.HOUR_MINUTE })
@@ -47,7 +48,7 @@ export struct CourseTimePickerDialog {
             .layoutWeight(1).height(44)
             .backgroundColor($r('app.color.hita_primary_fill'))
             .fontColor(this.immersive && CompatiblePickerMaterial.isEnabled() ?
-              $r('sys.color.ohos_id_color_text_primary') : '#FFFFFF')
+              $r('sys.color.ohos_id_color_text_primary') : $r('app.color.hita_on_primary'))
             .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_primary_fill'), false,
               this.immersive && CompatiblePickerMaterial.isEnabled()))
             .onClick(() => {

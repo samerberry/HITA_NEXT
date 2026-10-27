@@ -43,7 +43,7 @@ export struct CourseModeSegment {
         itemFontSize: LengthMetrics.fp(14),
         itemSelectedFontSize: LengthMetrics.fp(14),
         itemFontColor: ColorMetrics.resourceColor($r('app.color.hita_text_202b45')),
-        itemSelectedFontColor: ColorMetrics.resourceColor('#FFFFFF'),
+        itemSelectedFontColor: ColorMetrics.resourceColor($r('app.color.hita_on_primary')),
         itemSelectedBackgroundColor: ColorMetrics.resourceColor($r('app.color.hita_primary_fill')),
         itemShadow: { radius: 0, color: Color.Transparent, offsetX: 0, offsetY: 0 }
       })

@@ -234,6 +234,11 @@ test(`${weekdayMode ? 'weekday' : 'week'} elevation follows the touched cell wit
   const mod = { exports: {} };
   new Function('require', 'module', 'exports', 'Text', '$r', 'FontWeight', 'TextAlign', compile(source))(
     name => {
+      if (name.endsWith('/HitaDesign')) {
+        const tokens = { exports: {} };
+        new Function('require', 'module', 'exports', compile(read('common/theme/HitaDesign.ets')))(() => ({}), tokens, tokens.exports);
+        return tokens.exports;
+      }
       if (name.endsWith('/CourseControlHost')) return { COURSE_CONTROL_OVERFLOW: 16, CourseControlHost: options => calls.push(options) };
       if (name.endsWith('/CourseDateSelection')) {
         const dates = { exports: {} };

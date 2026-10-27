@@ -161,21 +161,21 @@ test('more opens the reusable timetable importer as an expanded sheet while pres
   assert.match(panel, /CompatibleSheetMaterial\.bodyColor\(PAGE_BG\)/);
   assert.match(panel, /new CompatibleLightModifier\(24, this\.presentedAsSheet &&\s*CompatibleSheetMaterial\.isEnabled\(\), true\)/);
   assert.match(panel, /ImmersiveHeader\(\{ barHeight: HEADER_HEIGHT, materialEnabled: !this\.presentedAsSheet \|\|\s*CompatibleSheetMaterial\.isEnabled\(\) \}\)/);
-  assert.match(panel, /new CompatibleMaterialModifier\(\$r\('app\.color\.hita_selected_ebf4fc'\), false,\s*!this\.presentedAsSheet \|\| CompatibleSheetMaterial\.isEnabled\(\)\)/);
+  // The import action is the shared header action, with material only where its header hosts one.
+  assert.match(panel, /HeaderActionButton\(\{ label: this\.importing \? '导入中' : '导入',[\s\S]*?materialEnabled: !this\.presentedAsSheet \|\| CompatibleSheetMaterial\.isEnabled\(\), onTap: \(\) => this\.import\(\) \}\)/);
   assert.match(read('ets/pages/ImportTimetablePage.ets'), /ImportTimetablePanel\(\{ presentedAsSheet: false \}\)/);
 });
 
-test('calendar confirmation uses the guarded sheet material without changing export or cancel controls', () => {
+test('calendar confirmation keeps its export and cancel controls on solid fills', () => {
   const home = read('ets/pages/Home.ets');
   const sheet = home.slice(home.indexOf('  calendarExportConfirmationSheet('), home.indexOf('  tabToday('));
   assert.match(sheet, /Text\('同步至手机日历'\)/);
   assert.match(sheet, /Toggle\(\{ type: ToggleType\.Switch, isOn: this\.calendarExportSyncEnabled \}\)/);
-  assert.match(sheet, /Button\('保存'/);
-  assert.match(sheet, /onClick\(\(\) => this\.cancelCalendarExport\(\)\)/);
-  assert.match(sheet, /onClick\(\(\) => this\.exportToCalendar\(\)\)/);
-  assert.equal((sheet.match(/\.enabled\(!this\.calendarExporting\)/g) || []).length, 3);
-  assert.doesNotMatch(sheet, /\.backgroundColor\(COLOR_SURFACE\)|systemMaterial/);
-  assert.match(sheet, /ImmersiveHeader\(\{ barHeight: 46 \}\)/);
+  // Save is the only primary action; both buttons use HitaButton's solid fills, so no material host is needed.
+  assert.match(sheet, /HitaButton\(\{ label: '取消', variant: HitaButtonVariant\.NEUTRAL, disabled: this\.calendarExporting,\s*onTap: \(\) => this\.cancelCalendarExport\(\) \}\)/);
+  assert.match(sheet, /HitaButton\(\{ label: '保存', variant: HitaButtonVariant\.PRIMARY, disabled: this\.calendarExporting,\s*onTap: \(\) => this\.exportToCalendar\(\) \}\)/);
+  assert.equal((sheet.match(/\.enabled\(!this\.calendarExporting\)/g) || []).length, 1);
+  assert.doesNotMatch(sheet, /\.backgroundColor\(COLOR_SURFACE\)|systemMaterial|CompatibleMaterialModifier/);
 });
 
 test('course palette button keeps a stable circle host, original preview and toggle callbacks', () => {
@@ -230,4 +230,25 @@ test('appearance options keep selection, accessibility and saving guards with ex
   assert.match(options, /new CompatibleMaterialModifier\([\s\S]*false, CompatibleSheetMaterial.isEnabled\(\)\)/);
   assert.match(options, /\.enabled\(!this.appearanceBusy\)/);
   assert.match(options, /void this.selectAppearance\(mode\)/);
+});
+
+test('session sheet login actions keep solid fills so white text stays readable in light mode', () => {
+  const home = read('ets/pages/Home.ets');
+  const sheet = home.slice(home.indexOf('  sessionSheet()'), home.indexOf('  sessionCampusButton('));
+  for (const [label, variant] of [['网页登录', 'PRIMARY'], ['重新登录', 'SECONDARY'], ['退出登录', 'DANGER']]) {
+    const start = sheet.indexOf(`HitaButton({ label: '${label}'`);
+    assert.ok(start >= 0, label);
+    const button = sheet.slice(start, sheet.indexOf('})', start));
+    assert.match(button, new RegExp(`variant: HitaButtonVariant\\.${variant}`), label);
+    // Inside the material sheet a nested material hides the fill in both themes.
+    assert.doesNotMatch(button, /attributeModifier|CompatibleMaterialModifier/, label);
+  }
+  assert.doesNotMatch(sheet, /\bButton\(/);
+  // The shared button only paints solid fills, and white text appears only on the primary fill.
+  const component = read('ets/common/components/HitaButton.ets');
+  assert.doesNotMatch(component, /CompatibleMaterialModifier|systemMaterial/);
+  assert.match(component, /\.fontColor\(HitaButton\.foreground\(this\.variant\)\)\s*\.backgroundColor\(HitaButton\.fill\(this\.variant\)\)/);
+  assert.match(component, /if \(variant === HitaButtonVariant\.PRIMARY\) return HitaColors\.onPrimary;/);
+  assert.match(component, /if \(variant === HitaButtonVariant\.PRIMARY\) return HitaColors\.primaryFill;/);
+  assert.equal((component.match(/HitaColors\.onPrimary/g) || []).length, 1);
 });

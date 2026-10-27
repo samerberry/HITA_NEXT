@@ -1,4 +1,5 @@
 import { CourseDateSelection } from '../CourseDateSelection';
+import { HitaDesign } from '../../../common/theme/HitaDesign';
 import { COURSE_CONTROL_OVERFLOW, CourseControlHost } from './CourseControlHost';
 import { CompatibleMaterialModifier } from '../../../common/theme/CompatibleMaterialModifier';
 import { CompatibleSheetMaterial } from '../../../common/theme/CompatibleSheetMaterial';
@@ -83,16 +84,16 @@ export struct CourseWeekPicker {
       }
     }) {
       Text(this.weekdayMode ? ['一', '二', '三', '四', '五', '六', '日'][week - 1] : week.toString())
-        .fontSize(this.weekdayMode ? 14 : 16)
+        .fontSize(this.weekdayMode ? HitaDesign.caption : HitaDesign.body)
         .fontWeight(FontWeight.Medium)
         .width('100%')
-        .height(this.weekdayMode ? 38 : 44)
+        .height(this.weekdayMode ? HitaDesign.controlHeight : HitaDesign.minTouchTarget)
         .textAlign(TextAlign.Center)
-        .borderRadius(12)
+        .borderRadius(HitaDesign.radiusMd)
         .backgroundColor(this.chosen.includes(week) ? $r('app.color.hita_primary_fill') :
           $r('app.color.hita_surface_soft'))
         .fontColor(this.chosen.includes(week) ?
-          (CompatibleSheetMaterial.isEnabled() ? $r('app.color.hita_primary_3390ec') : '#FFFFFF') :
+          (CompatibleSheetMaterial.isEnabled() ? $r('app.color.hita_primary_3390ec') : $r('app.color.hita_on_primary')) :
           $r('app.color.hita_text_202b45'))
         .attributeModifier(new CompatibleMaterialModifier(this.chosen.includes(week) ?
           $r('app.color.hita_primary_fill') : $r('app.color.hita_surface_soft'),
@@ -117,8 +118,8 @@ export struct CourseWeekPicker {
         .width('100%')
         .height(44)
         .padding(0)
-        .borderRadius(12)
-        .fontSize(24)
+        .borderRadius(HitaDesign.radiusMd)
+        .fontSize(HitaDesign.iconLg)
         .fontWeight(FontWeight.Medium)
         .backgroundColor($r('app.color.hita_surface_soft'))
         .fontColor($r('app.color.hita_primary_3390ec'))
@@ -133,7 +134,7 @@ export struct CourseWeekPicker {
     Grid() {
       ForEach(this.weeks, (week: number) => {
         GridItem() { this.cell(week) }
-          .height(this.weekdayMode ? 38 : 44)
+          .height(this.weekdayMode ? HitaDesign.controlHeight : HitaDesign.minTouchTarget)
           .clip(false)
           .zIndex(this.activeWeek === week ? 3 : 1)
           .onClick(() => this.select(week, !this.chosen.includes(week)))

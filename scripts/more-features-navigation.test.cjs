@@ -32,7 +32,7 @@ test('assistant, news and campus links are registered routes in More, after acad
     ['AssistantPage', '助手', 'AI_message'], ['NewsPage', '资讯', 'doc_text'],
     ['PortalsPage', '常用入口', 'link']
   ]) {
-    assert.ok(section.includes(`this.moreNavigationRow($r('sys.symbol.${symbol}'), '${label}'`));
+    assert.ok(section.includes(`HitaListRow({ symbol: $r('sys.symbol.${symbol}'), title: '${label}'`));
     assert.ok(section.includes(`getRouter().pushUrl({ url: 'pages/${page}' })`));
     assert.ok(routes.includes(`pages/${page}`));
     const source = read(`pages/${page}.ets`);
@@ -77,6 +77,14 @@ function pageClass(name, mocks = {}, moduleCache = new Map()) {
     hasCloudModel() { return false; }
   };
   const platform = spec => {
+    if (spec.endsWith('/HitaDesign')) {
+      const tokens = { exports: {} };
+      const code = ts.transpileModule(read('common/theme/HitaDesign.ets'), {
+        compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 }
+      }).outputText;
+      new Function('require', 'module', 'exports', code)(() => ({}), tokens, tokens.exports);
+      return tokens.exports;
+    }
     if (spec.endsWith('/EasSession')) return { EasCampus };
     if (spec.endsWith('/EasSessionStore')) return {
       EAS_SESSION_REVISION_KEY: 'hita_eas_session_revision',

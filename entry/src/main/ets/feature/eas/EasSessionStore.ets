@@ -101,6 +101,7 @@ export class EasSessionStore {
           previous.getStudentType() !== replacing.getStudentType())) return;
         session.sessionGeneration = Math.max(Date.now(), (previous?.sessionGeneration ?? 0) + 1);
         session.loginExpired = false;
+        session.expiredReason = '';
         await this.store.put(this.keyOf(session.campus), session.encode());
         if (replacing === undefined) {
           await this.store.put(LAST_CAMPUS_KEY, session.campus.toString());
@@ -113,8 +114,8 @@ export class EasSessionStore {
     return saved;
   }
 
-  /** 只修改发起该请求的同一会话；保留身份资料、凭据和当前校区选择。 */
-  async markExpired(requestSession: EasSession): Promise<void> {
+  /** 只修改发起该请求的同一会话；保留身份资料、凭据和当前校区选择。reason 记录判定依据，供弹层显示。 */
+  async markExpired(requestSession: EasSession, reason: string = ''): Promise<void> {
     return this.enqueue(async () => {
       if (this.store === undefined) return;
       try {
@@ -126,6 +127,7 @@ export class EasSessionStore {
           current.accessToken !== requestSession.accessToken ||
           EasSession.buildCookieHeader(current.webCookies) !== EasSession.buildCookieHeader(requestSession.webCookies)) return;
         current.loginExpired = true;
+        current.expiredReason = reason;
         await this.store.put(this.keyOf(current.campus), current.encode());
         await this.store.flush();
         this.notifyChanged();

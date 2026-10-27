@@ -14,6 +14,9 @@ import { ScheduleChangeSignal } from '../common/util/ScheduleChangeSignal';
  */
 import { common } from '@kit.AbilityKit';
 import { HeaderBackButton } from '../common/components/HeaderBackButton';
+import { HeaderActionButton } from '../common/components/HeaderActionButton';
+import { HitaButton } from '../common/components/HitaButton';
+import { HitaTag, HitaTagTone } from '../common/components/HitaTag';
 import { ImmersiveHeader } from '../common/components/ImmersiveHeader';
 import { CompatibleMaterialModifier } from '../common/theme/CompatibleMaterialModifier';
 import { CompatibleLightModifier } from '../common/theme/CompatibleLightModifier';
@@ -42,8 +45,9 @@ import { EventEditorForm } from './AddEventPage';
 const HEADER_HEIGHT: number = 60;
 const PAGE_BG: ResourceColor = $r('app.color.hita_page_f6f7fa');
 const PAGE_BG_RGB: string = '245,246,248';
-const DETAIL_ICON_SIZE: number = 38;
+const DETAIL_ICON_SIZE: number = HitaDesign.listIconSize;
 const DETAIL_TEXT_GAP: number = 12;
+const EXAM_RAIL_WIDTH: number = 4;
 const DEFAULT_EXAM_COLOR: number = 0xFFB24B63;
 
 @Entry
@@ -313,8 +317,7 @@ export struct ExamPage {
       this.remoteExams = this.filterImported(items, this.exams);
       this.queryWarning = result.failedTypes.length > 0;
       const message: string = this.queryWarning ?
-        result.failedTypes.join('、') + '查询失败，请重试' +
-          (items.length === 0 ? '；尚不能确认是否有考试安排' : '') :
+        result.failedTypes.join('、') + '查询失败，请重试' :
         (this.remoteExams.length > 0 ? '' :
           (items.length > 0 ? '教务考试已全部在本地课表中' : '本学期暂无教务考试安排'));
       this.queryMsg = message;
@@ -496,7 +499,7 @@ export struct ExamPage {
     try {
       const result = await this.getUIContext().getPromptAction().showDialog({
         title: '删除考试',
-        message: '确定删除「' + event.name + '」吗？仅删除这条考试安排，不影响其他课程。',
+        message: '确定删除「' + event.name + '」吗？',
         buttons: [
           { text: '取消', color: $r('app.color.hita_text_secondary_7b8498') },
           { text: '删除', color: $r('app.color.hita_error') }
@@ -568,11 +571,8 @@ export struct ExamPage {
             .fontSize(HitaDesign.caption)
             .fontColor($r('app.color.hita_error'))
             .layoutWeight(1)
-          Button('重试')
-            .fontColor(CompatibleMaterialModifier.foreground('#FFFFFF'))
-            .backgroundColor($r('app.color.hita_primary_fill'))
-            .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_primary_fill')))
-            .onClick(() => this.loadExams())
+          HitaButton({ label: '重试', buttonHeight: HitaDesign.controlHeight, fitContent: true,
+            onTap: () => this.loadExams() })
         }
         .padding(16)
         .width('100%')
@@ -630,11 +630,8 @@ export struct ExamPage {
                   .fontSize(HitaDesign.caption)
                   .fontColor($r('app.color.hita_error'))
                   .layoutWeight(1)
-                Button('重试')
-                  .fontColor(CompatibleMaterialModifier.foreground('#FFFFFF'))
-                  .backgroundColor($r('app.color.hita_primary_fill'))
-                  .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_primary_fill')))
-                  .onClick(() => this.loadExams())
+                HitaButton({ label: '重试', buttonHeight: HitaDesign.controlHeight, fitContent: true,
+                  onTap: () => this.loadExams() })
               }
               .width('100%')
             }
@@ -721,20 +718,23 @@ export struct ExamPage {
           Row({ space: 4 }) {
             this.viewTab('考试', false)
             this.viewTab('复习', true)
-          }.padding(4).backgroundColor($r('app.color.hita_control')).borderRadius(24)
+          }.padding(HitaDesign.space2xs).backgroundColor($r('app.color.hita_control')).borderRadius(HitaDesign.radiusXl)
           Blank()
           if (!this.reviewView) {
-            this.headerAction('查询', this.pendingDeleteId.length === 0, () => {
-              if (!this.preparingQuery) {
-                this.queryEasExams();
-              }
-            })
-          this.headerAction('添加',
-            !this.openingEditor && this.pendingDeleteId.length === 0, () => {
-              if (!this.preparingQuery && !this.querying) {
-                this.openAddExam();
-              }
-            })
+            HeaderActionButton({ label: '查询', disabled: this.pendingDeleteId.length > 0,
+              materialEnabled: !this.presentedAsSheet || CompatibleSheetMaterial.isEnabled(), onTap: () => {
+                if (!this.preparingQuery) {
+                  this.queryEasExams();
+                }
+              } })
+              .margin({ left: HitaDesign.spaceXs })
+            HeaderActionButton({ label: '添加', disabled: this.openingEditor || this.pendingDeleteId.length > 0,
+              materialEnabled: !this.presentedAsSheet || CompatibleSheetMaterial.isEnabled(), onTap: () => {
+                if (!this.preparingQuery && !this.querying) {
+                  this.openAddExam();
+                }
+              } })
+              .margin({ left: HitaDesign.spaceXs })
           }
         }
         .width('100%')
@@ -782,9 +782,9 @@ export struct ExamPage {
   private examCard(it: EasEventItem) {
     Row() {
       Row()
-        .width(4)
+        .width(EXAM_RAIL_WIDTH)
         .height(44)
-        .borderRadius(2)
+        .borderRadius(EXAM_RAIL_WIDTH / 2)
         .backgroundColor(ExamPage.colorCss(ExamPage.examColor(it)))
       Column() {
         Row() {
@@ -795,12 +795,7 @@ export struct ExamPage {
             .layoutWeight(1)
             .maxLines(2)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
-          Text(ExamSchedule.remainingLabel(it.from, it.to, Date.now()))
-            .fontSize(HitaDesign.label)
-            .fontColor($r('app.color.hita_error'))
-            .padding({ left: 8, right: 8, top: 2, bottom: 2 })
-            .backgroundColor($r('app.color.hita_error_surface_fdecec'))
-            .borderRadius(10)
+          HitaTag({ text: ExamSchedule.remainingLabel(it.from, it.to, Date.now()), tone: HitaTagTone.DANGER })
         }
         .width('100%')
         .alignItems(VerticalAlign.Center)
@@ -840,9 +835,9 @@ export struct ExamPage {
   private remoteExamCard(remote: EasExamItem) {
     Row() {
       Row()
-        .width(4)
+        .width(EXAM_RAIL_WIDTH)
         .height(44)
-        .borderRadius(2)
+        .borderRadius(EXAM_RAIL_WIDTH / 2)
         .backgroundColor(ExamPage.colorCss(this.remoteExamColor(remote)))
       Column() {
         Row() {
@@ -853,12 +848,7 @@ export struct ExamPage {
             .layoutWeight(1)
             .maxLines(2)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
-          Text('教务')
-            .fontSize(HitaDesign.label)
-            .fontColor($r('app.color.hita_primary_3390ec'))
-            .padding({ left: 8, right: 8, top: 2, bottom: 2 })
-            .backgroundColor($r('app.color.hita_selected_ebf4fc'))
-            .borderRadius(10)
+          HitaTag({ text: '教务', tone: HitaTagTone.BRAND })
         }
         .width('100%')
         .alignItems(VerticalAlign.Center)
@@ -952,7 +942,7 @@ export struct ExamPage {
       }
       .width('100%')
       .alignItems(VerticalAlign.Center)
-      .margin({ bottom: 14 })
+      .margin({ bottom: HitaDesign.spaceMd })
 
       if (this.examColorEditing) {
         CourseColorEditor({
@@ -1015,7 +1005,7 @@ export struct ExamPage {
       }
       .width('100%')
       .alignItems(VerticalAlign.Center)
-      .margin({ bottom: 14 })
+      .margin({ bottom: HitaDesign.spaceMd })
 
       if (this.examColorEditing) {
         CourseColorEditor({
@@ -1040,24 +1030,16 @@ export struct ExamPage {
         this.examDetailRow($r('sys.symbol.magnifyingglass'), '校区',
           item.campusName.length > 0 ? item.campusName : '未填写')
 
-        ImmersiveHeader({ barHeight: 46, materialEnabled: CompatibleSheetMaterial.isEnabled() }) {
+        ImmersiveHeader({ barHeight: HitaDesign.minTouchTarget + HitaDesign.space2xs,
+          materialEnabled: CompatibleSheetMaterial.isEnabled() }) {
           Row() {
             Blank()
-            Button('导入到课表', { type: ButtonType.Capsule })
-              .fontSize(HitaDesign.caption)
-              .fontColor(CompatibleMaterialModifier.foreground('#FFFFFF'))
-              .fontWeight(FontWeight.Medium)
-              .height(36)
-              .padding({ left: 14, right: 14 })
-              .backgroundColor($r('app.color.hita_primary_fill'))
-              .borderRadius(HitaDesign.cardRadius)
-              .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_primary_fill')))
-              .enabled(!this.openingEditor)
-              .onClick(() => this.importRemoteExam(item))
+            HeaderActionButton({ label: '导入到课表', disabled: this.openingEditor,
+              materialEnabled: CompatibleSheetMaterial.isEnabled(), onTap: () => this.importRemoteExam(item) })
           }
           .width('100%')
-          .height(46)
-          .padding({ top: 6 })
+          .height(HitaDesign.minTouchTarget + HitaDesign.space2xs)
+          .padding({ top: HitaDesign.space2xs })
         }
       }
     }
@@ -1115,7 +1097,7 @@ export struct ExamPage {
           .fontSize(HitaDesign.body)
           .fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.hita_text_202b45'))
-          .margin({ top: 2 })
+          .margin({ top: HitaDesign.space2xs })
           .maxLines(3)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
       }
@@ -1126,26 +1108,6 @@ export struct ExamPage {
     .width('100%')
     .padding({ top: 8, bottom: 8 })
     .alignItems(VerticalAlign.Center)
-  }
-
-  @Builder
-  private headerAction(label: string, enabled: boolean, onAction: () => void) {
-    Text(label)
-      .fontSize(HitaDesign.caption)
-      .fontWeight(FontWeight.Medium)
-      .fontColor(CompatibleMaterialModifier.foreground($r('app.color.hita_primary_3390ec')))
-      .height(32)
-      .padding({ left: 12, right: 12 })
-      .borderRadius(16)
-      .backgroundColor($r('app.color.hita_selected_ebf4fc'))
-      .textAlign(TextAlign.Center)
-      .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_selected_ebf4fc')))
-      .margin({ left: 8 })
-      .flexShrink(0)
-      .enabled(enabled)
-      .onClick(() => {
-        onAction();
-      })
   }
 
   navigateBack(): void {

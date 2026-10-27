@@ -1,5 +1,6 @@
 import { ImmersiveHeader } from './ImmersiveHeader';
 import { CompatibleMaterialModifier } from '../theme/CompatibleMaterialModifier';
+import { HitaDesign } from '../theme/HitaDesign';
 
 @Component
 export struct ImmersiveEventCard {
@@ -18,6 +19,16 @@ export struct ImmersiveEventCard {
   build() {
     Stack({ alignContent: Alignment.TopStart }) {
       if (this.contentHeight > 0) {
+        // The material is translucent and takes the page color in light mode, so a solid card face sits beneath it.
+        // The face is transparent in dark mode, where the material alone already separates from the page.
+        Row()
+          .width('100%')
+          .height(this.contentHeight)
+          .backgroundColor($r('app.color.hita_immersive_card_base'))
+          .borderRadius(HitaDesign.cardRadius)
+          .position({ x: 0, y: 0 })
+          .accessibilityLevel('no')
+          .hitTestBehavior(HitTestMode.Transparent);
         // A positioned title host supplies material without constraining the card's content height.
         Column() {
           ImmersiveHeader({ barHeight: this.contentHeight }) {
@@ -25,7 +36,7 @@ export struct ImmersiveEventCard {
               .width('100%')
               .height(this.contentHeight)
               .backgroundColor($r('app.color.hita_surface'))
-              .borderRadius(16)
+              .borderRadius(HitaDesign.cardRadius)
               .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_surface')));
           }
         }
@@ -45,7 +56,6 @@ export struct ImmersiveEventCard {
     }
     .width('100%')
     .backgroundColor(this.contentHeight > 0 ? Color.Transparent : $r('app.color.hita_surface'))
-    .borderRadius(16)
-    .margin({ bottom: 2 });
+    .borderRadius(HitaDesign.cardRadius);
   }
 }

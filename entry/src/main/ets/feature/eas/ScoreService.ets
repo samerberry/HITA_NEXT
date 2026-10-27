@@ -67,7 +67,7 @@ export class ScoreService {
         const response = await this.request(session, '/xfj/queryListXfj');
         result.summary = parseOfficialLegacySummary(response.body);
       }
-      if (!result.summary.available()) result.summaryMessage = '教务未提供官方统计，以下本地统计仅按当前成绩列表计算';
+      if (!result.summary.available()) result.summaryMessage = '教务未提供官方统计';
     } catch (_) {
       result.summaryMessage = '成绩已获取，官方统计暂不可用，可稍后刷新重试';
     }

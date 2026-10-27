@@ -2,6 +2,7 @@ import { HitaDesign } from '../common/theme/HitaDesign';
 import { SheetContent } from '../common/components/SheetContent';
 import { common } from '@kit.AbilityKit';
 import { HeaderBackButton } from '../common/components/HeaderBackButton';
+import { HitaTag, HitaTagTone } from '../common/components/HitaTag';
 import { ImmersiveHeader } from '../common/components/ImmersiveHeader';
 import { CompatibleMaterialModifier } from '../common/theme/CompatibleMaterialModifier';
 import { CompatibleLightModifier } from '../common/theme/CompatibleLightModifier';
@@ -370,7 +371,7 @@ export struct EmptyClassroomPage {
         this.selector(0, '选择教学楼', FlexAlign.Start, () => this.chooseBuilding())
         this.selector(1, '选择学期', FlexAlign.Center, () => this.chooseTerm())
         this.selector(2, '选择周次', FlexAlign.End, () => this.chooseWeek())
-      }.width('100%').padding({ left: 12, right: 12 }).backgroundColor($r('app.color.hita_surface')).borderRadius(16)
+      }.width('100%').padding({ left: 12, right: 12 }).backgroundColor($r('app.color.hita_surface')).borderRadius(HitaDesign.cardRadius)
       if (this.cachedAt > 0) {
         Text(this.cacheLabel()).fontSize(HitaDesign.caption).fontColor(SECONDARY).padding({ left: 8, right: 8 }).width('100%')
       }
@@ -417,11 +418,8 @@ export struct EmptyClassroomPage {
   private roomCard(room: ClassroomRoom) {
     Row({ space: 8 }) {
       Text(room.name).fontSize(HitaDesign.body).fontColor(TEXT).layoutWeight(1).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
-      Text(this.roomState(room)).fontSize(HitaDesign.caption).fontWeight(FontWeight.Medium)
-        .fontColor(this.roomState(room) === '空闲' ? PRIMARY : SECONDARY)
-        .backgroundColor(this.roomState(room) === '空闲' ? $r('app.color.hita_selected') : $r('app.color.hita_control'))
-        .padding({ left: 10, right: 10, top: 4, bottom: 4 }).borderRadius(16)
-    }.width('100%').height(76).padding(16).backgroundColor($r('app.color.hita_surface')).borderRadius(16)
+      HitaTag({ text: this.roomState(room), tone: this.roomState(room) === '空闲' ? HitaTagTone.BRAND : HitaTagTone.NEUTRAL })
+    }.width('100%').height(76).padding(HitaDesign.inset).backgroundColor($r('app.color.hita_surface')).borderRadius(HitaDesign.cardRadius)
       .accessibilityText(room.name + '，' + this.roomState(room)).onClick(() => this.openDetail(room))
   }
 
@@ -433,11 +431,12 @@ export struct EmptyClassroomPage {
           Text(this.detailRoom.name + ' 空闲情况').fontSize(HitaDesign.title).fontWeight(FontWeight.Medium).fontColor(TEXT)
             .layoutWeight(1).maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
           Text(this.termLabel() + '\n第 ' + this.selectedWeek.toString() + ' 周')
-            .fontSize(HitaDesign.caption).fontColor(SECONDARY).padding(8).borderRadius(12).backgroundColor($r('app.color.hita_control'))
+            .fontSize(HitaDesign.caption).fontColor(SECONDARY).padding(HitaDesign.spaceXs).borderRadius(HitaDesign.radiusMd).backgroundColor($r('app.color.hita_control'))
         }.width('100%')
         Row({ space: 4 }) {
           ForEach(DAYS, (day: string, index: number) => {
-            Text(day).fontSize(HitaDesign.caption).height(34).layoutWeight(1).textAlign(TextAlign.Center).borderRadius(17)
+            Text(day).fontSize(HitaDesign.caption).height(HitaDesign.compactControlHeight).layoutWeight(1).textAlign(TextAlign.Center)
+              .borderRadius(HitaDesign.compactControlHeight / 2)
               .fontColor(this.detailDay === index + 1 ? PRIMARY : SECONDARY)
               .backgroundColor(this.detailDay === index + 1 ? $r('app.color.hita_selected') : Color.Transparent)
               .onClick(() => this.selectDay(index + 1))
@@ -449,7 +448,7 @@ export struct EmptyClassroomPage {
             ListItem() {
               Row({ space: 8 }) {
                 Text('第 ' + row.number.toString() + ' 节').fontSize(HitaDesign.body).fontColor(TEXT).layoutWeight(1)
-                Text(row.time).fontSize(HitaDesign.caption).fontColor(SECONDARY).padding(8).borderRadius(8)
+                Text(row.time).fontSize(HitaDesign.caption).fontColor(SECONDARY).padding(HitaDesign.spaceXs).borderRadius(HitaDesign.radiusSm)
                   .backgroundColor($r('app.color.hita_control'))
                 Blank().layoutWeight(1)
                 Text(row.state).fontSize(HitaDesign.caption).fontWeight(FontWeight.Medium).width(40).height(40).borderRadius(HitaDesign.cardRadius)

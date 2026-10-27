@@ -175,7 +175,7 @@ test('news, notices and the timetable fade content scrolling under their headers
     assert.match(source, /\.onDidScroll\(\(\) => \{\s*this\.fadeOpacity = HeaderFade\.opacity\(/, file);
   }
   const home = read('pages/Home.ets');
-  const tab = home.slice(home.indexOf('  tabTimetable()'), home.indexOf('  statusBanner('));
+  const tab = home.slice(home.indexOf('  tabTimetable()'), home.indexOf('  tabMine()'));
   assert.match(tab, /HeaderFadeMask\(\{[\s\S]*headerHeight: this\.timetableChromeH/);
   assert.match(tab, /Blank\(\)\.height\(this\.timetableChromeH\)/);
   assert.match(tab, /this\.timetableDateHeader\(\)/);
@@ -187,7 +187,7 @@ test('notices and the function centre share the transparent header that content 
   assert.match(more, /HeaderFadeMask\(\{[\s\S]*?headerHeight: MORE_HEADER_HEIGHT/);
   assert.match(more, /Text\('功能中心'\)[\s\S]*?\.hitTestBehavior\(HitTestMode\.Transparent\)/);
 
-  const tab = home.slice(home.indexOf('  tabTimetable()'), home.indexOf('  statusBanner('));
+  const tab = home.slice(home.indexOf('  tabTimetable()'), home.indexOf('  tabMine()'));
   assert.match(tab, /HeaderFadeMask\(\{[\s\S]*headerHeight: this\.timetableChromeH/);
   assert.match(tab, /Blank\(\)\.height\(this\.timetableChromeH\)/);
   assert.match(tab, /this\.timetableDateHeader\(\)/);
@@ -231,7 +231,7 @@ test('score results scroll beneath the header and clear its fade when refreshing
 
 test('timetable today column is a single tint that stops at the date header', () => {
   const home = read('pages/Home.ets');
-  const tab = home.slice(home.indexOf('  tabTimetable()'), home.indexOf('  statusBanner('));
+  const tab = home.slice(home.indexOf('  tabTimetable()'), home.indexOf('  tabMine()'));
   assert.match(home, /this\.timetableBackdrop, this\.hasTimetableBackground\(\), false\);/);
   assert.match(tab, /x: TIMETABLE_GUTTER_WIDTH \+ this\.timetableTodayColumn\(\) \* this\.timetableTodayColumnWidth\(\),\s*y: this\.timetableChromeH\s*\}/);
   assert.match(tab, /\.backgroundColor\(this\.timetableBackdrop\.todayHeader\)[\s\S]*?Scroll\(this\.timetableScroller\)/);

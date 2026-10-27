@@ -272,9 +272,10 @@ test('appearance matches surrounding settings rows and reveals choices only when
   const home = read('ets/pages/Home.ets');
   assert.match(home, /@State appearanceExpanded: boolean = false/);
   const setting = home.slice(home.indexOf('  appearanceSettings() {'), home.indexOf('  appearanceOption('));
-  assert.match(setting, /SymbolGlyph\(\$r\('sys\.symbol\.moon'\)\)/);
+  assert.match(setting, /HitaListRow\(\{ symbol: \$r\('sys\.symbol\.moon'\), title: '深色模式',/);
   assert.match(setting, /this\.appearanceMode === AppearanceMode\.DARK \? '已开启'/);
   assert.match(setting, /this\.appearanceMode === AppearanceMode\.LIGHT \? '已关闭' : '跟随系统'/);
+  assert.match(setting, /accessory: HitaRowAccessory\.DISCLOSURE, expanded: this\.appearanceExpanded/);
   assert.match(setting, /animateTo\(\{ duration: 300, curve: Curve\.EaseInOut \}/);
   assert.match(setting, /this\.appearanceExpanded = !this\.appearanceExpanded/);
   assert.match(setting, /if \(this\.appearanceExpanded\) \{\s*Column\(\) \{\s*ImmersiveHeader\(\{ barHeight: 60, materialEnabled: CompatibleSheetMaterial\.isEnabled\(\) \}\) \{\s*Row[\s\S]*this\.appearanceOption\(AppearanceMode\.SYSTEM/);
@@ -282,17 +283,28 @@ test('appearance matches surrounding settings rows and reveals choices only when
   // 展开动画与其他折叠面板一致：外层普通 Column 承载 OPACITY 过渡，材质头部在其内部。
   assert.match(setting, /\.transition\(TransitionEffect\.OPACITY\)/);
   assert.doesNotMatch(setting, /this\.selectAppearance|AppearanceStore/);
-  assert.match(setting, /\.rotate\(\{ angle: this\.appearanceExpanded \? 90 : 0 \}\)/);
-  assert.match(setting, /\.accessibilityDescription\(this\.appearanceExpanded \? '已展开' : '已收起'\)/);
-  // Bind state inside the builder: value parameters freeze labels and arrow rotation.
-  assert.doesNotMatch(setting, /this\.moreNavigationRow\(/);
-  const row = home.slice(home.indexOf('  moreNavigationRow('));
-  for (const style of ['.width(40)', '.height(40)', '.borderRadius(20)', '.fontSize(HitaDesign.iconMd)',
-    '.fontSize(HitaDesign.body)', '.fontSize(HitaDesign.caption)', '.constraintSize({ minHeight: HitaDesign.rowMinHeight })', '.padding({ left: 16, right: 16 })',
-    '.margin({ left: 12 })', '.backgroundColor(COLOR_NAV_ACTIVE)']) {
-    assert.ok(row.includes(style), `Reference row: ${style}`);
-    assert.ok(setting.includes(style), `Appearance row: ${style}`);
+  // Every More row goes through HitaListRow, so the appearance row cannot drift from its neighbours, and
+  // @Prop text keeps labels and the arrow bound to state (builder value parameters would freeze them).
+  assert.doesNotMatch(setting, /moreNavigationRow|Stack\(\) \{\s*SymbolGlyph/);
+  for (const builder of ['  desktopWidgetSettings()', '  classReminderSettings()']) {
+    const start = home.indexOf(builder);
+    // The header row is the builder's first child; the expanded panel starts at the next if.
+    assert.match(home.slice(start, home.indexOf('if (this.', start)),
+      /Column\(\) \{\s*HitaListRow\(\{[\s\S]*?accessory: HitaRowAccessory\.DISCLOSURE/, builder);
   }
+  const row = read('ets/common/components/HitaListRow.ets');
+  for (const style of ['.width(HitaDesign.listIconSize)', '.height(HitaDesign.listIconSize)',
+    '.borderRadius(HitaDesign.listIconSize / 2)', '.fontSize(HitaDesign.iconMd)', '.fontSize(HitaDesign.body)',
+    '.fontSize(HitaDesign.caption)', '.constraintSize({ minHeight: HitaDesign.rowMinHeight })',
+    '.padding({ left: HitaDesign.inset, right: HitaDesign.inset })', '.margin({ left: HitaDesign.spaceSm })',
+    '.backgroundColor(HitaColors.selected)']) {
+    assert.ok(row.includes(style), `Shared row: ${style}`);
+  }
+  for (const prop of ['title: string', 'subtitle: string', 'divider: boolean', 'expanded: boolean']) {
+    assert.match(row, new RegExp(`@Prop ${prop}`));
+  }
+  assert.match(row, /\.rotate\(\{ angle: this\.accessory === HitaRowAccessory\.DISCLOSURE && this\.expanded \? 90 : 0 \}\)/);
+  assert.match(row, /this\.expanded \? '已展开' : '已收起'/);
   const choices = home.slice(home.indexOf('  appearanceOption('), home.indexOf('  userCard()'));
   assert.match(choices, /Radio\(\{ value: mode, group: 'appearance_mode' \}\)/);
   assert.match(choices, /\.width\(0\)\s*\.layoutWeight\(1\)/);

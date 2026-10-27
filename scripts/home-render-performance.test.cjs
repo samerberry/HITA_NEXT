@@ -193,12 +193,12 @@ test('data, appearance, wallpaper, week and geometry changes still repaint the t
     /this\.drawTimetableNow\(\)/);
   assert.match(slice('  private onTimetableArea(', '  private hasTimetableBackground'),
     /this\.drawTimetableNow\(\)/);
-  const tab = slice('  tabTimetable()', '  statusBanner(');
+  const tab = slice('  tabTimetable()', '  tabMine()');
   assert.match(tab, /if \(width !== this\.timetableAreaW \|\| height !== this\.timetableAreaH\)/);
   assert.match(tab, /height !== this\.timetableChromeH[\s\S]*this\.onTimetableArea/);
   assert.match(home, /onAnimationStart[\s\S]*?this\.tabTransitionRunning = true;[\s\S]*?this\.stopTimetableMarquee\(\)/);
   assert.match(home, /onAnimationEnd[\s\S]*?this\.finishTabAnimation\(index\)/);
   // Countdowns re-render from nowTick on each clock tick instead of repainting the grid.
   assert.match(home, /Span\(\(this\.heroMinutesLeft\(\) % 60\)\.toString\(\)\)/);
-  assert.match(home, /Text\(Home\.todayChipText\(event, this\.nowTick\)\)/);
+  assert.match(home, /HitaTag\(\{ text: Home\.todayChipText\(event, this\.nowTick\), tone: Home\.todayChipTone\(event, this\.nowTick\) \}\)/);
 });

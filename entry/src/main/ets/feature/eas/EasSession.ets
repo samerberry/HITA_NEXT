@@ -34,6 +34,8 @@ export class EasSession {
   sessionGeneration: number = 0;
   /** 仅在实际教务请求确认认证失效后置为 true；重新登录成功时清除。 */
   loginExpired: boolean = false;
+  /** 标记失效时命中的判定和请求路径，显示在教务认证弹层，便于从反馈截图定位；重新登录成功时清除。 */
+  expiredReason: string = '';
 
   // —— 自有后端 token（本整合可不使用）——
   accessToken: string = '';
@@ -87,6 +89,7 @@ export class EasSession {
     this.sjjxCookies = EasSession.copyMap(source.sjjxCookies);
     this.sessionGeneration = source.sessionGeneration;
     this.loginExpired = source.loginExpired;
+    this.expiredReason = source.expiredReason;
   }
 
   // ---------------------------------------------------------------------
@@ -143,6 +146,7 @@ export class EasSession {
       'sjjxCookies': EasSession.encodeMap(this.sjjxCookies),
       'sessionGeneration': this.sessionGeneration,
       'loginExpired': this.loginExpired,
+      'expiredReason': this.expiredReason,
       'accessToken': this.accessToken,
       'refreshToken': this.refreshToken,
       'username': this.username,
@@ -185,6 +189,7 @@ export class EasSession {
       s.sjjxCookies = EasSession.decodeMap(o['sjjxCookies']);
       s.sessionGeneration = Number(o['sessionGeneration'] ?? 0);
       s.loginExpired = o['loginExpired'] === true;
+      s.expiredReason = str('expiredReason');
       s.accessToken = str('accessToken');
       s.refreshToken = str('refreshToken');
       s.username = str('username');

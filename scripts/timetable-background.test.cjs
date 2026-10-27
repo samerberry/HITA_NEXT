@@ -16,7 +16,7 @@ test('timetable photo picker copies a gallery image and covers the page without 
   assert.match(store, /timetable-background\.jpg/);
 
   const home = read('pages/Home.ets');
-  const tab = home.slice(home.indexOf('  tabTimetable()'), home.indexOf('  statusBanner('));
+  const tab = home.slice(home.indexOf('  tabTimetable()'), home.indexOf('  tabMine()'));
   assert.match(tab, /sys\.symbol\.picture/);
   assert.match(tab, /sys\.symbol\.slider_horizontal_2/);
   assert.doesNotMatch(tab, /sys\.symbol\.camera|Text\('A'\)/);
@@ -42,7 +42,9 @@ test('timetable photo picker copies a gallery image and covers the page without 
     'heading and grid share one theme resource instead of independently painted backgrounds');
   assert.match(tab, /timetableDateHeader\(\)/);
   assert.match(tab, /timetableDateHeader\(\)[\s\S]*backgroundColor\(Color\.Transparent\)/);
-  assert.match(tab, /Text\(this\.timetableCampusTerm\(\)\)[\s\S]*?\.backgroundColor\(Color\.Transparent\)/);
+  // The campus and term line paints no chip on wallpapers and starts at the title's left edge.
+  const term = tab.slice(tab.indexOf('Text(this.timetableCampusTerm())'), tab.indexOf('.maxLines(', tab.indexOf('Text(this.timetableCampusTerm())')));
+  assert.doesNotMatch(term, /\.backgroundColor\(|\.padding\(/);
 
   const draw = read('feature/timetable/views/TimetableWeekDraw.ets');
   const header = draw.slice(draw.indexOf('function drawWeekHeader'), draw.indexOf('export function drawTimetableWeek('));

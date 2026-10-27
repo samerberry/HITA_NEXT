@@ -16,6 +16,9 @@ import { CommonModifier, curves, FrameCallback, FrameNode, KeyboardAvoidMode, Sy
 import { HeaderBackButton } from '../common/components/HeaderBackButton';
 import { ImmersiveHeader } from '../common/components/ImmersiveHeader';
 import { ImmersiveEventCard } from '../common/components/ImmersiveEventCard';
+import { HitaButton, HitaButtonVariant } from '../common/components/HitaButton';
+import { HitaListRow, HitaRowAccessory } from '../common/components/HitaListRow';
+import { HitaTag, HitaTagTone } from '../common/components/HitaTag';
 import { HeaderFadeMask } from '../common/components/HeaderFadeMask';
 import { HeaderFade } from '../common/theme/HeaderFade';
 import { TimetableTheme } from '../common/theme/TimetableTheme';
@@ -115,6 +118,12 @@ const TAB_TODAY: number = 0;
 const TAB_TIMETABLE: number = 1;
 const NAV_TAB_COUNT: number = 3;
 const MORE_HEADER_HEIGHT: number = 56;
+const EVENT_RAIL_WIDTH: number = 4;
+const EVENT_RAIL_HEIGHT: number = 40;
+/** The timetable grid keeps its compact type, the documented exception to the page type scale. */
+const TIMETABLE_HEADER_FONT: number = 10;
+const TIMETABLE_HEADER_EMPHASIS_FONT: number = 11;
+const USER_AVATAR_SIZE: number = 48;
 const TIMETABLE_CHROME_FALLBACK: number = 200;
 const COLOR_SURFACE_RGB: string = '245,246,248';
 // 周切换：位移超过页宽的该比例即翻周；位移较短时抬手速度够快（vp/s）同样翻周。
@@ -807,17 +816,9 @@ struct Home {
       await ClassReminderStore.getInstance().saveEnabled(true);
       this.classReminderEnabled = true;
       const result: ClassReminderSyncResult = await ClassReminderScheduler.sync(ctx, this.timetableEvents, true);
-      if (result.pendingClasses === 0) {
-        this.getUIContext().getPromptAction().showToast({
-          message: '已开启课程提醒（当前没有未开始的课程，有课之后会自动提醒）'
-        });
-      } else {
-        const whenText: string = result.nextFire.length > 0 ? '，下一次约 ' + result.nextFire : '';
-        this.getUIContext().getPromptAction().showToast({
-          message: '已开启课程提醒' + whenText +
-            '。应用在前台或后台时会通知，划掉应用后不会提醒'
-        });
-      }
+      const whenText: string = result.pendingClasses > 0 && result.nextFire.length > 0 ?
+        '，下一次约 ' + result.nextFire : '';
+      this.getUIContext().getPromptAction().showToast({ message: '已开启课程提醒' + whenText });
     } catch (_) {
       this.getUIContext().getPromptAction().showToast({ message: '课程提醒设置未完成，请重试' });
     } finally {
@@ -986,7 +987,7 @@ struct Home {
         title: '确定要翘掉这节课吗？',
         buttons: [
           { text: '我去上课', color: $r('app.color.hita_text_secondary') },
-          { text: '我意已决', color: '#E84040' }
+          { text: '我意已决', color: $r('app.color.hita_error') }
         ]
       });
       if (result.index !== 1 || sheetGeneration !== this.sheetRequestGeneration ||
@@ -1313,10 +1314,10 @@ struct Home {
 
   private dockTab(icon: Resource, label: string): BottomTabBarStyle {
     const normal: SymbolGlyphModifier = new SymbolGlyphModifier(icon);
-    normal.fontSize(20);
+    normal.fontSize(HitaDesign.iconMd);
     normal.fontColor([$r('sys.color.ohos_id_color_text_secondary')]);
     const selected: SymbolGlyphModifier = new SymbolGlyphModifier(icon);
-    selected.fontSize(20);
+    selected.fontSize(HitaDesign.iconMd);
     selected.fontColor([$r('sys.color.ohos_id_color_text_primary')]);
     const symbol: TabBarSymbol = {
       normal: normal,
@@ -1903,16 +1904,10 @@ struct Home {
     return '';
   }
 
-  private static todayChipColor(event: EasEventItem, now: number): ResourceColor {
-    if (event.to <= now && !event.containsTimestamp(now)) return COLOR_TEXT_HINT;
-    if (event.type === EasEventType.EXAM) return COLOR_EXAM;
-    return COLOR_PRIMARY;
-  }
-
-  private static todayChipBg(event: EasEventItem, now: number): ResourceColor {
-    if (event.to <= now && !event.containsTimestamp(now)) return $r('app.color.hita_control_f1f4f8');
-    if (event.type === EasEventType.EXAM) return $r('app.color.hita_error_surface');
-    return $r('app.color.hita_selected');
+  private static todayChipTone(event: EasEventItem, now: number): HitaTagTone {
+    if (event.to <= now && !event.containsTimestamp(now)) return HitaTagTone.NEUTRAL;
+    if (event.type === EasEventType.EXAM) return HitaTagTone.EXAM;
+    return HitaTagTone.BRAND;
   }
 
   private static campusName(campus: EasCampus): string {
@@ -2709,35 +2704,17 @@ struct Home {
           .margin({ bottom: 16 });
       }
 
-      ImmersiveHeader({ barHeight: 46 }) {
-        Row({ space: 12 }) {
-          Button('取消', { type: ButtonType.Capsule })
-            .fontSize(HitaDesign.body)
-            .fontWeight(FontWeight.Medium)
-            .fontColor(CompatibleMaterialModifier.foreground(COLOR_TEXT_SECONDARY))
-            .backgroundColor($r('app.color.hita_control'))
-            .height(46)
-            .width(0)
-            .layoutWeight(1)
-            .borderRadius(23)
-            .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_control')))
-            .enabled(!this.calendarExporting)
-            .onClick(() => this.cancelCalendarExport());
-          Button('保存', { type: ButtonType.Capsule })
-            .fontSize(HitaDesign.body)
-            .fontWeight(FontWeight.Medium)
-            .fontColor(CompatibleMaterialModifier.foreground('#FFFFFF'))
-            .backgroundColor($r('app.color.hita_primary_fill'))
-            .height(46)
-            .width(0)
-            .layoutWeight(1)
-            .borderRadius(23)
-            .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_primary_fill')))
-            .enabled(!this.calendarExporting)
-            .onClick(() => this.exportToCalendar());
-        }
-        .width('100%');
+      Row({ space: HitaDesign.gap }) {
+        HitaButton({ label: '取消', variant: HitaButtonVariant.NEUTRAL, disabled: this.calendarExporting,
+          onTap: () => this.cancelCalendarExport() })
+          .width(0)
+          .layoutWeight(1);
+        HitaButton({ label: '保存', variant: HitaButtonVariant.PRIMARY, disabled: this.calendarExporting,
+          onTap: () => this.exportToCalendar() })
+          .width(0)
+          .layoutWeight(1);
       }
+      .width('100%');
     }
     .width('100%')
     .alignItems(HorizontalAlign.Start)
@@ -2750,7 +2727,7 @@ struct Home {
     Column() {
       this.todayHeader();
 
-      List({ space: 12 }) {
+      List({ space: HitaDesign.gap }) {
         ListItem() {
           Column() {
             ImmersiveHeader({ barHeight: this.todayHeroHeight() }) {
@@ -2758,7 +2735,7 @@ struct Home {
             }
           }
           .width('100%')
-          .borderRadius(24)
+          .borderRadius(HitaDesign.heroRadius)
           .clip(true)
         }
 
@@ -2818,7 +2795,7 @@ struct Home {
         Text(DOW_FULL[EasTimeTools.getDow(this.nowTick)])
           .fontSize(HitaDesign.body)
           .fontColor(COLOR_TEXT_SECONDARY)
-          .margin({ left: 12, bottom: 4 });
+          .margin({ left: HitaDesign.spaceSm, bottom: HitaDesign.space2xs });
         Blank();
         if (this.currentWeekNumber() > 0) {
           Text('第 ' + this.currentWeekNumber().toString() + ' 周')
@@ -2826,31 +2803,27 @@ struct Home {
             .fontWeight(FontWeight.Medium)
             .fontColor(COLOR_PRIMARY)
             .backgroundColor(COLOR_NAV_ACTIVE)
-            .borderRadius(13)
-            .padding({ left: 10, right: 10, top: 4, bottom: 4 })
-            .margin({ bottom: 2 });
+            .borderRadius(HitaDesign.radiusLg)
+            .padding({ left: HitaDesign.spaceSm, right: HitaDesign.spaceSm, top: HitaDesign.space2xs,
+              bottom: HitaDesign.space2xs })
+            .margin({ bottom: HitaDesign.space2xs });
         }
       }
       .width('100%')
       .alignItems(VerticalAlign.Bottom)
-      .margin({ top: 2 });
+      .margin({ top: HitaDesign.space2xs });
     }
     .width('100%')
     .alignItems(HorizontalAlign.Start)
-    .padding({ left: HitaDesign.inset, right: HitaDesign.inset, top: 16 + this.statusBarInset, bottom: 12 });
+    .padding({ left: HitaDesign.inset, right: HitaDesign.inset, top: HitaDesign.spaceMd + this.statusBarInset,
+      bottom: HitaDesign.spaceSm });
   }
 
   @Builder
   todayHeroCard() {
     Column() {
       Row() {
-        Text(this.heroTag())
-          .fontSize(HitaDesign.label)
-          .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.hita_on_primary'))
-          .backgroundColor($r('app.color.hita_hero_chip'))
-          .borderRadius(11)
-          .padding({ left: 9, right: 9, top: 3, bottom: 3 });
+        HitaTag({ text: this.heroTag(), tone: HitaTagTone.ON_PRIMARY });
         Blank();
         if (this.todayClassCount() > 0) {
           Text('已上 ' + this.completedClassCount().toString() + ' / ' + this.todayClassCount().toString() + ' 节')
@@ -2898,17 +2871,17 @@ struct Home {
             EasTimeTools.printTime((this.heroEvent() as EasEventItem).to))
             .fontSize(HitaDesign.caption)
             .fontColor($r('app.color.hita_on_primary'))
-            .margin({ bottom: 5 });
+            .margin({ bottom: HitaDesign.space2xs });
         }
         .width('100%')
         .alignItems(VerticalAlign.Bottom);
         if (this.activeClass !== undefined) {
           Progress({ value: this.activeClass.getProgress(this.nowTick) * 100, total: 100, type: ProgressType.Linear })
             .width('100%')
-            .height(5)
-            .color('#FFFFFF')
+            .height(HitaDesign.space2xs)
+            .color($r('app.color.hita_on_primary'))
             .backgroundColor($r('app.color.hita_hero_chip'))
-            .margin({ top: 10 });
+            .margin({ top: HitaDesign.spaceSm });
         }
       } else {
         Text(this.heroIdleTitle())
@@ -2927,7 +2900,7 @@ struct Home {
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
             .layoutWeight(1)
-            .margin({ left: 6 });
+            .margin({ left: HitaDesign.spaceXs });
         }
         .width('100%');
       }
@@ -2937,7 +2910,7 @@ struct Home {
     .alignItems(HorizontalAlign.Start)
     .padding(20)
     .backgroundColor($r('app.color.hita_primary_fill'))
-    .borderRadius(24)
+    .borderRadius(HitaDesign.heroRadius)
     .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_primary_fill'), true));
   }
 
@@ -2945,9 +2918,9 @@ struct Home {
   todayExamCard(exam: EasEventItem) {
     Row() {
       Row()
-        .width(4)
-        .height(38)
-        .borderRadius(2)
+        .width(EVENT_RAIL_WIDTH)
+        .height(EVENT_RAIL_HEIGHT)
+        .borderRadius(EVENT_RAIL_WIDTH / 2)
         .backgroundColor(COLOR_EXAM);
       Column() {
         Text(exam.name)
@@ -2957,28 +2930,21 @@ struct Home {
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis });
         Text(Home.examWhenText(exam))
-          .fontSize(HitaDesign.label)
+          .fontSize(HitaDesign.caption)
           .fontColor(COLOR_TEXT_SECONDARY)
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
-          .margin({ top: 4 });
+          .margin({ top: HitaDesign.space2xs });
       }
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start)
-      .margin({ left: 12, right: 12 });
-      Text(Home.examDistanceText(exam, this.nowTick))
-        .fontSize(HitaDesign.caption)
-        .fontWeight(FontWeight.Medium)
-        .fontColor(COLOR_EXAM)
-        .backgroundColor($r('app.color.hita_error_surface'))
-        .borderRadius(13)
-        .padding({ left: 10, right: 10, top: 5, bottom: 5 });
+      .margin({ left: HitaDesign.spaceSm, right: HitaDesign.spaceSm });
+      HitaTag({ text: Home.examDistanceText(exam, this.nowTick), tone: HitaTagTone.EXAM });
     }
     .width('100%')
     .padding(HitaDesign.inset)
     .backgroundColor(COLOR_CARD)
-    .borderRadius(16)
-    .border({ width: 0, color: $r('app.color.hita_divider_edf1f7') })
+    .borderRadius(HitaDesign.cardRadius)
     .alignItems(VerticalAlign.Center)
     .onClick(() => {
       this.getUIContext().getRouter().pushUrl({ url: 'pages/ExamPage' });
@@ -2989,16 +2955,17 @@ struct Home {
   todaySectionHeader() {
     Row() {
       Text('今日安排')
-        .fontSize(HitaDesign.body)
+        .fontSize(HitaDesign.section)
         .fontWeight(FontWeight.Medium)
         .fontColor(COLOR_TEXT_PRIMARY);
       Blank();
       Text(this.todayItems.length.toString() + ' 项')
-        .fontSize(HitaDesign.label)
+        .fontSize(HitaDesign.caption)
         .fontColor(COLOR_TEXT_HINT);
     }
     .width('100%')
-    .padding({ left: 4, right: 4, top: 4 });
+    .alignItems(VerticalAlign.Bottom)
+    .padding({ left: HitaDesign.space2xs, right: HitaDesign.space2xs, top: HitaDesign.spaceXs });
   }
 
   /** Text only: import and management entries live on the timetable tab and the More page. */
@@ -3012,7 +2979,7 @@ struct Home {
       Text('可在“更多”中导入或新建课表')
         .fontSize(HitaDesign.caption)
         .fontColor(COLOR_TEXT_SECONDARY)
-        .margin({ top: 6 });
+        .margin({ top: HitaDesign.spaceXs });
     }
     .width('100%')
     .padding({ top: 28, bottom: 28 })
@@ -3023,9 +2990,9 @@ struct Home {
   eventRow(event: EasEventItem, immersive: boolean = false) {
     Row() {
       Row()
-        .width(4)
-        .height(38)
-        .borderRadius(2)
+        .width(EVENT_RAIL_WIDTH)
+        .height(EVENT_RAIL_HEIGHT)
+        .borderRadius(EVENT_RAIL_WIDTH / 2)
         .backgroundColor(event.type === EasEventType.CLASS ?
           Home.canvasColorCss(timetableBlockColor(event.color)) : Home.eventColor(event.type));
 
@@ -3035,13 +3002,13 @@ struct Home {
           .fontWeight(FontWeight.Medium)
           .fontColor(COLOR_TEXT_PRIMARY);
         Text(EasTimeTools.printTime(event.to))
-          .fontSize(HitaDesign.label)
+          .fontSize(HitaDesign.caption)
           .fontColor(COLOR_TEXT_HINT)
-          .margin({ top: 2 });
+          .margin({ top: HitaDesign.space2xs });
       }
       .width(52)
       .alignItems(HorizontalAlign.Start)
-      .margin({ left: 12 });
+      .margin({ left: HitaDesign.spaceSm });
 
       Column() {
         Row() {
@@ -3053,76 +3020,60 @@ struct Home {
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis });
           if (Home.todayChipText(event, this.nowTick).length > 0) {
-            Text(Home.todayChipText(event, this.nowTick))
-              .fontSize(HitaDesign.label)
-              .fontColor(Home.todayChipColor(event, this.nowTick))
-              .backgroundColor(Home.todayChipBg(event, this.nowTick))
-              .borderRadius(9)
-              .padding({ left: 7, right: 7, top: 3, bottom: 3 })
-              .margin({ left: 8 });
+            HitaTag({ text: Home.todayChipText(event, this.nowTick), tone: Home.todayChipTone(event, this.nowTick) })
+              .margin({ left: HitaDesign.spaceXs });
           }
         }
         .width('100%')
         .alignItems(VerticalAlign.Center);
         if (Home.placeTeacher(event).length > 0) {
           Text(Home.placeTeacher(event))
-            .fontSize(HitaDesign.label)
+            .fontSize(HitaDesign.caption)
             .fontColor(COLOR_TEXT_SECONDARY)
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
-            .margin({ top: 5 });
+            .margin({ top: HitaDesign.space2xs });
         }
         if (event.containsTimestamp(this.nowTick)) {
           Progress({ value: event.getProgress(this.nowTick) * 100, total: 100, type: ProgressType.Linear })
             .width('100%')
-            .height(3)
+            .height(HitaDesign.space2xs)
             .color(COLOR_PRIMARY)
             .backgroundColor($r('app.color.hita_selected_e8f1fb'))
-            .margin({ top: 8 });
+            .margin({ top: HitaDesign.spaceXs });
         }
       }
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start)
-      .margin({ left: 12 });
+      .margin({ left: HitaDesign.spaceSm });
     }
     .width('100%')
     .padding(HitaDesign.inset)
     .alignItems(VerticalAlign.Center)
     .backgroundColor(immersive ? Color.Transparent : COLOR_CARD)
-    .borderRadius(16)
+    .borderRadius(HitaDesign.cardRadius)
     .border({ width: event.containsTimestamp(this.nowTick) ? 1.5 : 1,
       color: event.containsTimestamp(this.nowTick) ? $r('app.color.hita_focus') : $r('app.color.hita_divider_edf1f7') })
     .clip(true)
     .opacity(1)
-    .hitTestBehavior(immersive ? HitTestMode.Transparent : HitTestMode.Default)
-    .margin({ bottom: immersive ? 0 : 2 });
+    .hitTestBehavior(immersive ? HitTestMode.Transparent : HitTestMode.Default);
   }
 
   @Builder
   emptyTimetableActions() {
-    Row({ space: 10 }) {
-      Button(this.sessionInfo === undefined ? '登录教务' : '导入课表')
-        .fontSize(HitaDesign.caption)
-        .height(40)
-        .fontColor('#FFFFFF')
-        .backgroundColor($r('app.color.hita_primary_fill'))
-        .borderRadius(20)
-        .onClick(() => {
+    Row({ space: HitaDesign.gap }) {
+      HitaButton({ label: this.sessionInfo === undefined ? '登录教务' : '导入课表',
+        buttonHeight: HitaDesign.controlHeight, fitContent: true, onTap: () => {
           if (this.sessionInfo === undefined) {
             this.openSessionSheet();
           } else {
             this.getUIContext().getRouter().pushUrl({ url: 'pages/ImportTimetablePage' });
           }
-        });
-      Button('课表管理')
-        .fontSize(HitaDesign.caption)
-        .height(40)
-        .fontColor(COLOR_PRIMARY)
-        .backgroundColor(COLOR_NAV_ACTIVE)
-        .borderRadius(20)
-        .onClick(() => {
+        } });
+      HitaButton({ label: '课表管理', variant: HitaButtonVariant.SECONDARY, buttonHeight: HitaDesign.controlHeight,
+        fitContent: true, onTap: () => {
           this.getUIContext().getRouter().pushUrl({ url: 'pages/TimetableManagerPage' });
-        });
+        } });
     }
   }
 
@@ -3131,18 +3082,18 @@ struct Home {
     Row() {
       Text(this.timetableHeaderMonth())
         .width(TIMETABLE_GUTTER_WIDTH)
-        .fontSize(11)
+        .fontSize(TIMETABLE_HEADER_EMPHASIS_FONT)
         .fontWeight(FontWeight.Medium)
         .fontColor(this.timetableInk('date'))
         .textAlign(TextAlign.Center)
       ForEach(DOW_NAMES, (name: string, dayIndex: number) => {
         Column() {
           Text(name)
-            .fontSize(this.timetableHeaderIsToday(dayIndex) ? 11 : 10)
+            .fontSize(this.timetableHeaderIsToday(dayIndex) ? TIMETABLE_HEADER_EMPHASIS_FONT : TIMETABLE_HEADER_FONT)
             .fontWeight(FontWeight.Medium)
             .fontColor(this.timetableInk('date'))
           Text(this.timetableHeaderDate(dayIndex))
-            .fontSize(10)
+            .fontSize(TIMETABLE_HEADER_FONT)
             .fontColor(this.timetableInk('date'))
             .margin({ top: 4 })
         }
@@ -3195,7 +3146,7 @@ struct Home {
           Blank().height(this.timetableChromeH);
           Column() {
             Text('还没有课表数据')
-              .fontSize(16)
+              .fontSize(HitaDesign.body)
               .fontWeight(FontWeight.Medium)
               .fontColor(this.timetableInk())
             Text('暂无已导入或手动创建的课表')
@@ -3339,10 +3290,7 @@ struct Home {
               Text(this.timetableCampusTerm())
                 .fontSize(HitaDesign.caption)
                 .fontColor(this.timetableInk())
-                .backgroundColor(Color.Transparent)
-                .borderRadius(12)
-                .padding({ left: 11, right: 11, top: 5, bottom: 5 })
-                .margin({ top: 7 })
+                .margin({ top: HitaDesign.space2xs })
                 .maxLines(1)
                 .textOverflow({ overflow: TextOverflow.Ellipsis })
             }
@@ -3400,7 +3348,8 @@ struct Home {
             })
           }
           .width('100%')
-          .padding({ left: 20, right: 18, top: 16, bottom: 10 })
+          .padding({ left: HitaDesign.inset, right: HitaDesign.inset, top: HitaDesign.spaceMd,
+            bottom: HitaDesign.spaceSm })
           .alignItems(VerticalAlign.Center)
           .backgroundColor(Color.Transparent)
         }
@@ -3452,27 +3401,6 @@ struct Home {
   }
 
   @Builder
-  statusBanner(message: string, background: ResourceColor, foreground: ResourceColor) {
-    Row() {
-      Text('•')
-        .fontSize(18)
-        .fontColor(foreground)
-      Text(message)
-        .fontSize(12)
-        .fontColor(foreground)
-        .layoutWeight(1)
-        .margin({ left: 8 })
-        .maxLines(2)
-        .textOverflow({ overflow: TextOverflow.Ellipsis })
-    }
-    .width('100%')
-    .padding({ left: 16, right: 16, top: 10, bottom: 10 })
-    .backgroundColor(background)
-    .borderRadius(8)
-    .margin({ left: 16, right: 16, top: 10 })
-  }
-
-  @Builder
   tabMine() {
     Stack({ alignContent: Alignment.Top }) {
       Scroll(this.moreScroller) {
@@ -3494,7 +3422,7 @@ struct Home {
                 }
               }
             });
-            Blank().width(8);
+            Blank().width(HitaDesign.gap);
             this.moreShortcut({
               symbol: $r('sys.symbol.doc_plaintext'),
               title: '课表管理',
@@ -3505,53 +3433,54 @@ struct Home {
             });
           }
           .width('100%')
-          .padding({ top: 8 });
+          .padding({ top: HitaDesign.gap });
 
           this.moreSectionTitle('课表工具');
           Column() {
             this.desktopWidgetSettings();
-            this.moreNavigationRow($r('sys.symbol.checkmark_circle_fill'), '学习待办', '课程作业与考试复习', () => {
-              this.openAcademicPanel(5);
-            });
-            this.moreNavigationRow($r('sys.symbol.repeat_1'), '导入课表',
-              this.importing ? '正在从教务系统同步' : '从教务系统同步当前学期', () => {
+            HitaListRow({ symbol: $r('sys.symbol.checkmark_circle_fill'), title: '学习待办', subtitle: '课程作业与考试复习',
+              divider: true, onTap: () => {
+                this.openAcademicPanel(5);
+              } });
+            HitaListRow({ symbol: $r('sys.symbol.repeat_1'), title: '导入课表',
+              subtitle: this.importing ? '正在从教务系统同步' : '从教务系统同步当前学期', divider: true, onTap: () => {
                 this.openImportTimetableSheet();
-              });
-            this.moreNavigationRow($r('sys.symbol.calendar'),
-              this.calendarExporting ? '正在同步至手机日历…' : '同步至手机日历',
-              this.currentTimetable === undefined ? '暂无课表' : this.currentTimetable.name, () => {
+              } });
+            HitaListRow({ symbol: $r('sys.symbol.calendar'),
+              title: this.calendarExporting ? '正在同步至手机日历…' : '同步至手机日历',
+              subtitle: this.currentTimetable === undefined ? '暂无课表' : this.currentTimetable.name, divider: true,
+              onTap: () => {
                 this.requestCalendarExport();
-              });
-
+              } });
           }
           .width('100%')
-          .padding({ top: 4, bottom: 4 })
+          .padding({ top: HitaDesign.space2xs, bottom: HitaDesign.space2xs })
           .backgroundColor(COLOR_CARD)
-          .borderRadius(16);
+          .borderRadius(HitaDesign.cardRadius);
 
           this.moreSectionTitle('教务功能');
           Column() {
-            this.moreNavigationRow($r('sys.symbol.calendar'), '考试',
-              '查询教务考试或手动添加安排', () => {
+            HitaListRow({ symbol: $r('sys.symbol.calendar'), title: '考试',
+              subtitle: '查询教务考试或手动添加安排', onTap: () => {
                 this.openAcademicPanel(1);
-              });
-            this.moreNavigationRow($r('sys.symbol.doc_plaintext'), '成绩管理',
-              '按学期查询成绩、官方统计与本地均分', () => {
+              } });
+            HitaListRow({ symbol: $r('sys.symbol.doc_plaintext'), title: '成绩管理',
+              subtitle: '按学期查询成绩、官方统计与本地均分', divider: true, onTap: () => {
                 this.openAcademicPanel(2);
-              });
-            this.moreNavigationRow($r('sys.symbol.graduationcap'), '学分查询',
-              '培养方案完成度与分类学分统计', () => {
+              } });
+            HitaListRow({ symbol: $r('sys.symbol.graduationcap'), title: '学分查询',
+              subtitle: '培养方案完成度与分类学分统计', divider: true, onTap: () => {
                 this.openAcademicPanel(3);
-              });
-            this.moreNavigationRow($r('sys.symbol.magnifyingglass'), '空教室',
-              '查询可用教室与空闲时段', () => {
+              } });
+            HitaListRow({ symbol: $r('sys.symbol.magnifyingglass'), title: '空教室',
+              subtitle: '查询可用教室与空闲时段', divider: true, onTap: () => {
                 this.openAcademicPanel(4);
-              });
+              } });
           }
           .width('100%')
-          .padding({ top: 4, bottom: 4 })
+          .padding({ top: HitaDesign.space2xs, bottom: HitaDesign.space2xs })
           .backgroundColor(COLOR_CARD)
-          .borderRadius(16);
+          .borderRadius(HitaDesign.cardRadius);
 
           this.moreSectionTitle('设置');
           Column() {
@@ -3559,41 +3488,41 @@ struct Home {
             this.appearanceSettings();
           }
           .width('100%')
-          .padding({ top: 4, bottom: 4 })
+          .padding({ top: HitaDesign.space2xs, bottom: HitaDesign.space2xs })
           .backgroundColor(COLOR_CARD)
-          .borderRadius(16);
+          .borderRadius(HitaDesign.cardRadius);
 
           this.moreSectionTitle('更多');
           Column() {
-            this.moreNavigationRow($r('sys.symbol.AI_message'), '助手',
-              '课表问答', () => {
+            HitaListRow({ symbol: $r('sys.symbol.AI_message'), title: '助手',
+              subtitle: '课表问答', onTap: () => {
                 this.getUIContext().getRouter().pushUrl({ url: 'pages/AssistantPage' });
-              });
-            this.moreNavigationRow($r('sys.symbol.doc_text'), '资讯',
-              '博客与通知', () => {
+              } });
+            HitaListRow({ symbol: $r('sys.symbol.doc_text'), title: '资讯',
+              subtitle: '博客与通知', divider: true, onTap: () => {
                 this.getUIContext().getRouter().pushUrl({ url: 'pages/NewsPage' });
-              });
-            this.moreNavigationRow($r('sys.symbol.link'), '常用入口',
-              '校园网站与课程攻略', () => {
+              } });
+            HitaListRow({ symbol: $r('sys.symbol.link'), title: '常用入口',
+              subtitle: '校园网站与课程攻略', divider: true, onTap: () => {
                 this.getUIContext().getRouter().pushUrl({ url: 'pages/PortalsPage' });
-              });
-            this.moreNavigationRow($r('sys.symbol.doc_plaintext'), '备份与恢复',
-              '课表、设置与背景', () => this.openBackupSheet());
-            this.moreNavigationRow($r('sys.symbol.doc_plaintext'), '公告',
-              '版本更新 · 服务与故障通知', () => {
+              } });
+            HitaListRow({ symbol: $r('sys.symbol.doc_plaintext'), title: '备份与恢复',
+              subtitle: '课表、设置与背景', divider: true, onTap: () => this.openBackupSheet() });
+            HitaListRow({ symbol: $r('sys.symbol.doc_plaintext'), title: '公告',
+              subtitle: '版本更新 · 服务与故障通知', divider: true, onTap: () => {
                 this.getUIContext().getRouter().pushUrl({ url: 'pages/NoticesPage' });
-              });
-            this.moreNavigationRow($r('sys.symbol.info_circle'), '关于',
-              '关于HITA NEXT', () => {
+              } });
+            HitaListRow({ symbol: $r('sys.symbol.info_circle'), title: '关于',
+              subtitle: '关于HITA NEXT', divider: true, onTap: () => {
                 this.getUIContext().getRouter().pushUrl({ url: 'pages/AppAboutPage' });
-              });
+              } });
           }
           .width('100%')
-          .padding({ top: 4, bottom: 4 })
+          .padding({ top: HitaDesign.space2xs, bottom: HitaDesign.space2xs })
           .backgroundColor(COLOR_CARD)
-          .borderRadius(16);
+          .borderRadius(HitaDesign.cardRadius);
 
-          Blank().height(this.dockPageInset() + 20);
+          Blank().height(this.dockPageInset() + HitaDesign.spaceLg);
         }
         .width('100%')
         // Single source of truth for the tab's horizontal inset: every card,
@@ -3654,50 +3583,12 @@ struct Home {
   @Builder
   desktopWidgetSettings() {
     Column() {
-      Row() {
-        Stack() {
-          SymbolGlyph($r('sys.symbol.clock'))
-            .fontSize(HitaDesign.iconMd)
-            .fontColor([COLOR_PRIMARY]);
-        }
-        .width(40)
-        .height(40)
-        .borderRadius(20)
-        .alignContent(Alignment.Center)
-        .backgroundColor(COLOR_NAV_ACTIVE);
-        Column() {
-          Text('桌面服务卡片')
-            .fontSize(HitaDesign.body)
-            .fontColor(COLOR_TEXT_PRIMARY)
-            .maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis });
-          Text('下一节课倒计时')
-            .fontSize(HitaDesign.caption)
-            .fontColor(COLOR_TEXT_SECONDARY)
-            .margin({ top: 4 })
-            .maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis });
-        }
-        .layoutWeight(1)
-        .alignItems(HorizontalAlign.Start)
-        .margin({ left: 12 });
-        SymbolGlyph($r('sys.symbol.chevron_right'))
-          .fontSize(HitaDesign.iconXs)
-          .fontColor([COLOR_TEXT_SECONDARY])
-          .width(16).height(24).flexShrink(0)
-          .accessibilityLevel('no')
-          .rotate({ angle: this.widgetMenuExpanded ? 90 : 0 });
-      }
-      .width('100%')
-      .constraintSize({ minHeight: HitaDesign.rowMinHeight })
-      .padding({ left: 16, right: 16 })
-      .alignItems(VerticalAlign.Center)
-      .accessibilityDescription(this.widgetMenuExpanded ? '已展开' : '已收起')
-      .onClick(() => {
-        this.getUIContext().animateTo({ duration: 300, curve: Curve.EaseInOut }, () => {
-          this.widgetMenuExpanded = !this.widgetMenuExpanded;
-        });
-      });
+      HitaListRow({ symbol: $r('sys.symbol.clock'), title: '桌面服务卡片', subtitle: '下一节课倒计时',
+        accessory: HitaRowAccessory.DISCLOSURE, expanded: this.widgetMenuExpanded, onTap: () => {
+          this.getUIContext().animateTo({ duration: 300, curve: Curve.EaseInOut }, () => {
+            this.widgetMenuExpanded = !this.widgetMenuExpanded;
+          });
+        } });
       if (this.widgetMenuExpanded) {
         Column() {
         ImmersiveHeader({ barHeight: this.widgetMaterialHeight, materialEnabled: CompatibleSheetMaterial.isEnabled() }) {
@@ -3713,9 +3604,9 @@ struct Home {
               SymbolGlyph($r('sys.symbol.chevron_right'))
                 .fontSize(HitaDesign.iconXs)
                 .fontColor([$r('app.color.hita_text_hint_b2b8c4')])
-                .width(16).height(24).flexShrink(0)
+                .width(HitaDesign.iconSm).height(HitaDesign.iconLg).flexShrink(0)
                 .accessibilityLevel('no')
-                .margin({ left: 6 });
+                .margin({ left: HitaDesign.spaceXs });
             }
             .width('100%')
             .constraintSize({ minHeight: 48 })
@@ -3733,9 +3624,9 @@ struct Home {
               SymbolGlyph($r('sys.symbol.chevron_right'))
                 .fontSize(HitaDesign.iconXs)
                 .fontColor([$r('app.color.hita_text_hint_b2b8c4')])
-                .width(16).height(24).flexShrink(0)
+                .width(HitaDesign.iconSm).height(HitaDesign.iconLg).flexShrink(0)
                 .accessibilityLevel('no')
-                .margin({ left: 6 });
+                .margin({ left: HitaDesign.spaceXs });
             }
             .width('100%')
             .constraintSize({ minHeight: 48 })
@@ -3745,15 +3636,15 @@ struct Home {
             });
           }
           .width('100%')
-          .padding({ left: 16, right: 16, top: 4, bottom: 4 })
+          .padding({ left: HitaDesign.inset, right: HitaDesign.inset, top: HitaDesign.space2xs, bottom: HitaDesign.space2xs })
           .backgroundColor($r('app.color.hita_control'))
-          .borderRadius(12)
+          .borderRadius(HitaDesign.radiusMd)
           .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_control'), false,
             CompatibleSheetMaterial.isEnabled()))
           .alignItems(HorizontalAlign.Start);
         }
         .width('100%')
-        .padding({ left: 16, right: 16, top: 6, bottom: 12 })
+        .padding({ left: HitaDesign.inset, right: HitaDesign.inset, top: HitaDesign.space2xs, bottom: HitaDesign.spaceSm })
         .onAreaChange((_old: Area, area: Area) => {
           const height: number = Number(area.height);
           if (height > 0 && Math.abs(height - this.widgetMaterialHeight) > 1) {
@@ -3774,51 +3665,14 @@ struct Home {
   @Builder
   appearanceSettings() {
     Column() {
-      Row() {
-        Stack() {
-          SymbolGlyph($r('sys.symbol.moon'))
-            .fontSize(HitaDesign.iconMd)
-            .fontColor([COLOR_PRIMARY]);
-        }
-        .width(40)
-        .height(40)
-        .borderRadius(20)
-        .alignContent(Alignment.Center)
-        .backgroundColor(COLOR_NAV_ACTIVE);
-        Column() {
-          Text('深色模式')
-            .fontSize(HitaDesign.body)
-            .fontColor(COLOR_TEXT_PRIMARY)
-            .maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis });
-          Text(this.appearanceMode === AppearanceMode.DARK ? '已开启' :
-            (this.appearanceMode === AppearanceMode.LIGHT ? '已关闭' : '跟随系统'))
-            .fontSize(HitaDesign.caption)
-            .fontColor(COLOR_TEXT_SECONDARY)
-            .margin({ top: 4 })
-            .maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis });
-        }
-        .layoutWeight(1)
-        .alignItems(HorizontalAlign.Start)
-        .margin({ left: 12 });
-        SymbolGlyph($r('sys.symbol.chevron_right'))
-          .fontSize(HitaDesign.iconXs)
-          .fontColor([COLOR_TEXT_SECONDARY])
-          .width(16).height(24).flexShrink(0)
-          .accessibilityLevel('no')
-          .rotate({ angle: this.appearanceExpanded ? 90 : 0 });
-      }
-      .width('100%')
-      .constraintSize({ minHeight: HitaDesign.rowMinHeight })
-      .padding({ left: 16, right: 16 })
-      .alignItems(VerticalAlign.Center)
-      .accessibilityDescription(this.appearanceExpanded ? '已展开' : '已收起')
-      .onClick(() => {
-        this.getUIContext().animateTo({ duration: 300, curve: Curve.EaseInOut }, () => {
-          this.appearanceExpanded = !this.appearanceExpanded;
-        });
-      });
+      HitaListRow({ symbol: $r('sys.symbol.moon'), title: '深色模式',
+        subtitle: this.appearanceMode === AppearanceMode.DARK ? '已开启' :
+          (this.appearanceMode === AppearanceMode.LIGHT ? '已关闭' : '跟随系统'),
+        accessory: HitaRowAccessory.DISCLOSURE, expanded: this.appearanceExpanded, divider: true, onTap: () => {
+          this.getUIContext().animateTo({ duration: 300, curve: Curve.EaseInOut }, () => {
+            this.appearanceExpanded = !this.appearanceExpanded;
+          });
+        } });
       if (this.appearanceExpanded) {
         Column() {
           ImmersiveHeader({ barHeight: 60, materialEnabled: CompatibleSheetMaterial.isEnabled() }) {
@@ -3864,10 +3718,10 @@ struct Home {
     .width(0)
     .layoutWeight(1)
     .height(44)
-    .padding({ left: 6, right: 6 })
+    .padding({ left: HitaDesign.spaceXs, right: HitaDesign.spaceXs })
     .justifyContent(FlexAlign.Center)
     .backgroundColor(this.appearanceMode === mode ? COLOR_NAV_ACTIVE : $r('app.color.hita_control'))
-    .borderRadius(8)
+    .borderRadius(HitaDesign.radiusMd)
     .attributeModifier(new CompatibleMaterialModifier(this.appearanceMode === mode ? COLOR_NAV_ACTIVE :
       $r('app.color.hita_control'), false, CompatibleSheetMaterial.isEnabled()))
     .enabled(!this.appearanceBusy)
@@ -3884,11 +3738,11 @@ struct Home {
           (this.sessionInfo.name.length > 0 ? this.sessionInfo.name.substring(0, 1) : 'U'))
           .fontSize(HitaDesign.section)
           .fontWeight(FontWeight.Medium)
-          .fontColor('#FFFFFF');
+          .fontColor($r('app.color.hita_on_primary'));
       }
-      .width(40)
-      .height(40)
-      .borderRadius(20)
+      .width(USER_AVATAR_SIZE)
+      .height(USER_AVATAR_SIZE)
+      .borderRadius(USER_AVATAR_SIZE / 2)
       .id('eas-account-avatar')
       .backgroundColor(this.sessionInfo === undefined ? $r('app.color.hita_disabled_aab4c1') :
         (this.sessionInfo.loginExpired ? $r('app.color.hita_error') : $r('app.color.hita_primary_fill')))
@@ -3900,7 +3754,7 @@ struct Home {
           (this.sessionInfo.name.length > 0 ? this.sessionInfo.name :
             (this.sessionInfo.username.length > 0 ? this.sessionInfo.username :
               (this.sessionInfo.stuId.length > 0 ? this.sessionInfo.stuId : '已登录教务'))))
-          .fontSize(HitaDesign.body)
+          .fontSize(HitaDesign.section)
           .fontWeight(FontWeight.Medium)
           .fontColor(COLOR_TEXT_PRIMARY);
         Text(this.sessionInfo === undefined ? '点击进行教务登录' :
@@ -3911,24 +3765,24 @@ struct Home {
             (this.sessionInfo.major.length > 0 ? ' · ' + this.sessionInfo.major : '')))
           .fontSize(HitaDesign.caption)
           .fontColor(COLOR_TEXT_SECONDARY)
-          .margin({ top: 4 })
+          .margin({ top: HitaDesign.space2xs })
           .maxLines(2)
           .textOverflow({ overflow: TextOverflow.Ellipsis });
       }
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start)
-      .margin({ left: 12 });
+      .margin({ left: HitaDesign.spaceSm });
       SymbolGlyph($r('sys.symbol.chevron_right'))
         .fontSize(HitaDesign.iconXs)
         .fontColor([COLOR_TEXT_SECONDARY])
-        .width(16).height(24).flexShrink(0)
+        .width(HitaDesign.iconSm).height(HitaDesign.iconLg).flexShrink(0)
         .accessibilityLevel('no');
     }
     .width('100%')
-    .padding(16)
+    .padding(HitaDesign.inset)
     .backgroundColor(COLOR_CARD)
-    .borderRadius(16)
-    .margin({ top: 8, bottom: 8 })
+    .borderRadius(HitaDesign.cardRadius)
+    .margin({ top: HitaDesign.spaceXs })
     .onClick(() => {
       this.openSessionSheet();
     });
@@ -3976,7 +3830,7 @@ struct Home {
               this.closeActiveSheet();
             }
           })
-            .margin({ right: 12 });
+            .margin({ right: HitaDesign.spaceSm });
           Column() {
             Text('教务认证')
               .fontSize(HitaDesign.title)
@@ -3985,7 +3839,7 @@ struct Home {
             Text(this.sessionSheetInfo === undefined ? '请登录教务账号以继续' : '当前教务会话')
               .fontSize(HitaDesign.caption)
               .fontColor(COLOR_TEXT_SECONDARY)
-              .margin({ top: 4 });
+              .margin({ top: HitaDesign.space2xs });
           }
           .layoutWeight(1)
           .alignItems(HorizontalAlign.Start);
@@ -4002,23 +3856,23 @@ struct Home {
           .fontColor(COLOR_TEXT_SECONDARY)
           .width('100%');
 
-        ImmersiveHeader({ barHeight: 57 }) {
-          Row({ space: 4 }) {
+        ImmersiveHeader({ barHeight: HitaDesign.spaceXs + HitaDesign.space2xs * 2 + HitaDesign.controlHeight }) {
+          Row({ space: HitaDesign.space2xs }) {
             this.sessionCampusButton('SHENZHEN', '深圳');
             this.sessionCampusButton('BENBU', '本部');
             this.sessionCampusButton('WEIHAI', '威海');
           }
           .width('100%')
-          .padding(4)
+          .padding(HitaDesign.space2xs)
           .backgroundColor($r('app.color.hita_control_eaf0f7'))
-          .borderRadius(16)
+          .borderRadius(HitaDesign.cardRadius)
           .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_control_eaf0f7')))
-          .margin({ top: 7 });
+          .margin({ top: HitaDesign.spaceXs });
         }
       }
       .width('100%')
       .alignItems(HorizontalAlign.Start)
-      .margin({ top: 18 });
+      .margin({ top: HitaDesign.spaceMd });
 
       if (this.sessionSheetInfo !== undefined) {
         Row() {
@@ -4027,11 +3881,11 @@ struct Home {
               this.sessionSheetInfo.name.substring(0, 1) : 'U')
               .fontSize(HitaDesign.section)
               .fontWeight(FontWeight.Medium)
-              .fontColor('#FFFFFF');
+              .fontColor($r('app.color.hita_on_primary'));
           }
-          .width(48)
-          .height(48)
-          .borderRadius(24)
+          .width(USER_AVATAR_SIZE)
+          .height(USER_AVATAR_SIZE)
+          .borderRadius(USER_AVATAR_SIZE / 2)
           .backgroundColor($r('app.color.hita_primary_fill'))
           .alignContent(Alignment.Center);
           Column() {
@@ -4046,61 +3900,45 @@ struct Home {
               (this.sessionSheetInfo.stuId.length > 0 ? ' · ' + this.sessionSheetInfo.stuId : ''))
               .fontSize(HitaDesign.caption)
               .fontColor(COLOR_TEXT_SECONDARY)
-              .margin({ top: 4 });
+              .margin({ top: HitaDesign.space2xs });
           }
           .layoutWeight(1)
           .alignItems(HorizontalAlign.Start)
-          .margin({ left: 12 });
+          .margin({ left: HitaDesign.spaceSm });
 
-          Text(this.sessionSheetStatus)
-            .fontSize(HitaDesign.label)
-            .fontWeight(FontWeight.Medium)
-            .fontColor(this.sessionSheetStatus === EasSessionStatus.SAVED ? $r('app.color.hita_success') :
-              this.sessionSheetStatus === EasSessionStatus.EXPIRED ? $r('app.color.hita_error') :
-                COLOR_TEXT_SECONDARY)
-            .padding({ left: 9, right: 9, top: 5, bottom: 5 })
-            .backgroundColor(this.sessionSheetStatus === EasSessionStatus.SAVED ?
-              $r('app.color.hita_success_surface') : this.sessionSheetStatus === EasSessionStatus.EXPIRED ?
-                $r('app.color.hita_error_surface') : $r('app.color.hita_control'))
-            .flexShrink(0)
-            .borderRadius(12);
+          HitaTag({ text: this.sessionSheetStatus, tone: this.sessionSheetStatus === EasSessionStatus.SAVED ?
+            HitaTagTone.SUCCESS : this.sessionSheetStatus === EasSessionStatus.EXPIRED ? HitaTagTone.DANGER :
+              HitaTagTone.NEUTRAL });
         }
         .width('100%')
-        .padding(15)
+        .padding(HitaDesign.inset)
         .backgroundColor(CompatibleSheetMaterial.cardColor($r('app.color.hita_surface_soft_f8fafd')))
         .border({ width: 1, color: $r('app.color.hita_divider_e3eaf2') })
-        .borderRadius(18)
-        .margin({ top: 16 });
+        .borderRadius(HitaDesign.cardRadius)
+        .margin({ top: HitaDesign.spaceMd });
 
-        Row({ space: 8 }) {
-          Button('重新登录')
-            .layoutWeight(1)
-            .height(46)
-            .fontSize(HitaDesign.body)
-            .fontWeight(FontWeight.Medium)
-            .fontColor(COLOR_PRIMARY)
-            .backgroundColor(COLOR_NAV_ACTIVE)
-            .attributeModifier(new CompatibleMaterialModifier(COLOR_NAV_ACTIVE, false, CompatibleSheetMaterial.isEnabled()))
-            .borderRadius(17)
-            .onClick(() => {
-              this.beginSessionLogin();
-            });
-          Button('退出登录')
-            .layoutWeight(1)
-            .height(46)
-            .fontSize(HitaDesign.body)
-            .fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.hita_error'))
-            .backgroundColor($r('app.color.hita_error_surface'))
-            .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_error_surface'), false,
-              CompatibleSheetMaterial.isEnabled()))
-            .borderRadius(17)
-            .onClick(() => {
-              this.logoutSession();
-            });
+        if (this.sessionSheetStatus === EasSessionStatus.EXPIRED && this.sessionSheetInfo.expiredReason.length > 0) {
+          Text('失效原因：' + this.sessionSheetInfo.expiredReason)
+            .fontSize(HitaDesign.caption)
+            .fontColor(COLOR_TEXT_HINT)
+            .width('100%')
+            .maxLines(2)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .margin({ top: HitaDesign.spaceXs });
+        }
+
+        Row({ space: HitaDesign.gap }) {
+          HitaButton({ label: '重新登录', variant: HitaButtonVariant.SECONDARY, onTap: () => {
+            this.beginSessionLogin();
+          } })
+            .layoutWeight(1);
+          HitaButton({ label: '退出登录', variant: HitaButtonVariant.DANGER, onTap: () => {
+            this.logoutSession();
+          } })
+            .layoutWeight(1);
         }
         .width('100%')
-        .margin({ top: 12 });
+        .margin({ top: HitaDesign.gap });
       } else {
         Column() {
           Row() {
@@ -4109,9 +3947,9 @@ struct Home {
                 .fontSize(HitaDesign.iconMd)
                 .fontColor([COLOR_PRIMARY]);
             }
-            .width(42)
-            .height(42)
-            .borderRadius(21)
+            .width(HitaDesign.listIconSize)
+            .height(HitaDesign.listIconSize)
+            .borderRadius(HitaDesign.listIconSize / 2)
             .backgroundColor(COLOR_NAV_ACTIVE)
             .alignContent(Alignment.Center);
             Column() {
@@ -4119,31 +3957,18 @@ struct Home {
                 .fontSize(HitaDesign.body)
                 .fontWeight(FontWeight.Medium)
                 .fontColor(COLOR_TEXT_PRIMARY);
-              Text('将打开对应校区的官方认证页')
-                .fontSize(HitaDesign.caption)
-                .fontColor(COLOR_TEXT_SECONDARY)
-                .margin({ top: 3 });
             }
             .layoutWeight(1)
             .alignItems(HorizontalAlign.Start)
-            .margin({ left: 12 });
+            .margin({ left: HitaDesign.spaceSm });
           }
           .width('100%');
 
-          Button('网页登录')
+          HitaButton({ label: '网页登录', variant: HitaButtonVariant.PRIMARY, onTap: () => {
+            this.beginSessionLogin();
+          } })
             .width('100%')
-            .height(46)
-            .fontSize(HitaDesign.body)
-            .fontWeight(FontWeight.Medium)
-            .fontColor('#FFFFFF')
-            .backgroundColor($r('app.color.hita_primary_fill'))
-            .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_primary_fill'), true,
-              CompatibleSheetMaterial.isEnabled()))
-            .borderRadius(17)
-            .margin({ top: 14 })
-            .onClick(() => {
-              this.beginSessionLogin();
-            });
+            .margin({ top: HitaDesign.spaceMd });
 
           Row() {
             SymbolGlyph($r('sys.symbol.lock_shield'))
@@ -4152,29 +3977,29 @@ struct Home {
             Text('HITA 不保存您的教务密码')
               .fontSize(HitaDesign.caption)
               .fontColor(COLOR_TEXT_HINT)
-              .margin({ left: 6 });
+              .margin({ left: HitaDesign.spaceXs });
           }
-          .margin({ top: 12 });
+          .margin({ top: HitaDesign.gap });
         }
         .width('100%')
-        .padding(16)
+        .padding(HitaDesign.inset)
         .backgroundColor(CompatibleSheetMaterial.cardColor($r('app.color.hita_surface_soft_f8fafd')))
         .border({ width: 1, color: $r('app.color.hita_divider_e3eaf2') })
-        .borderRadius(18)
-        .margin({ top: 16 });
+        .borderRadius(HitaDesign.cardRadius)
+        .margin({ top: HitaDesign.spaceMd });
       }
     }
     .width('100%')
-    .padding({ left: 20, right: 20, top: 0, bottom: 22 })
-    .attributeModifier(new CompatibleLightModifier(24, CompatibleSheetMaterial.isEnabled(), true));
+    .padding({ left: HitaDesign.inset, right: HitaDesign.inset, top: 0, bottom: HitaDesign.spaceLg })
+    .attributeModifier(new CompatibleLightModifier(HitaDesign.heroRadius, CompatibleSheetMaterial.isEnabled(), true));
   }
 
   @Builder
   sessionCampusButton(code: string, label: string) {
     Row() {
       Circle()
-        .width(9)
-        .height(9)
+        .width(HitaDesign.spaceXs)
+        .height(HitaDesign.spaceXs)
         .attributeModifier(new CirclePaintModifier(this.sessionSheetCampus === code ? COLOR_PRIMARY : 'transparent',
           this.sessionSheetCampus === code ? COLOR_PRIMARY : $r('app.color.hita_text_hint_a9b4c2')))
         .strokeWidth(1.5);
@@ -4182,12 +4007,12 @@ struct Home {
         .fontSize(HitaDesign.body)
         .fontWeight(this.sessionSheetCampus === code ? FontWeight.Medium : FontWeight.Regular)
         .fontColor(this.sessionSheetCampus === code ? COLOR_TEXT_PRIMARY : COLOR_TEXT_SECONDARY)
-        .margin({ left: 7 });
+        .margin({ left: HitaDesign.spaceXs });
     }
     .layoutWeight(1)
-    .height(42)
+    .height(HitaDesign.controlHeight)
     .justifyContent(FlexAlign.Center)
-    .borderRadius(13)
+    .borderRadius(HitaDesign.radiusMd)
     .backgroundColor(this.sessionSheetCampus === code ? COLOR_CARD : 'transparent')
     .onClick(() => {
       this.selectSessionCampus(code);
@@ -4202,9 +4027,9 @@ struct Home {
           .fontSize(HitaDesign.iconMd)
           .fontColor([COLOR_PRIMARY]);
       }
-      .width(40)
-      .height(40)
-      .borderRadius(20)
+      .width(HitaDesign.listIconSize)
+      .height(HitaDesign.listIconSize)
+      .borderRadius(HitaDesign.listIconSize / 2)
       .alignContent(Alignment.Center)
       .backgroundColor(COLOR_NAV_ACTIVE);
       Column() {
@@ -4217,85 +4042,50 @@ struct Home {
         Text(options.subtitle)
           .fontSize(HitaDesign.caption)
           .fontColor(COLOR_TEXT_SECONDARY)
-          .margin({ top: 4 })
+          .margin({ top: HitaDesign.space2xs })
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis });
       }
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start)
-      .margin({ left: 12 });
+      .margin({ left: HitaDesign.spaceSm });
     }
     // Give each shortcut a zero base width so the two weighted cards remain
     // exactly equal on narrow devices.
     .width(0)
     .layoutWeight(1)
     .constraintSize({ minHeight: 88 })
-    .padding({ left: 12, right: 12 })
+    .padding({ left: HitaDesign.spaceSm, right: HitaDesign.spaceSm })
     .alignItems(VerticalAlign.Center)
     .backgroundColor(COLOR_CARD)
-    .borderRadius(16)
+    .borderRadius(HitaDesign.cardRadius)
     .onClick(options.action);
   }
 
+  /** List group heading: quieter than the page title, aligned with the row icons inside the card below. */
   @Builder
   moreSectionTitle(title: string) {
     Text(title)
-      .fontSize(HitaDesign.section)
+      .fontSize(HitaDesign.caption)
       .fontWeight(FontWeight.Medium)
-      .fontColor(COLOR_TEXT_PRIMARY)
-      .margin({ top: HitaDesign.sectionGap, bottom: HitaDesign.gap })
+      .fontColor(COLOR_TEXT_SECONDARY)
+      .padding({ left: HitaDesign.inset, right: HitaDesign.inset })
+      .margin({ top: HitaDesign.sectionGap, bottom: HitaDesign.spaceXs })
       .alignSelf(ItemAlign.Start);
   }
 
   @Builder
   classReminderSettings() {
     Column() {
-      Row() {
-        Stack() {
-          SymbolGlyph($r('sys.symbol.bell'))
-            .fontSize(HitaDesign.iconMd)
-            .fontColor([COLOR_PRIMARY]);
-        }
-        .width(40)
-        .height(40)
-        .borderRadius(20)
-        .alignContent(Alignment.Center)
-        .backgroundColor(COLOR_NAV_ACTIVE);
-        Column() {
-          Text('课程与考试提醒')
-            .fontSize(HitaDesign.body)
-            .fontColor(COLOR_TEXT_PRIMARY)
-            .maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis });
-          if (this.classReminderSubtitle().length > 0) {
-            Text(this.examReminderEnabled ? this.classReminderSubtitle() + ' · 考试前 ' + this.examReminderLeadMinutes.toString() + ' 分钟' : this.classReminderSubtitle())
-              .fontSize(HitaDesign.caption)
-              .fontColor(COLOR_TEXT_SECONDARY)
-              .margin({ top: 4 })
-              .maxLines(1)
-              .textOverflow({ overflow: TextOverflow.Ellipsis });
-          }
-        }
-        .layoutWeight(1)
-        .alignItems(HorizontalAlign.Start)
-        .margin({ left: 12 });
-        SymbolGlyph($r('sys.symbol.chevron_right'))
-          .fontSize(HitaDesign.iconXs)
-          .fontColor([COLOR_TEXT_SECONDARY])
-          .width(16).height(20).flexShrink(0)
-          .accessibilityLevel('no')
-          .rotate({ angle: this.reminderExpanded ? 90 : 0 });
-      }
-      .width('100%')
-      .constraintSize({ minHeight: HitaDesign.rowMinHeight })
-      .padding({ left: 16, right: 16 })
-      .alignItems(VerticalAlign.Center)
-      .accessibilityDescription(this.reminderExpanded ? '已展开' : '已收起')
-      .onClick(() => {
-        this.getUIContext().animateTo({ duration: 300, curve: Curve.EaseInOut }, () => {
-          this.reminderExpanded = !this.reminderExpanded;
-        });
-      });
+      HitaListRow({ symbol: $r('sys.symbol.bell'), title: '课程与考试提醒',
+        subtitle: this.classReminderSubtitle().length === 0 ? '' : (this.examReminderEnabled ?
+          this.classReminderSubtitle() + ' · 考试前 ' + this.examReminderLeadMinutes.toString() + ' 分钟' :
+          this.classReminderSubtitle()),
+        accessory: HitaRowAccessory.DISCLOSURE, expanded: this.reminderExpanded, onTap: () => {
+          this.getUIContext().animateTo({ duration: 300, curve: Curve.EaseInOut }, () => {
+            this.reminderExpanded = !this.reminderExpanded;
+          });
+        } });
       if (this.reminderExpanded) {
         Column() {
         ImmersiveHeader({ barHeight: this.reminderMaterialHeight, materialEnabled: CompatibleSheetMaterial.isEnabled() }) {
@@ -4342,8 +4132,8 @@ struct Home {
               SymbolGlyph($r('sys.symbol.chevron_right'))
                 .fontSize(HitaDesign.iconXs)
                 .fontColor([COLOR_TEXT_SECONDARY])
-                .width(16)
-                .height(20);
+                .width(HitaDesign.iconSm)
+                .height(HitaDesign.iconMd);
             }
             .width('100%')
             .constraintSize({ minHeight: 48 })
@@ -4351,7 +4141,7 @@ struct Home {
             .enabled(!this.reminderBusy)
             .accessibilityText('提醒时间，上课前 ' + this.reminderLeadMinutes.toString() + ' 分钟，点击修改')
             .onClick(() => { this.showReminderTimePicker(); });
-            Divider().color($r('app.color.hita_divider')).margin({ top: 2, bottom: 2 });
+            Divider().color($r('app.color.hita_divider')).margin({ top: HitaDesign.space2xs, bottom: HitaDesign.space2xs });
             Row() {
               Text('开启考试提醒')
                 .fontSize(HitaDesign.body)
@@ -4373,20 +4163,20 @@ struct Home {
                 .fontColor(CompatibleSheetMaterial.isEnabled() ? CompatibleMaterialModifier.foreground(COLOR_PRIMARY) :
                   COLOR_PRIMARY)
                 .maxLines(1);
-              SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(HitaDesign.iconXs).fontColor([COLOR_TEXT_SECONDARY]).width(16).height(20);
+              SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(HitaDesign.iconXs).fontColor([COLOR_TEXT_SECONDARY]).width(HitaDesign.iconSm).height(HitaDesign.iconMd);
             }.width('100%').constraintSize({ minHeight: 48 }).alignItems(VerticalAlign.Center).enabled(!this.reminderBusy)
             .onClick(() => { this.showExamReminderTimePicker(); });
           }
           .width('100%')
           .padding({ left: 16, right: 16, top: 4, bottom: 4 })
           .backgroundColor($r('app.color.hita_control'))
-          .borderRadius(12)
+          .borderRadius(HitaDesign.radiusMd)
           .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_control'), false,
             CompatibleSheetMaterial.isEnabled()))
           .alignItems(HorizontalAlign.Start);
         }
         .width('100%')
-        .padding({ left: 16, right: 16, top: 6, bottom: 12 })
+        .padding({ left: HitaDesign.inset, right: HitaDesign.inset, top: HitaDesign.space2xs, bottom: HitaDesign.spaceSm })
         .onAreaChange((_old: Area, area: Area) => {
           const height: number = Number(area.height);
           if (height > 0 && Math.abs(height - this.reminderMaterialHeight) > 1) {
@@ -4401,49 +4191,5 @@ struct Home {
     }
     .width('100%')
     .alignItems(HorizontalAlign.Start);
-  }
-
-  @Builder
-  moreNavigationRow(symbol: Resource, title: string, subtitle: string, action: () => void) {
-    Row() {
-      Stack() {
-        SymbolGlyph(symbol)
-          .fontSize(HitaDesign.iconMd)
-          .fontColor([COLOR_PRIMARY]);
-      }
-      .width(40)
-      .height(40)
-      .borderRadius(20)
-      .alignContent(Alignment.Center)
-      .backgroundColor(COLOR_NAV_ACTIVE);
-      Column() {
-        Text(title)
-          .fontSize(HitaDesign.body)
-          .fontColor(COLOR_TEXT_PRIMARY)
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis });
-        if (subtitle.length > 0) {
-          Text(subtitle)
-            .fontSize(HitaDesign.caption)
-            .fontColor(COLOR_TEXT_SECONDARY)
-            .margin({ top: 4 })
-            .maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis });
-        }
-      }
-      .layoutWeight(1)
-      .alignItems(HorizontalAlign.Start)
-      .margin({ left: 12 });
-      SymbolGlyph($r('sys.symbol.chevron_right'))
-        .fontSize(HitaDesign.iconXs)
-        .fontColor([COLOR_TEXT_SECONDARY])
-        .width(16).height(20).flexShrink(0)
-        .accessibilityLevel('no');
-    }
-    .width('100%')
-    .constraintSize({ minHeight: HitaDesign.rowMinHeight })
-    .padding({ left: 16, right: 16 })
-    .alignItems(VerticalAlign.Center)
-    .onClick(action);
   }
 }

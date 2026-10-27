@@ -99,7 +99,7 @@ struct WebBrowserPage {
 
       if (this.url.length === 0) {
         Text('没有可打开的链接')
-          .fontSize(14)
+          .fontSize(HitaDesign.caption)
           .fontColor($r('app.color.hita_text_secondary_5a6880'))
           .margin({ top: 60 })
       } else {
@@ -126,7 +126,7 @@ struct WebBrowserPage {
           if (this.failed) {
             Column() {
               Text('页面加载失败，请检查网络后点右上角刷新')
-                .fontSize(14)
+                .fontSize(HitaDesign.caption)
                 .fontColor($r('app.color.hita_text_secondary'))
             }
             .width('100%')

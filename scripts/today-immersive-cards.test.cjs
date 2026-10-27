@@ -62,7 +62,7 @@ test('card text, status colors, time rail and progress remain in the original co
   const home = read('pages/Home.ets');
   const row = home.slice(home.indexOf('  eventRow('), home.indexOf('  emptyTimetableActions()'));
   for (const source of ['EasTimeTools.printTime(event.from)', 'EasTimeTools.printTime(event.to)',
-    'Home.todayChipText(event, this.nowTick)', 'Home.todayChipColor(event, this.nowTick)',
+    'Home.todayChipText(event, this.nowTick)', 'Home.todayChipTone(event, this.nowTick)',
     'Home.placeTeacher(event)', 'timetableBlockColor(event.color)',
     'Progress({ value: event.getProgress(this.nowTick) * 100']) {
     assert.ok(row.includes(source), source);
@@ -70,7 +70,9 @@ test('card text, status colors, time rail and progress remain in the original co
   assert.match(row, /eventRow\(event: EasEventItem, immersive: boolean = false\)/);
   assert.match(row, /\.backgroundColor\(immersive \? Color\.Transparent : COLOR_CARD\)/);
   assert.match(row, /\.hitTestBehavior\(immersive \? HitTestMode\.Transparent : HitTestMode\.Default\)/);
-  assert.match(row, /\.margin\(\{ bottom: immersive \? 0 : 2 \}\)/);
+  // Both branches sit directly on the list's 12 vp spacing; no extra 2 vp margin makes the gap 14.
+  assert.doesNotMatch(row, /\.margin\(\{ bottom: immersive/);
+  assert.match(home.slice(home.indexOf('  tabToday()'), home.indexOf('  todayHeader()')), /List\(\{ space: HitaDesign\.gap \}\)/);
   assert.match(row, /event\.containsTimestamp\(this\.nowTick\) \? \$r\('app\.color\.hita_focus'\)/);
 });
 

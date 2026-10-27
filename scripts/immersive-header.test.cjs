@@ -332,7 +332,7 @@ test('timetable manager actions and campus selector receive the shadow-free cont
   assert.match(header, /this\.confirmDelete\(\)/);
   assert.match(header, /this\.showExportMenu\(\)/);
   const home = read('pages/Home.ets');
-  const campus = home.slice(home.indexOf('ImmersiveHeader({ barHeight: 57 })'));
+  const campus = home.slice(home.indexOf('ImmersiveHeader({ barHeight: HitaDesign.spaceXs + HitaDesign.space2xs * 2 + HitaDesign.controlHeight })'));
   assert.match(campus, /sessionCampusButton\('SHENZHEN'[\s\S]*sessionCampusButton\('BENBU'[\s\S]*sessionCampusButton\('WEIHAI'/);
   assert.match(campus, /new CompatibleMaterialModifier\(\$r\('app\.color\.hita_control_eaf0f7'\)\)/);
 });

@@ -71,12 +71,13 @@ test('the entry opens a bottom confirmation sheet; only its confirm button start
   assert.match(active, /this\.calendarExportConfirmationSheet\(this\.calendarExportTimetable as EasTimetable\)/);
   assert.match(sheet, /Text\(timetable\.name\)/);
   assert.match(sheet, /Toggle\(\{ type: ToggleType.Switch, isOn: this\.calendarExportSyncEnabled \}\)/);
-  assert.match(sheet, /Button\('保存'/);
-  const reminder = slice('  classReminderSettings()', '  moreNavigationRow(');
+  assert.match(sheet, /HitaButton\(\{ label: '保存'/);
+  // classReminderSettings is the last builder in Home, so the slice runs to the struct's closing brace.
+  const reminder = slice('  classReminderSettings()', '\n}');
   assert.doesNotMatch(reminder, /calendarSync|同步到手机日历|当前课表|立即同步/);
   assert.doesNotMatch(sheet, /将此课表|之后调课|提醒时间沿用/);
-  assert.match(sheet, /\.onClick\(\(\) => this\.cancelCalendarExport\(\)\)/);
-  assert.match(sheet, /\.onClick\(\(\) => this\.exportToCalendar\(\)\)/);
+  assert.match(sheet, /onTap: \(\) => this\.cancelCalendarExport\(\)/);
+  assert.match(sheet, /onTap: \(\) => this\.exportToCalendar\(\)/);
   assert.match(home, /\.bindSheet\(\$\$this\.activeSheetVisible,[\s\S]*?SheetSize\.FIT_CONTENT[\s\S]*?preferType: SheetType\.BOTTOM/);
 });
 

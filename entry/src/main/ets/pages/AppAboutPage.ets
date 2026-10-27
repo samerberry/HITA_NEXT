@@ -64,7 +64,7 @@ struct AppAboutPage {
           .width('100%')
           .padding({ top: 4, bottom: 4 })
           .backgroundColor(CARD_BG)
-          .borderRadius(16);
+          .borderRadius(HitaDesign.cardRadius);
 
           this.sectionTitle('鸣谢');
           Column() {
@@ -75,7 +75,7 @@ struct AppAboutPage {
           .width('100%')
           .padding({ top: 4, bottom: 4 })
           .backgroundColor(CARD_BG)
-          .borderRadius(16);
+          .borderRadius(HitaDesign.cardRadius);
 
           Text(AboutContent.DISCLAIMER)
             .fontSize(HitaDesign.caption)
@@ -133,7 +133,7 @@ struct AppAboutPage {
         .fontSize(HitaDesign.title)
         .fontWeight(FontWeight.Medium)
         .fontColor(TEXT_PRIMARY)
-        .margin({ top: 14 });
+        .margin({ top: HitaDesign.spaceMd });
       if (this.version.length > 0) {
         Text('版本 ' + this.version)
           .fontSize(HitaDesign.caption)
@@ -143,15 +143,15 @@ struct AppAboutPage {
       Text(AboutContent.TAGLINE)
         .fontSize(HitaDesign.caption)
         .fontColor(TEXT_SECONDARY)
-        .margin({ top: 10 });
+        .margin({ top: HitaDesign.spaceSm });
       Text('隐私政策')
         .fontSize(HitaDesign.caption)
         .fontWeight(FontWeight.Medium)
         .fontColor(PRIMARY)
         .backgroundColor($r('app.color.hita_selected'))
-        .borderRadius(16)
-        .padding({ left: 14, right: 14, top: 7, bottom: 7 })
-        .margin({ top: 14 })
+        .borderRadius(HitaDesign.radiusLg)
+        .padding({ left: HitaDesign.spaceMd, right: HitaDesign.spaceMd, top: HitaDesign.spaceXs, bottom: HitaDesign.spaceXs })
+        .margin({ top: HitaDesign.spaceMd })
         .onClick(() => this.openPolicy());
     }
     .width('100%')
@@ -162,10 +162,11 @@ struct AppAboutPage {
   @Builder
   sectionTitle(title: string) {
     Text(title)
-      .fontSize(HitaDesign.section)
+      .fontSize(HitaDesign.caption)
       .fontWeight(FontWeight.Medium)
-      .fontColor(TEXT_PRIMARY)
-      .margin({ top: 20, bottom: 8 })
+      .fontColor(TEXT_SECONDARY)
+      .padding({ left: HitaDesign.inset, right: HitaDesign.inset })
+      .margin({ top: HitaDesign.sectionGap, bottom: HitaDesign.spaceXs })
       .alignSelf(ItemAlign.Start);
   }
 
@@ -173,9 +174,9 @@ struct AppAboutPage {
   contributorRow(person: AboutContributor) {
     Row() {
       Image(person.avatar)
-        .width(42)
-        .height(42)
-        .borderRadius(21)
+        .width(HitaDesign.listIconSize)
+        .height(HitaDesign.listIconSize)
+        .borderRadius(HitaDesign.listIconSize / 2)
         .objectFit(ImageFit.Cover)
         .backgroundColor($r('app.color.hita_control'))
         .alt($r('app.media.app_icon'))

@@ -1,10 +1,11 @@
 import { HitaDesign } from '../common/theme/HitaDesign';
 import { common } from '@kit.AbilityKit';
 import { HeaderBackButton } from '../common/components/HeaderBackButton';
+import { HeaderActionButton } from '../common/components/HeaderActionButton';
+import { HitaButton } from '../common/components/HitaButton';
 import { ImmersiveHeader } from '../common/components/ImmersiveHeader';
 import { HeaderFadeMask } from '../common/components/HeaderFadeMask';
 import { HeaderFade } from '../common/theme/HeaderFade';
-import { CompatibleMaterialModifier } from '../common/theme/CompatibleMaterialModifier';
 import { CompatibleLightModifier } from '../common/theme/CompatibleLightModifier';
 import { CompatibleSheetMaterial } from '../common/theme/CompatibleSheetMaterial';
 import { NAV_BAR_INSET_FALLBACK, STATUS_BAR_INSET_FALLBACK } from '../common/theme/StatusBarInset';
@@ -135,7 +136,7 @@ export struct ScorePage {
         '\n学分：' + item.credits + '\n学时：' + item.hours + '\n学期：' + item.termName +
         '\n课程性质：' + (item.courseProperty || '—') + '\n课程类别：' + (item.courseCategory || '—') +
         '\n考核方式：' + (item.assessMethod || '—') + '\n开课单位：' + (item.schoolName || '—'),
-      buttons: [{ text: '知道了', color: '#3390EC' }]
+      buttons: [{ text: '知道了', color: $r('app.color.hita_primary') }]
     });
   }
 
@@ -143,7 +144,7 @@ export struct ScorePage {
 
   @Builder
   metric(label: string, value: string) {
-    Column({ space: 5 }) {
+    Column({ space: HitaDesign.space2xs }) {
       Text(value || '—').fontSize(HitaDesign.title).fontWeight(FontWeight.Medium).fontColor($r('app.color.hita_text'))
       Text(label).fontSize(HitaDesign.caption).fontColor($r('app.color.hita_text_secondary'))
     }.layoutWeight(1).alignItems(HorizontalAlign.Center)
@@ -152,7 +153,7 @@ export struct ScorePage {
   @Builder
   statisticsCard() {
     if (this.summary.available()) {
-      Column({ space: 14 }) {
+      Column({ space: HitaDesign.spaceSm }) {
         Text(this.summary.scope).fontSize(HitaDesign.caption).fontWeight(FontWeight.Medium).fontColor($r('app.color.hita_text'))
         Row() {
           this.metric('学分绩', this.summary.weightedAverage)
@@ -168,7 +169,7 @@ export struct ScorePage {
             ' · 全部及格课程 GPA ' + (this.summary.allPassedCourseGpa || '—'))
             .fontSize(HitaDesign.caption).fontColor($r('app.color.hita_text_secondary'))
         }
-      }.width('100%').padding(16).borderRadius(16).backgroundColor($r('app.color.hita_surface'))
+      }.width('100%').padding(HitaDesign.inset).borderRadius(HitaDesign.cardRadius).backgroundColor($r('app.color.hita_surface'))
     }
     if (this.summaryMessage) {
       Text(this.summaryMessage).fontSize(HitaDesign.caption).fontColor($r('app.color.hita_text_secondary')).width('100%')
@@ -190,11 +191,9 @@ export struct ScorePage {
       Text('学分合计 ' + this.number(this.statistics.credits) + (TYPES[this.typeIndex] === ScoreTestType.MIDTERM ? '' :
         ' · 通过学分 ' + this.number(this.statistics.passedCredits)))
         .fontSize(HitaDesign.caption).fontColor($r('app.color.hita_text_secondary')).width('100%')
-      Text(TYPES[this.typeIndex] === ScoreTestType.MIDTERM ?
-        '期中按原始数值计算，不判定课程是否通过。不同课程可能采用不同满分或折算方式，均分仅供参考。' :
-        '均分只统计 0～100 的数值成绩，等级制不换算分数；按百分制及格线估算通过情况。此处不等于教务 GPA、毕业学分或官方排名。')
-        .fontSize(HitaDesign.caption).lineHeight(20).fontColor($r('app.color.hita_text_secondary')).width('100%')
-    }.width('100%').padding(16).borderRadius(16).backgroundColor($r('app.color.hita_surface'))
+      Text('均分仅统计百分制成绩')
+        .fontSize(HitaDesign.caption).fontColor($r('app.color.hita_text_secondary')).width('100%')
+    }.width('100%').padding(HitaDesign.inset).borderRadius(HitaDesign.cardRadius).backgroundColor($r('app.color.hita_surface'))
   }
 
   @Builder
@@ -229,20 +228,10 @@ export struct ScorePage {
               Text('正在查询成绩…').fontSize(HitaDesign.caption).fontColor($r('app.color.hita_text_secondary'))
             }.width('100%').layoutWeight(1).justifyContent(FlexAlign.Center)
           } else if (this.errorText) {
-            Column({ space: 18 }) {
+            Column({ space: HitaDesign.spaceMd }) {
               Text(this.errorText).fontSize(HitaDesign.body).fontColor($r('app.color.hita_text')).textAlign(TextAlign.Center)
-              Column() {
-                ImmersiveHeader({ barHeight: 52 }) {
-                  Row() {
-                    Button('重新查询', { type: ButtonType.Capsule })
-                      .width('100%').height(40).fontSize(HitaDesign.caption).fontWeight(FontWeight.Medium)
-                      .fontColor(CompatibleMaterialModifier.foreground('#FFFFFF'))
-                      .backgroundColor($r('app.color.hita_primary_fill'))
-                      .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_primary_fill')))
-                      .onClick(() => this.loadTerms())
-                  }.width('100%').height(52)
-                }
-              }.width(128).height(52)
+              HitaButton({ label: '重新查询', buttonHeight: HitaDesign.controlHeight, fitContent: true,
+                onTap: () => this.loadTerms() })
             }.width('100%').layoutWeight(1).padding(28).justifyContent(FlexAlign.Center)
           }
         }.width('100%').height('100%')
@@ -286,14 +275,9 @@ export struct ScorePage {
           } })
           Text('成绩与统计').fontSize(HitaDesign.title).fontWeight(FontWeight.Medium).fontColor($r('app.color.hita_text'))
             .layoutWeight(1).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
-          Button('刷新', { type: ButtonType.Capsule })
-            .height(34).fontSize(HitaDesign.caption).fontWeight(FontWeight.Medium)
-            .padding({ left: 12, right: 12 })
-            .fontColor(CompatibleMaterialModifier.foreground('#FFFFFF'))
-            .backgroundColor($r('app.color.hita_primary_fill'))
-            .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_primary_fill'), false,
-              !this.presentedAsSheet || CompatibleSheetMaterial.isEnabled()))
-            .enabled(!this.loading).onClick(() => this.loadTerms())
+          HeaderActionButton({ label: '刷新', disabled: this.loading,
+            materialEnabled: !this.presentedAsSheet || CompatibleSheetMaterial.isEnabled(),
+            onTap: () => this.loadTerms() })
         }.width('100%').height(HEADER_HEIGHT).padding({ left: 16, right: 16 })
           .alignItems(VerticalAlign.Center).hitTestBehavior(HitTestMode.Transparent)
       }

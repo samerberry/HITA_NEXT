@@ -3,6 +3,7 @@ import { HitaDesign } from '../../../common/theme/HitaDesign';
 import { common } from '@kit.AbilityKit';
 import { RdbHelper } from '../../../common/db/RdbHelper';
 import { HeaderBackButton } from '../../../common/components/HeaderBackButton';
+import { HeaderActionButton } from '../../../common/components/HeaderActionButton';
 import { ImmersiveHeader } from '../../../common/components/ImmersiveHeader';
 import { CompatibleMaterialModifier } from '../../../common/theme/CompatibleMaterialModifier';
 import { HeaderFadeMask } from '../../../common/components/HeaderFadeMask';
@@ -22,6 +23,7 @@ import { TimetableSelectionStore } from '../data/TimetableSelectionStore';
 import { HitaColors } from '../../../common/theme/HitaColors';
 
 const HEADER_HEIGHT: number = 64;
+const PERIOD_BADGE_SIZE: number = 32;
 const PAGE_BG: ResourceColor = $r('app.color.hita_page');
 const PAGE_BG_RGB: string = '245,246,248';
 const CARD_BG: ResourceColor = $r('app.color.hita_surface');
@@ -350,22 +352,11 @@ export struct ImportTimetablePanel {
             .layoutWeight(1)
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis });
-          Text(this.importing ? '导入中' : '导入')
-            .fontSize(HitaDesign.caption)
-            .fontWeight(FontWeight.Medium)
-            .fontColor(CompatibleMaterialModifier.foreground($r('app.color.hita_primary_3390ec')))
-            .height(32)
-            .padding({ left: 12, right: 12 })
-            .borderRadius(16)
-            .backgroundColor($r('app.color.hita_selected_ebf4fc'))
-            .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_selected_ebf4fc'), false,
-              !this.presentedAsSheet || CompatibleSheetMaterial.isEnabled()))
-            .textAlign(TextAlign.Center)
-            .margin({ left: 8 })
-            .flexShrink(0)
-            .enabled(!this.importing && !this.loading && !this.detailsLoading &&
-              this.startTime > 0 && this.selectedTerm() !== undefined)
-            .onClick(() => this.import());
+          HeaderActionButton({ label: this.importing ? '导入中' : '导入',
+            disabled: this.importing || this.loading || this.detailsLoading || this.startTime <= 0 ||
+              this.selectedTerm() === undefined,
+            materialEnabled: !this.presentedAsSheet || CompatibleSheetMaterial.isEnabled(), onTap: () => this.import() })
+            .margin({ left: HitaDesign.spaceXs });
         }
         .width('100%')
         .height(HEADER_HEIGHT)
@@ -412,7 +403,7 @@ export struct ImportTimetablePanel {
           .accessibilityLevel('no');
       }
       .width('100%')
-      .margin({ top: 10 })
+      .margin({ top: HitaDesign.spaceSm })
       .onClick(() => this.chooseTerm());
     }
     .width('100%')
@@ -472,7 +463,7 @@ export struct ImportTimetablePanel {
         .fontSize(HitaDesign.caption)
         .fontColor(TEXT_SECONDARY)
         .width('100%')
-        .margin({ top: 5, bottom: 10 });
+        .margin({ top: HitaDesign.space2xs, bottom: HitaDesign.spaceSm });
       Column() {
         ForEach(this.schedule, (period: EasTimePeriodInDay, index: number) => {
           Row() {
@@ -482,9 +473,9 @@ export struct ImportTimetablePanel {
                 .fontWeight(FontWeight.Medium)
                 .fontColor(HitaColors.primary);
             }
-            .width(34)
-            .height(34)
-            .borderRadius(17)
+            .width(PERIOD_BADGE_SIZE)
+            .height(PERIOD_BADGE_SIZE)
+            .borderRadius(PERIOD_BADGE_SIZE / 2)
             .backgroundColor($r('app.color.hita_selected_e8f3fd'))
             .alignContent(Alignment.Center);
             Column() {
@@ -513,7 +504,7 @@ export struct ImportTimetablePanel {
             Divider()
               .strokeWidth(1)
               .color($r('app.color.hita_divider_eef1f5'))
-              .margin({ left: 46 });
+              .margin({ left: PERIOD_BADGE_SIZE + HitaDesign.spaceSm });
           }
         }, (period: EasTimePeriodInDay, index: number) => index.toString() + period.toString());
       }

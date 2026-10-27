@@ -86,7 +86,7 @@ test('today empty state has no login or timetable management actions', () => {
 test('timetable empty state and more page retain timetable workflows', () => {
   const home = fs.readFileSync(path.join(etsRoot, 'pages/Home.ets'), 'utf8');
   assert.equal((home.match(/this\.emptyTimetableActions\(\)/g) || []).length, 1);
-  const timetable = home.slice(home.indexOf('  tabTimetable()'), home.indexOf('  statusBanner('));
+  const timetable = home.slice(home.indexOf('  tabTimetable()'), home.indexOf('  tabMine()'));
   assert.match(timetable, /this\.emptyTimetableActions\(\)/);
   const actions = home.slice(home.indexOf('  emptyTimetableActions()'), home.indexOf('  tabTimetable()'));
   assert.match(actions, /pages\/ImportTimetablePage/);
@@ -108,7 +108,7 @@ test('local search and its empty section are not reachable or shipped', () => {
 
 test('classroom lookup opens the query page as a sheet from More and keeps its route', () => {
   const home = fs.readFileSync(path.join(etsRoot, 'pages/Home.ets'), 'utf8');
-  assert.match(home, /'空教室',\s*'[^']*', \(\) => \{\s*this\.openAcademicPanel\(4\);/);
+  assert.match(home, /title: '空教室',\s*subtitle: '[^']*', divider: true, onTap: \(\) => \{\s*this\.openAcademicPanel\(4\);/);
   assert.match(home, /this\.academicPanelKind === 4\) \{\s*EmptyClassroomPage\(\{ presentedAsSheet: true, onClose: \(\) => this\.closeActiveSheet\(\) \}\)/);
   // The standalone route stays registered for direct navigation.
   const pages = JSON.parse(fs.readFileSync(path.join(etsRoot, '../resources/base/profile/main_pages.json'), 'utf8'));
@@ -250,7 +250,7 @@ test('the window fills the status bar instead of leaving a white top inset', () 
   const tabPage = home.slice(home.indexOf('function tabPage'), home.indexOf('class TimetableMarqueeCallback'));
   assert.match(tabPage, /SafeAreaEdge\.BOTTOM/);
   assert.doesNotMatch(tabPage, /SafeAreaEdge\.TOP/);
-  const tab = home.slice(home.indexOf('  tabTimetable()'), home.indexOf('  statusBanner('));
+  const tab = home.slice(home.indexOf('  tabTimetable()'), home.indexOf('  tabMine()'));
   assert.match(tab, /Image\(this\.timetableBgUri\)[\s\S]*SafeAreaEdge\.TOP, SafeAreaEdge\.BOTTOM/);
   assert.match(home, /new CompatibleDockModifier\(12 \+ this\.navBarInset,/);
   assert.match(ability, /captureSystemInsets/);
@@ -275,7 +275,7 @@ test('standalone assistant composer follows the keyboard without reserving a rem
   assert.match(assistant, /return this\.keyboardInset/);
   assert.match(assistant, /setKeyboardAvoidMode\(KeyboardAvoidMode\.NONE\)/);
   assert.match(assistant, /setKeyboardAvoidMode\(KeyboardAvoidMode\.OFFSET\)/);
-  assert.match(assistant, /bottom: 8 \+ this\.inputBarBottom\(\)/);
+  assert.match(assistant, /bottom: HitaDesign\.spaceXs \+ this\.inputBarBottom\(\)/);
   assert.match(assistant, /private dismissKeyboard\(\): void/);
   assert.match(assistant, /composerController\.stopEditing\(\)/);
   assert.match(assistant, /getFocusController\(\)\.clearFocus\(\)/);

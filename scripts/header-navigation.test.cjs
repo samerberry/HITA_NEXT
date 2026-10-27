@@ -52,7 +52,9 @@ test('timetable detail uses an aligned color circle instead of the old back butt
   const content = read('feature/timetable/views/CourseDetailContent.ets');
   const header = content.slice(content.indexOf('  build() {'), content.indexOf('      if (this.courseColorEditing) {'));
   const row = content.slice(content.indexOf('  courseDetailRow(symbol'), content.indexOf('  private static canvasColorCss('));
-  assert.match(content, /const COURSE_DETAIL_ICON_SIZE: number = 38;/);
+  // Detail headers and rows share the list icon size used across the app.
+  assert.match(content, /const COURSE_DETAIL_ICON_SIZE: number = HitaDesign\.listIconSize;/);
+  assert.match(read('pages/ExamPage.ets'), /const DETAIL_ICON_SIZE: number = HitaDesign\.listIconSize;/);
   assert.match(content, /const COURSE_DETAIL_TEXT_GAP: number = 12;/);
   assert.match(header, /Row\(\) \{\s*Circle\(\)/);
   assert.doesNotMatch(header, /HeaderBackButton|\.width\(7\)|\.height\(50\)/);

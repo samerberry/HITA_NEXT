@@ -1,6 +1,5 @@
 import { HitaDesign } from '../../common/theme/HitaDesign';
-import { ImmersiveHeader } from '../../common/components/ImmersiveHeader';
-import { CompatibleMaterialModifier } from '../../common/theme/CompatibleMaterialModifier';
+import { HitaButton, HitaButtonVariant } from '../../common/components/HitaButton';
 
 @CustomDialog
 export struct CreditGoalDialog {
@@ -35,25 +34,23 @@ export struct CreditGoalDialog {
 
   build() {
     Column({ space: 16 }) {
-      Text(this.categoryName + '学分目标').fontSize(20).fontWeight(FontWeight.Bold)
+      Text(this.categoryName + '学分目标').fontSize(HitaDesign.title).fontWeight(FontWeight.Medium)
         .fontColor($r('app.color.hita_text')).width('100%')
       TextInput({ text: this.value, placeholder: '目标学分' }).type(InputType.NUMBER_DECIMAL)
-        .fontSize(18).height(48).onChange((value: string) => { this.value = value; this.errorText = ''; })
+        .fontSize(HitaDesign.section).height(HitaDesign.buttonHeight).onChange((value: string) => { this.value = value; this.errorText = ''; })
         .enabled(!this.saving)
       Text(this.errorText || '设为 0 可取消目标').fontSize(HitaDesign.caption)
         .fontColor(this.errorText ? $r('app.color.hita_error') : $r('app.color.hita_text_secondary')).width('100%')
-      ImmersiveHeader({ barHeight: 44 }) {
-        Row({ space: 12 }) {
-          Button('取消', { type: ButtonType.Capsule }).layoutWeight(1).height(44).enabled(!this.saving)
-            .fontColor($r('app.color.hita_text')).backgroundColor($r('app.color.hita_surface_soft'))
-            .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_surface_soft')))
-            .onClick(() => this.controller.close())
-          Button(this.saving ? '保存中' : '保存', { type: ButtonType.Capsule }).layoutWeight(1).height(44).enabled(!this.saving)
-            .fontColor(CompatibleMaterialModifier.foreground('#FFFFFF')).backgroundColor($r('app.color.hita_primary_fill'))
-            .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_primary_fill')))
-            .onClick(() => this.save())
-        }.width('100%')
-      }
-    }.width('100%').padding(24).backgroundColor($r('app.color.hita_surface')).borderRadius(24)
+      Row({ space: HitaDesign.gap }) {
+        HitaButton({ label: '取消', variant: HitaButtonVariant.NEUTRAL, buttonHeight: HitaDesign.minTouchTarget,
+          disabled: this.saving, onTap: () => { this.controller.close(); } })
+          .width(0)
+          .layoutWeight(1)
+        HitaButton({ label: this.saving ? '保存中' : '保存', variant: HitaButtonVariant.PRIMARY, buttonHeight: HitaDesign.minTouchTarget,
+          disabled: this.saving, onTap: () => { void this.save(); } })
+          .width(0)
+          .layoutWeight(1)
+      }.width('100%')
+    }.width('100%').padding(HitaDesign.spaceLg).backgroundColor($r('app.color.hita_surface')).borderRadius(HitaDesign.heroRadius)
   }
 }

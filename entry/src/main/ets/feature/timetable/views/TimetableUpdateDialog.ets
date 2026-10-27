@@ -1,7 +1,9 @@
 import { HitaDesign } from '../../../common/theme/HitaDesign';
-import { ImmersiveHeader } from '../../../common/components/ImmersiveHeader';
-import { CompatibleMaterialModifier } from '../../../common/theme/CompatibleMaterialModifier';
+import { HitaButton, HitaButtonVariant } from '../../../common/components/HitaButton';
 import { TimetableChangeGroup, TimetableChangeKind, TimetableUpdateDiff } from '../data/TimetableUpdateDiff';
+
+/** Line height of a 16 fp course name; the 14 fp change label shares it so both sit on one baseline row. */
+const KIND_LINE_HEIGHT: number = 22;
 
 /** 教务课表的变化清单：逐条列出，由用户决定是否以教务课表为准更新。 */
 @CustomDialog
@@ -60,9 +62,9 @@ export struct TimetableUpdateDialog {
 
   @Builder
   panel() {
-    Column({ space: 14 }) {
-      Column({ space: 4 }) {
-        Text('教务课表有更新').fontSize(20).fontWeight(FontWeight.Bold)
+    Column({ space: HitaDesign.spaceMd }) {
+      Column({ space: HitaDesign.space2xs }) {
+        Text('教务课表有更新').fontSize(HitaDesign.title).fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.hita_text')).width('100%')
         Text('共 ' + this.changes.length.toString() + ' 处变化').fontSize(HitaDesign.caption)
           .fontColor($r('app.color.hita_text_secondary')).width('100%')
@@ -70,11 +72,12 @@ export struct TimetableUpdateDialog {
       Scroll() {
         Column({ space: 12 }) {
           ForEach(this.changes, (change: TimetableChangeGroup) => {
-            Row({ space: 10 }) {
+            Row({ space: HitaDesign.spaceSm }) {
               Text(TimetableUpdateDiff.kindLabel(change.kind)).fontSize(HitaDesign.caption).fontWeight(FontWeight.Medium)
-                .fontColor(this.kindColor(change.kind)).margin({ top: 1 })
-              Column({ space: 2 }) {
+                .fontColor(this.kindColor(change.kind)).lineHeight(KIND_LINE_HEIGHT)
+              Column({ space: HitaDesign.space2xs }) {
                 Text(TimetableUpdateDiff.displayName(change.name)).fontSize(HitaDesign.body).fontWeight(FontWeight.Medium)
+                  .lineHeight(KIND_LINE_HEIGHT)
                   .fontColor($r('app.color.hita_text')).width('100%')
                 Text(TimetableUpdateDiff.detailText(change)).fontSize(HitaDesign.caption)
                   .fontColor($r('app.color.hita_text_secondary')).width('100%')
@@ -92,23 +95,22 @@ export struct TimetableUpdateDialog {
       .width('100%')
       .constraintSize({ maxHeight: 340 })
       .scrollBar(BarState.Auto)
-      Text(this.errorText.length > 0 ? this.errorText :
-        '只同步上面这些教务端的变化；你翘过、改过或添加的课程保持不变，考试等其他日程不受影响。')
-        .fontSize(12)
-        .fontColor(this.errorText.length > 0 ? $r('app.color.hita_error') : $r('app.color.hita_text_secondary'))
-        .width('100%')
-      ImmersiveHeader({ barHeight: 44 }) {
-        Row({ space: 12 }) {
-          Button('暂不更新', { type: ButtonType.Capsule }).layoutWeight(1).height(44).enabled(!this.busy)
-            .fontColor($r('app.color.hita_text')).backgroundColor($r('app.color.hita_surface_soft'))
-            .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_surface_soft')))
-            .onClick(() => this.dismiss())
-          Button(this.busy ? '更新中' : '更新', { type: ButtonType.Capsule }).layoutWeight(1).height(44).enabled(!this.busy)
-            .fontColor(CompatibleMaterialModifier.foreground('#FFFFFF')).backgroundColor($r('app.color.hita_primary_fill'))
-            .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_primary_fill')))
-            .onClick(() => this.apply())
-        }.width('100%')
+      if (this.errorText.length > 0) {
+        Text(this.errorText)
+          .fontSize(HitaDesign.caption)
+          .fontColor($r('app.color.hita_error'))
+          .width('100%')
       }
-    }.width('100%').padding(24).backgroundColor($r('app.color.hita_surface')).borderRadius(24)
+      Row({ space: HitaDesign.gap }) {
+        HitaButton({ label: '暂不更新', variant: HitaButtonVariant.NEUTRAL, buttonHeight: HitaDesign.minTouchTarget,
+          disabled: this.busy, onTap: () => { void this.dismiss(); } })
+          .width(0)
+          .layoutWeight(1)
+        HitaButton({ label: this.busy ? '更新中' : '更新', variant: HitaButtonVariant.PRIMARY, buttonHeight: HitaDesign.minTouchTarget,
+          disabled: this.busy, onTap: () => { void this.apply(); } })
+          .width(0)
+          .layoutWeight(1)
+      }.width('100%')
+    }.width('100%').padding(HitaDesign.spaceLg).backgroundColor($r('app.color.hita_surface')).borderRadius(HitaDesign.heroRadius)
   }
 }

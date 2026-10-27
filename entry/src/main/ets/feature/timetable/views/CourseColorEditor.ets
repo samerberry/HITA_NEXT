@@ -80,8 +80,7 @@ export struct CourseColorEditor {
         .fontSize(20).fontWeight(FontWeight.Bold)
         .fontColor($r('app.color.hita_text')).width('100%');
       Text(this.lineMode ? '调整时间网格及每天分隔线的颜色。' : this.textMode ? '调整标题、日期和时间刻度的颜色。' :
-        (this.examMode ? '仅应用到这场考试；过亮颜色会自动压暗。' :
-          '应用到这门课程的所有课块；过亮颜色会自动压暗。'))
+        (this.examMode ? '仅应用到这场考试。' : '应用到这门课程的所有课块。'))
         .fontSize(HitaDesign.caption).fontColor($r('app.color.hita_text_secondary')).width('100%');
       Row({ space: 12 }) {
         Text(this.hex()).fontColor($r('app.color.hita_text')).layoutWeight(1);

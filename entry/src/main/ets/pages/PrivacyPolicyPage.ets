@@ -42,14 +42,14 @@ struct PrivacyPolicyPage {
                 .lineHeight(21)
                 .fontColor(TEXT_SECONDARY)
                 .width('100%')
-                .margin({ top: 10 });
+                .margin({ top: HitaDesign.spaceSm });
             }, (paragraph: string) => paragraph);
           }
           .width('100%')
           .alignItems(HorizontalAlign.Start)
-          .padding(16)
+          .padding(HitaDesign.inset)
           .backgroundColor($r('app.color.hita_surface'))
-          .borderRadius(16);
+          .borderRadius(HitaDesign.cardRadius);
           ForEach(AboutContent.policy(), (section: PolicySection) => {
             this.sectionCard(section);
           }, (section: PolicySection) => section.title);
@@ -137,8 +137,8 @@ struct PrivacyPolicyPage {
     }
     .width('100%')
     .alignItems(HorizontalAlign.Start)
-    .padding(16)
+    .padding(HitaDesign.inset)
     .backgroundColor($r('app.color.hita_surface'))
-    .borderRadius(16);
+    .borderRadius(HitaDesign.cardRadius);
   }
 }

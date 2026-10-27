@@ -117,9 +117,11 @@ struct NoticesPage {
                 Text('重要')
                   .fontSize(HitaDesign.label)
                   .fontColor($r('app.color.hita_error'))
-                  .padding({ left: 8, right: 8, top: 2, bottom: 2 })
+                  .fontWeight(FontWeight.Medium)
+                  .padding({ left: HitaDesign.spaceXs, right: HitaDesign.spaceXs, top: HitaDesign.space2xs,
+                    bottom: HitaDesign.space2xs })
                   .backgroundColor($r('app.color.hita_surface'))
-                  .borderRadius(10)
+                  .borderRadius(HitaDesign.radiusMd)
               }
             }
             .width('100%')
@@ -133,9 +135,9 @@ struct NoticesPage {
               .margin({ top: 8 })
           }
           .width('100%')
-          .padding(16)
+          .padding(HitaDesign.inset)
           .backgroundColor(notice.isCritical() ? $r('app.color.hita_error_surface_fdecec') : $r('app.color.hita_surface'))
-          .borderRadius(16)
+          .borderRadius(HitaDesign.cardRadius)
         }
       }, (notice: AppNotice) => notice.id)
     }

@@ -130,7 +130,7 @@ export function parseLegacyScores(html: string, term: EasTermItem): EasCourseSco
 
 export function parseOfficialLegacySummary(html: string): OfficialScoreSummary {
   const summary = new OfficialScoreSummary();
-  summary.scope = '教务累计统计（不随所选学期变化）';
+  summary.scope = '教务累计统计';
   const spans = /<span\b[^>]*\bid\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/span>/gi;
   let span = spans.exec(html);
   while (span !== null) {
@@ -151,7 +151,7 @@ function officialValue(data: Record<string, Object>, key: string): string {
 
 export function parseOfficialShenzhenSummary(body: string): OfficialScoreSummary {
   const summary = new OfficialScoreSummary();
-  summary.scope = '教务所选学期统计（不随成绩类型变化）';
+  summary.scope = '教务所选学期统计';
   const data = JSON.parse(body) as Record<string, Object>;
   if (!data || typeof data !== 'object' || Array.isArray(data)) return summary;
   summary.weightedAverage = officialValue(data, 'PJXFJ');

@@ -5,10 +5,10 @@ import { EasEventItem, EasTermSubject, newId } from '../../common/model/timetabl
 import { EasTimeTools } from '../../common/util/EasTimeTools';
 import { ScheduleChangeSignal } from '../../common/util/ScheduleChangeSignal';
 import { HitaDesign } from '../../common/theme/HitaDesign';
-import { CompatibleMaterialModifier } from '../../common/theme/CompatibleMaterialModifier';
 import { CompatibleSheetMaterial } from '../../common/theme/CompatibleSheetMaterial';
 import { ImmersiveHeader } from '../../common/components/ImmersiveHeader';
 import { HeaderBackButton } from '../../common/components/HeaderBackButton';
+import { HeaderActionButton } from '../../common/components/HeaderActionButton';
 import { LearningTaskEditor } from './LearningTaskEditor';
 import { LearningTaskReminders } from './LearningTaskReminders';
 
@@ -206,7 +206,7 @@ export struct LearningTasksPanel {
     Row({ space: 12 }) {
       Button({ type: ButtonType.Circle }) {
         SymbolGlyph(task.completedAt > 0 ? $r('sys.symbol.checkmark_circle_fill') : $r('sys.symbol.circle'))
-          .fontSize(24).fontColor([task.completedAt > 0 ? $r('app.color.hita_primary') : $r('app.color.hita_text_secondary')])
+          .fontSize(HitaDesign.iconLg).fontColor([task.completedAt > 0 ? $r('app.color.hita_primary') : $r('app.color.hita_text_secondary')])
       }.width(44).height(44).backgroundColor(Color.Transparent).padding(0)
         .accessibilityText(task.completedAt > 0 ? '撤销完成：' + task.title : '完成：' + task.title)
         .onClick(() => { void this.toggle(task); })
@@ -258,10 +258,8 @@ export struct LearningTasksPanel {
               Text(this.scopeTitle()).fontSize(HitaDesign.caption).fontColor($r('app.color.hita_text_secondary'))
                 .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
             }.layoutWeight(1).alignItems(HorizontalAlign.Start)
-            Button('添加', { type: ButtonType.Capsule }).height(36).fontSize(HitaDesign.caption)
-              .backgroundColor($r('app.color.hita_selected')).fontColor($r('app.color.hita_primary'))
-              .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_selected')))
-              .enabled(!this.loading && !this.busy && this.error.length === 0).onClick(() => this.createTask())
+            HeaderActionButton({ label: '添加', disabled: this.loading || this.busy || this.error.length > 0,
+              materialEnabled: CompatibleSheetMaterial.isEnabled(), onTap: () => this.createTask() })
           }.width('100%').height(60).padding({ left: 16, right: 16 })
         }
         if (this.filterKind.length === 0 && this.subjectId.length === 0 && this.examId.length === 0) {

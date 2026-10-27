@@ -870,12 +870,12 @@ export struct EventEditorForm {
         }
         if (this.hint.length > 0) {
           Text(this.hint)
-            .fontSize(HitaDesign.label)
+            .fontSize(HitaDesign.caption)
             .fontColor(this.saved ? $r('app.color.hita_success_2e7d32') : $r('app.color.hita_error'))
             .width('100%')
             .maxLines(2)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
-            .margin({ bottom: 6 })
+            .margin({ bottom: HitaDesign.spaceXs })
         }
         ImmersiveHeader({ barHeight: 56 }) {
           Button(this.loading ? '正在读取' : (this.saving ? '正在保存' :
@@ -886,7 +886,6 @@ export struct EventEditorForm {
             .fontWeight(FontWeight.Medium)
             .fontColor($r('app.color.hita_on_primary'))
             .backgroundColor($r('app.color.hita_primary_fill'))
-            .borderRadius(22)
             .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_primary_fill'), true))
             .enabled(this.canSave())
             .onClick(() => {
@@ -898,8 +897,8 @@ export struct EventEditorForm {
       .padding({
         left: HitaDesign.inset,
         right: HitaDesign.inset,
-        top: 8,
-        bottom: 10
+        top: HitaDesign.spaceXs,
+        bottom: HitaDesign.spaceSm
       })
       .backgroundColor(this.editorBackground())
     }
@@ -985,7 +984,7 @@ export struct EventEditorForm {
           .accessibilityText('名称')
           .enabled(this.selectedSubjectId.length === 0)
           .fontSize(HitaDesign.body).height(HitaDesign.buttonHeight).layoutWeight(1)
-          .padding({ left: 12, right: 12 }).borderRadius(12)
+          .padding({ left: HitaDesign.spaceSm, right: HitaDesign.spaceSm }).borderRadius(HitaDesign.fieldRadius)
           .backgroundColor($r('app.color.hita_surface_soft'))
           .onChange((value: string) => { this.name = value; this.hint = ''; })
       }.width('100%')
@@ -995,7 +994,7 @@ export struct EventEditorForm {
         TextInput({ text: this.place })
           .accessibilityText('教室')
           .fontSize(HitaDesign.body).height(HitaDesign.buttonHeight).layoutWeight(1)
-          .padding({ left: 12, right: 12 }).borderRadius(12)
+          .padding({ left: HitaDesign.spaceSm, right: HitaDesign.spaceSm }).borderRadius(HitaDesign.fieldRadius)
           .backgroundColor($r('app.color.hita_surface_soft'))
           .onChange((value: string) => { this.place = value; })
       }.width('100%')
@@ -1005,7 +1004,7 @@ export struct EventEditorForm {
         TextInput({ text: this.teacher })
           .accessibilityText('教师')
           .fontSize(HitaDesign.body).height(HitaDesign.buttonHeight).layoutWeight(1)
-          .padding({ left: 12, right: 12 }).borderRadius(12)
+          .padding({ left: HitaDesign.spaceSm, right: HitaDesign.spaceSm }).borderRadius(HitaDesign.fieldRadius)
           .backgroundColor($r('app.color.hita_surface_soft'))
           .onChange((value: string) => { this.teacher = value; })
       }.width('100%')
@@ -1056,21 +1055,20 @@ export struct EventEditorForm {
 
   @Builder
   typeRow() {
-    Row() {
+    Row({ space: HitaDesign.space2xs }) {
       ForEach(TYPE_ITEMS, (item: string, index: number) => {
         Button(item)
           .fontSize(HitaDesign.caption)
           .fontWeight(FontWeight.Medium)
           .layoutWeight(1)
-          .height(38)
-          .margin({ left: index === 0 ? 0 : 3, right: index === TYPE_ITEMS.length - 1 ? 0 : 3 })
+          .height(HitaDesign.controlHeight)
           .backgroundColor(this.typeIdx === index ? $r('app.color.hita_primary_fill') : $r('app.color.hita_surface'))
           .attributeModifier(new CompatibleMaterialModifier(this.typeIdx === index ?
             $r('app.color.hita_primary_fill') : $r('app.color.hita_surface'), this.typeIdx === index,
             !this.sheetMode || CompatibleSheetMaterial.isEnabled()))
-          .fontColor(this.typeIdx === index ? '#FFFFFF' :
+          .fontColor(this.typeIdx === index ? $r('app.color.hita_on_primary') :
             CompatibleMaterialModifier.foreground($r('app.color.hita_text_333333')))
-          .borderRadius(10)
+          .borderRadius(HitaDesign.radiusMd)
           .onClick(() => {
             this.typeIdx = index;
             if (index === 1 && this.editId.length === 0) {
@@ -1080,8 +1078,8 @@ export struct EventEditorForm {
       }, (item: string) => item)
     }
     .width('100%')
-    .height(48)
-    .padding(5)
+    .height(HitaDesign.buttonHeight)
+    .padding(HitaDesign.space2xs)
     .backgroundColor($r('app.color.hita_control_e8edf4'))
     .borderRadius(HitaDesign.cardRadius)
   }
@@ -1108,7 +1106,7 @@ export struct EventEditorForm {
           onChoosingChanged: (choosing: boolean) => { this.choosingWeeks = choosing; } })
         Text('教学周').fontSize(HitaDesign.caption).fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.hita_text_202b45'))
-        Row({ space: 6 }) {
+        Row({ space: HitaDesign.spaceXs }) {
           ForEach(['全部', '单周', '双周', '清空'], (label: string, index: number) => {
             CourseControlHost({
               barHeight: 32, materialEnabled: this.courseMaterialsEnabled(), itemWeight: 1,
@@ -1139,7 +1137,7 @@ export struct EventEditorForm {
     .alignItems(HorizontalAlign.Start)
     .padding(HitaDesign.inset)
     .backgroundColor(this.courseCardColor())
-    .borderRadius(16)
+    .borderRadius(HitaDesign.cardRadius)
     .clip(false)
   }
 
@@ -1181,7 +1179,7 @@ export struct EventEditorForm {
     .alignItems(VerticalAlign.Center)
     .padding(HitaDesign.inset)
     .backgroundColor(this.courseCardColor())
-    .borderRadius(16)
+    .borderRadius(HitaDesign.cardRadius)
     .onClick(() => {
       this.chooseDate();
     })
@@ -1199,7 +1197,7 @@ export struct EventEditorForm {
           labels: ['具体时间', '按节次'], selectedIndex: this.timeMode,
           onSelect: (index: number) => { this.timeMode = index; this.hint = ''; }
         })
-          .width('100%').margin({ top: 10 })
+          .width('100%').margin({ top: HitaDesign.spaceSm })
       }
       Row({ space: HitaDesign.gap }) {
         Row() {
@@ -1221,9 +1219,9 @@ export struct EventEditorForm {
         }
         .layoutWeight(1)
         .alignItems(VerticalAlign.Center)
-        .padding({ left: 12, right: 12, top: 10, bottom: 10 })
+        .padding(HitaDesign.spaceSm)
         .backgroundColor($r('app.color.hita_surface_soft'))
-        .borderRadius(12)
+        .borderRadius(HitaDesign.fieldRadius)
         .onClick(() => {
           if (this.usesPeriods()) this.choosePeriod(true); else this.pickStartTime();
         })
@@ -1246,9 +1244,9 @@ export struct EventEditorForm {
         }
         .layoutWeight(1)
         .alignItems(VerticalAlign.Center)
-        .padding({ left: 12, right: 12, top: 10, bottom: 10 })
+        .padding(HitaDesign.spaceSm)
         .backgroundColor($r('app.color.hita_surface_soft'))
-        .borderRadius(12)
+        .borderRadius(HitaDesign.fieldRadius)
         .onClick(() => {
           if (this.usesPeriods()) this.choosePeriod(false); else this.pickEndTime();
         })
@@ -1264,7 +1262,7 @@ export struct EventEditorForm {
     .alignItems(HorizontalAlign.Start)
     .padding(HitaDesign.inset)
     .backgroundColor(this.courseCardColor())
-    .borderRadius(16)
+    .borderRadius(HitaDesign.cardRadius)
   }
 
 }

@@ -10,7 +10,7 @@ import { CompatibleSheetMaterial } from '../../../common/theme/CompatibleSheetMa
 import { CompatibleLightModifier } from '../../../common/theme/CompatibleLightModifier';
 import { CourseColorEditor } from './CourseColorEditor';
 import { timetableBlockColor } from './TimetableWeekDraw';
-const COURSE_DETAIL_ICON_SIZE: number = 38;
+const COURSE_DETAIL_ICON_SIZE: number = HitaDesign.listIconSize;
 const COURSE_DETAIL_TEXT_GAP: number = 12;
 const COLOR_TEXT_PRIMARY: ResourceColor = $r('app.color.hita_text');
 const COLOR_TEXT_SECONDARY: ResourceColor = $r('app.color.hita_text_secondary');
@@ -81,7 +81,7 @@ export struct CourseDetailContent {
       }
       .width('100%')
       .alignItems(VerticalAlign.Center)
-      .margin({ bottom: 14 });
+      .margin({ bottom: HitaDesign.spaceMd });
 
       if (this.courseColorEditing) {
         CourseColorEditor({
@@ -120,7 +120,7 @@ export struct CourseDetailContent {
     }
     .width('100%')
     .padding({ left: HitaDesign.inset, right: HitaDesign.inset, top: 0, bottom: 24 })
-    .attributeModifier(new CompatibleLightModifier(24, CompatibleSheetMaterial.isEnabled(), true));
+    .attributeModifier(new CompatibleLightModifier(HitaDesign.heroRadius, CompatibleSheetMaterial.isEnabled(), true));
   }
 
   @Builder
@@ -145,7 +145,7 @@ export struct CourseDetailContent {
           .fontSize(HitaDesign.body)
           .fontWeight(FontWeight.Medium)
           .fontColor(COLOR_TEXT_PRIMARY)
-          .margin({ top: 2 })
+          .margin({ top: HitaDesign.space2xs })
           .maxLines(3)
           .textOverflow({ overflow: TextOverflow.Ellipsis });
       }

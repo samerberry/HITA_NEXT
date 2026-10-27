@@ -172,7 +172,7 @@ export struct EasLoginPage {
     }
     this.getUIContext().getPromptAction().showDialog({
       title: '重置网页登录',
-      message: '将清除本应用内网页的登录状态和缓存，其他网页登录可能需要重新登录。已导入的课表、课程和设置不会删除。',
+      message: '将清除本应用内网页的登录状态和缓存。',
       buttons: [{ text: '取消', color: $r('app.color.hita_text_secondary_6b7a90') }, { text: '重置登录', color: $r('app.color.hita_primary') }]
     }).then((result) => {
       if (result.index === 1 && this.pageActive) {
@@ -288,11 +288,11 @@ export struct EasLoginPage {
               .maxLines(1)
               .textOverflow({ overflow: TextOverflow.Ellipsis });
             Text(this.campusDisplayName)
-              .fontSize(12)
+              .fontSize(HitaDesign.caption)
               .fontColor(HitaColors.primary)
               .maxLines(1)
               .textOverflow({ overflow: TextOverflow.Ellipsis })
-              .margin({ top: 2 });
+              .margin({ top: HitaDesign.space2xs });
           }
           .layoutWeight(1)
           .alignItems(HorizontalAlign.Start);
@@ -358,26 +358,26 @@ export struct EasLoginPage {
       if (this.errorText.length > 0 || this.recoveryBusy) {
         Row() {
           Text(this.recoveryBusy ? '正在重置网页登录' : this.errorText)
-            .fontSize(12)
+            .fontSize(HitaDesign.caption)
             .fontColor($r('app.color.hita_error_b91c1c'))
             .layoutWeight(1)
           if (!this.recoveryBusy) {
             Button('重置登录')
-              .fontSize(12)
+              .fontSize(HitaDesign.caption)
               .fontColor(HitaColors.primary)
               .backgroundColor(Color.Transparent)
               .attributeModifier(new CompatibleMaterialModifier(Color.Transparent))
               .onClick(() => this.confirmRecovery())
           }
           Text('✕')
-            .fontSize(12)
+            .fontSize(HitaDesign.caption)
             .fontColor($r('app.color.hita_error_b91c1c'))
             .onClick(() => {
               this.errorText = '';
             })
         }
         .width('100%')
-        .padding({ left: 14, right: 14, top: 9, bottom: 9 })
+        .padding({ left: HitaDesign.inset, right: HitaDesign.inset, top: HitaDesign.spaceXs, bottom: HitaDesign.spaceXs })
         .backgroundColor($r('app.color.hita_error_surface_fff1f0'))
         .border({ width: { bottom: 1 }, color: $r('app.color.hita_error_border') })
       }
@@ -481,25 +481,21 @@ export struct EasLoginPage {
               .width(54)
               .height(54)
               .objectFit(ImageFit.Contain)
-              .borderRadius(15)
+              .borderRadius(HitaDesign.radiusLg)
               .backgroundColor($r('app.color.hita_surface'))
               .shadow({ radius: 12, color: '#14000000', offsetY: 4 });
             LoadingProgress()
               .width(28)
               .height(28)
               .color(HitaColors.primary)
-              .margin({ top: 18, bottom: 12 });
+              .margin({ top: HitaDesign.spaceMd, bottom: HitaDesign.spaceSm });
             Text('正在打开统一认证页面')
-              .fontSize(16)
+              .fontSize(HitaDesign.body)
               .fontWeight(FontWeight.Medium)
               .fontColor(HitaColors.onSurface);
-            Text('请稍候，登录过程将在校区教务页面内完成')
-              .fontSize(12)
-              .fontColor(HitaColors.onSurfaceVariant)
-              .margin({ top: 7 });
           }
-          .padding({ left: 24, right: 24, top: 24, bottom: 24 })
-          .borderRadius(18)
+          .padding(HitaDesign.spaceLg)
+          .borderRadius(HitaDesign.cardRadius)
           .backgroundColor($r('app.color.hita_surface'))
           .hitTestBehavior(HitTestMode.None)
           .shadow({ radius: 18, color: '#18000000', offsetY: 6 });

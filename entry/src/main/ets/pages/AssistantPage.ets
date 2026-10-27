@@ -1,4 +1,5 @@
 import { HitaDesign } from '../common/theme/HitaDesign';
+import { HitaButton, HitaButtonVariant } from '../common/components/HitaButton';
 /**
  * AssistantPage.ets — 功能中心「助手」：课表问答 + 可选云端大模型。
  * 顶部抬头与功能中心相同：Scroll 占位 + 渐隐遮罩 + 覆盖标题。
@@ -18,6 +19,9 @@ import { AssistantProvider, AssistantSettings, AssistantSettingsStore } from '..
 import { KEYBOARD_INSET_FALLBACK, NAV_BAR_INSET_FALLBACK, STATUS_BAR_INSET_FALLBACK } from '../common/theme/StatusBarInset';
 
 const COLOR_PRIMARY: ResourceColor = $r('app.color.hita_primary');
+/** Chat bubbles and the thinking indicator share one inset. */
+const BUBBLE_PADDING: Padding = { left: HitaDesign.spaceMd, right: HitaDesign.spaceMd, top: HitaDesign.spaceSm,
+  bottom: HitaDesign.spaceSm };
 const COLOR_CARD: ResourceColor = $r('app.color.hita_surface');
 const COLOR_TEXT_PRIMARY: ResourceColor = $r('app.color.hita_text');
 const COLOR_TEXT_SECONDARY: ResourceColor = $r('app.color.hita_text_secondary');
@@ -190,9 +194,9 @@ struct AssistantPage {
                   .fontSize(HitaDesign.caption)
                   .fontColor(COLOR_TEXT_SECONDARY);
               }
-              .padding({ left: 14, right: 14, top: 10, bottom: 10 })
+              .padding(BUBBLE_PADDING)
               .backgroundColor(COLOR_CARD)
-              .borderRadius(16);
+              .borderRadius(HitaDesign.cardRadius);
             }
             if (this.chat.messages.length <= 1 && !this.chat.sending) {
               this.suggestions();
@@ -321,46 +325,34 @@ struct AssistantPage {
       TextInput({ placeholder: this.provider === AssistantProvider.ZHIPU ? '智谱开放平台 API Key' : 'DeepSeek API Key',
         text: this.apiKeyDraft, controller: this.settingsKeyController })
         .type(InputType.Password)
-        .height(42)
-        .margin({ top: 10 })
+        .height(HitaDesign.minTouchTarget)
+        .margin({ top: HitaDesign.spaceSm })
         .backgroundColor($r('app.color.hita_page'))
-        .borderRadius(12)
+        .borderRadius(HitaDesign.fieldRadius)
         .onChange((value: string) => {
           this.apiKeyDraft = value;
         });
-      ImmersiveHeader({ barHeight: 52 }) {
-        Row({ space: HitaDesign.gap }) {
-          Button('取消', { type: ButtonType.Capsule })
-            .width(0)
-            .layoutWeight(1)
-            .height(40)
-            .fontColor(CompatibleMaterialModifier.foreground(COLOR_PRIMARY))
-            .backgroundColor(COLOR_NAV_ACTIVE)
-            .attributeModifier(new CompatibleMaterialModifier(COLOR_NAV_ACTIVE))
-            .onClick(() => {
-              this.settingsOpen = false;
-            });
-          Button('保存', { type: ButtonType.Capsule })
-            .width(0)
-            .layoutWeight(1)
-            .height(40)
-            .fontWeight(FontWeight.Medium)
-            .fontColor(CompatibleMaterialModifier.foreground('#FFFFFF'))
-            .backgroundColor($r('app.color.hita_primary_fill'))
-            .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_primary_fill')))
-            .onClick(() => {
-              this.saveSettings();
-            });
-        }
-        .width('100%')
-        .height(52)
-        .padding({ top: 12 });
+      Row({ space: HitaDesign.gap }) {
+        HitaButton({ label: '取消', variant: HitaButtonVariant.NEUTRAL, buttonHeight: HitaDesign.controlHeight,
+          onTap: () => {
+            this.settingsOpen = false;
+          } })
+          .width(0)
+          .layoutWeight(1);
+        HitaButton({ label: '保存', variant: HitaButtonVariant.PRIMARY, buttonHeight: HitaDesign.controlHeight,
+          onTap: () => {
+            this.saveSettings();
+          } })
+          .width(0)
+          .layoutWeight(1);
       }
+      .width('100%')
+      .margin({ top: HitaDesign.spaceSm });
     }
     .alignItems(HorizontalAlign.Start)
-    .padding(16)
+    .padding(HitaDesign.inset)
     .backgroundColor(COLOR_CARD)
-    .borderRadius(16);
+    .borderRadius(HitaDesign.cardRadius);
   }
 
   @Builder
@@ -371,8 +363,8 @@ struct AssistantPage {
       .fontColor(this.provider === provider ? COLOR_TEXT_PRIMARY : COLOR_TEXT_SECONDARY)
       .textAlign(TextAlign.Center)
       .layoutWeight(1)
-      .height(34)
-      .borderRadius(10)
+      .height(HitaDesign.compactControlHeight)
+      .borderRadius(HitaDesign.radiusMd)
       .backgroundColor(this.provider === provider ? COLOR_CARD : 'transparent')
       .onClick(() => {
         this.provider = provider;
@@ -386,11 +378,11 @@ struct AssistantPage {
         Blank();
         Text(message.content)
           .fontSize(HitaDesign.body)
-          .fontColor('#FFFFFF')
+          .fontColor($r('app.color.hita_on_primary'))
           .lineHeight(22)
-          .padding({ left: 14, right: 14, top: 10, bottom: 10 })
+          .padding(BUBBLE_PADDING)
           .backgroundColor($r('app.color.hita_primary_fill'))
-          .borderRadius(16)
+          .borderRadius(HitaDesign.cardRadius)
           .constraintSize({ maxWidth: '82%' })
           .copyOption(CopyOptions.LocalDevice);
       }
@@ -410,9 +402,9 @@ struct AssistantPage {
         }
       }
       .alignItems(HorizontalAlign.Start)
-      .padding({ left: 14, right: 14, top: 10, bottom: 10 })
+      .padding(BUBBLE_PADDING)
       .backgroundColor(COLOR_CARD)
-      .borderRadius(16)
+      .borderRadius(HitaDesign.cardRadius)
       .constraintSize({ maxWidth: '88%' });
     }
   }
@@ -424,9 +416,9 @@ struct AssistantPage {
         Text(suggestion)
           .fontSize(HitaDesign.caption)
           .fontColor(COLOR_PRIMARY)
-          .padding({ left: 12, right: 12, top: 7, bottom: 7 })
+          .padding({ left: HitaDesign.spaceSm, right: HitaDesign.spaceSm, top: HitaDesign.spaceXs, bottom: HitaDesign.spaceXs })
           .backgroundColor(COLOR_NAV_ACTIVE)
-          .borderRadius(16)
+          .borderRadius(HitaDesign.radiusLg)
           .margin({ right: 8, bottom: 8 })
           .onClick(() => {
             this.send(suggestion);
@@ -442,9 +434,9 @@ struct AssistantPage {
       TextInput({ placeholder: '问问课表，比如“明天有什么课”', text: this.input,
         controller: this.composerController })
         .layoutWeight(1)
-        .height(44)
+        .height(HitaDesign.minTouchTarget)
         .backgroundColor(COLOR_CARD)
-        .borderRadius(22)
+        .borderRadius(HitaDesign.minTouchTarget / 2)
         .padding({ left: 16, right: 16 })
         .enterKeyType(EnterKeyType.Send)
         .onChange((value: string) => {
@@ -456,7 +448,7 @@ struct AssistantPage {
       Button({ type: ButtonType.Circle }) {
         SymbolGlyph($r('sys.symbol.paperplane_fill'))
           .fontSize(HitaDesign.iconMd)
-          .fontColor(['#FFFFFF']);
+          .fontColor([$r('app.color.hita_on_primary')]);
       }
       .width(44)
       .height(44)
@@ -472,6 +464,7 @@ struct AssistantPage {
       });
     }
     .width('100%')
-    .padding({ left: 16, right: 16, top: 6, bottom: 8 + this.inputBarBottom() });
+    .padding({ left: HitaDesign.inset, right: HitaDesign.inset, top: HitaDesign.spaceXs,
+      bottom: HitaDesign.spaceXs + this.inputBarBottom() });
   }
 }

@@ -1,4 +1,5 @@
 import { HitaDesign } from '../common/theme/HitaDesign';
+import { HitaButton, HitaButtonVariant } from '../common/components/HitaButton';
 /**
  * NewsPage.ets — 功能中心「资讯」：博客与通知。
  */
@@ -169,7 +170,7 @@ struct NewsPage {
         Text('博客与通知')
           .fontSize(HitaDesign.caption)
           .fontColor(COLOR_TEXT_SECONDARY)
-          .margin({ top: 2 });
+          .margin({ top: HitaDesign.space2xs });
       }
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start);
@@ -208,9 +209,9 @@ struct NewsPage {
           }, (category: NewsCategory) => category.id);
         }
         .width('100%')
-        .padding(4)
+        .padding(HitaDesign.space2xs)
         .backgroundColor($r('app.color.hita_control_eaf0f7'))
-        .borderRadius(16);
+        .borderRadius(HitaDesign.cardRadius);
       }
     }
     .width('100%')
@@ -226,8 +227,8 @@ struct NewsPage {
       .fontColor(this.selected === index ? COLOR_TEXT_PRIMARY : COLOR_TEXT_SECONDARY)
       .textAlign(TextAlign.Center)
       .layoutWeight(1)
-      .height(36)
-      .borderRadius(12)
+      .height(HitaDesign.compactControlHeight)
+      .borderRadius(HitaDesign.radiusMd)
       .backgroundColor(this.selected === index ? COLOR_CARD : 'transparent')
       .onClick(() => {
         this.selectTab(index);
@@ -312,29 +313,17 @@ struct NewsPage {
         Text(this.message)
           .fontSize(HitaDesign.caption)
           .fontColor(COLOR_TEXT_HINT);
-        Button('重试')
-          .fontSize(HitaDesign.caption)
-          .height(36)
-          .fontColor(COLOR_PRIMARY)
-          .backgroundColor(COLOR_NAV_ACTIVE)
-          .attributeModifier(new CompatibleMaterialModifier(COLOR_NAV_ACTIVE))
-          .borderRadius(HitaDesign.cardRadius)
-          .margin({ top: 10 })
-          .onClick(() => {
+        HitaButton({ label: '重试', variant: HitaButtonVariant.SECONDARY,
+          buttonHeight: HitaDesign.compactControlHeight, fitContent: true, onTap: () => {
             this.reload();
-          });
+          } })
+          .margin({ top: HitaDesign.spaceSm });
         if (this.sourceUrl.length > 0) {
-          Button('打开通知网站')
-            .fontSize(HitaDesign.caption)
-            .height(36)
-            .fontColor(COLOR_PRIMARY)
-            .backgroundColor(COLOR_NAV_ACTIVE)
-            .attributeModifier(new CompatibleMaterialModifier(COLOR_NAV_ACTIVE))
-            .borderRadius(HitaDesign.cardRadius)
-            .margin({ top: 10 })
-            .onClick(() => {
+          HitaButton({ label: '打开通知网站', variant: HitaButtonVariant.SECONDARY,
+            buttonHeight: HitaDesign.compactControlHeight, fitContent: true, onTap: () => {
               this.openSource();
-            });
+            } })
+            .margin({ top: HitaDesign.spaceSm });
         }
       } else if (!this.hasMore && this.items.length > 0) {
         Text('没有更多了')
@@ -365,7 +354,7 @@ struct NewsPage {
             .fontSize(NewsPresentation.avatarFontSize(row.avatarText))
             .lineHeight(row.avatarText.includes('\n') ? 13 : 18)
             .fontWeight(FontWeight.Medium)
-            .fontColor('#FFFFFF')
+            .fontColor($r('app.color.hita_on_primary'))
             .textAlign(TextAlign.Center)
             .maxLines(row.avatarText.includes('\n') ? 2 : 1)
             .wordBreak(WordBreak.BREAK_ALL);
@@ -432,7 +421,7 @@ struct NewsPage {
               .maxLines(2)
               .textOverflow({ overflow: TextOverflow.Ellipsis })
               .width('100%')
-              .margin({ top: 2 });
+              .margin({ top: HitaDesign.space2xs });
           }
         }
         .layoutWeight(1)
@@ -441,13 +430,13 @@ struct NewsPage {
       }
       .width('100%')
       .alignItems(VerticalAlign.Top)
-      .padding({ left: 14, right: 14, top: 12, bottom: 12 });
+      .padding({ left: HitaDesign.inset, right: HitaDesign.inset, top: HitaDesign.spaceSm, bottom: HitaDesign.spaceSm });
 
       if (!last) {
         Divider()
           .strokeWidth(0.5)
           .color($r('app.color.hita_divider_edf1f7'))
-          .margin({ left: 14 + AVATAR_SIZE + 12, right: 14 });
+          .margin({ left: HitaDesign.inset + AVATAR_SIZE + HitaDesign.spaceSm, right: HitaDesign.inset });
       }
     }
     .width('100%')

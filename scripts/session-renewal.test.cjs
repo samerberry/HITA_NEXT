@@ -115,7 +115,7 @@ function setup() {
   const request = (api, s, endpoint = '/kbcx/queryGrkb') =>
     api.request(s, easWebLoginConfigFor(s.campus, s.getStudentType()), endpoint, new EasApiClientOptions());
   return { state, web, timers, tick, load, store, appState, session, request, EasSession, EasCampus,
-    EasApiClient, EasSessionRenewal, EasSilentLogin, SILENT_LOGIN_TIMEOUT_MS, EasCampusUrls };
+    EasApiClient, EasSessionRenewal, EasSilentLogin, SILENT_LOGIN_TIMEOUT_MS, EasCampusUrls, easWebLoginConfigFor };
 }
 
 /** Server fixture: only the listed session cookie is still accepted. */
@@ -331,7 +331,8 @@ test('hidden login completes through the shared login flow and releases its web 
   h.state.cookie = 'JSESSIONID=fresh; HIT=gateway';
   h.web.loadUrl = () => { throw Error('optional laboratory site unavailable'); };
   const run = silent(h, h.EasCampus.BENBU);
-  assert.equal(run.url, h.EasCampusUrls.BENBU_LOGIN);
+  // Hidden login opens whatever entry the campus config names (Benbu undergraduates moved to the VPN jwts entry).
+  assert.equal(run.url, h.easWebLoginConfigFor(h.EasCampus.BENBU, '1').loginUrl);
   assert.ok(h.state.activations > 0, 'an unattached web view must be activated to run scripts');
   await run.page(h.EasCampusUrls.BENBU_JWTS);
   await h.tick(0);

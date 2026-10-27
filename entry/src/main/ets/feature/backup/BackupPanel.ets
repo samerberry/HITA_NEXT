@@ -79,7 +79,7 @@ export struct BackupPanel {
       await BackupService.restore(this.context(), this.prepared, message => this.progress(message));
       BackupService.discard(this.prepared);
       this.prepared = undefined;
-      this.status = '备份已恢复，现有课表已保留';
+      this.status = '备份已恢复';
       this.onRestored();
     } catch (error) { this.showError(error as Error); }
     finally { this.setBusy(false); }
@@ -115,9 +115,9 @@ export struct BackupPanel {
       Scroll() {
         Column({ space: 16 }) {
           Column({ space: 16 }) {
-            Row({ space: 14 }) {
+            Row({ space: HitaDesign.spaceSm }) {
               SymbolGlyph($r('sys.symbol.doc_plaintext')).fontSize(HitaDesign.iconXl).fontColor([$r('app.color.hita_primary')])
-              Column({ space: 5 }) {
+              Column({ space: HitaDesign.space2xs }) {
                 Text('保存你的课表').fontSize(HitaDesign.section).fontWeight(FontWeight.Medium)
                   .fontColor($r('app.color.hita_text_1a1a1a'))
                 Text('课表、考试、学习待办与显示设置').fontSize(HitaDesign.caption)
@@ -133,7 +133,7 @@ export struct BackupPanel {
           }.width('100%').padding(20).backgroundColor(this.presentedAsSheet ? CompatibleSheetMaterial.cardColor($r('app.color.hita_surface')) :
             $r('app.color.hita_surface')).borderRadius(HitaDesign.cardRadius)
 
-          Column({ space: 14 }) {
+          Column({ space: HitaDesign.spaceSm }) {
             Text('从备份恢复').fontSize(HitaDesign.section).fontWeight(FontWeight.Medium)
               .fontColor($r('app.color.hita_text_1a1a1a')).alignSelf(ItemAlign.Start)
             Button('选择备份文件').width('100%').height(44)
@@ -159,11 +159,9 @@ export struct BackupPanel {
             Row({ space: HitaDesign.gap }) {
               if (this.busy) { LoadingProgress().width(20).height(20).color($r('app.color.hita_primary')) }
               Text(this.status).fontSize(HitaDesign.caption)
-                .fontColor(this.failed ? '#D94A50' : $r('app.color.hita_text_secondary_566276')).layoutWeight(1)
+                .fontColor(this.failed ? $r('app.color.hita_error') : $r('app.color.hita_text_secondary_566276')).layoutWeight(1)
             }.width('100%').padding({ left: 8, right: 8 })
           }
-          Text('备份不含教务登录信息及手机日历同步登记').fontSize(HitaDesign.label)
-            .fontColor($r('app.color.hita_text_secondary_566276')).padding({ top: 4 })
         }.width('100%').padding({ left: 16, right: 16, top: 16, bottom: this.navBarInset + 24 })
       }.width('100%').layoutWeight(1).align(Alignment.Top).scrollBar(BarState.Off)
     }.width('100%').height('100%').padding({ top: this.presentedAsSheet ? 0 : this.statusBarInset })

@@ -32,7 +32,7 @@ function load(file) {
 }
 const { EasDataProvider: Provider } = load('feature/eas/EasDataProvider.ets');
 const { EasSession, EasCampus: Campus } = load('feature/eas/EasSession.ets');
-const { EasSessionStatus: Status, isExpiredEasResponse } = load('feature/eas/EasSessionStatus.ets');
+const { EasSessionStatus: Status, isExpiredEasResponse, expiredEvidence, describeExpiredEvidence } = load('feature/eas/EasSessionStatus.ets');
 const { EasApiClient, EasApiClientOptions } = load('feature/eas/EasApiClient.ets');
 const { easWebLoginConfigFor, EasCampusUrls } = load('feature/eas/webLogin/EasWebLoginConfig.ets');
 const response = (body = '', statusCode = 200) => ({ body, statusCode });
@@ -477,4 +477,79 @@ test('login and expiry writes are serialized so a fresh login always clears the 
     assert.equal(loaded.loginExpired, false);
     assert.equal(loaded.sessionGeneration, fresh.sessionGeneration);
   }
+});
+
+test('expiry evidence names the matched rule without tickets, and stays empty for working pages', () => {
+  assert.equal(expiredEvidence(response('', 401)), 'http-401');
+  assert.equal(expiredEvidence(response(benbuVpnVerify)), 'vpn-verify-redirect');
+  assert.equal(expiredEvidence(response(benbuVpnShortcut)), 'vpn-shortcut-bootstrap');
+  assert.equal(expiredEvidence(response(JSON.stringify({ code: 'NOT_LOGIN' }))), 'json-code: NOT_LOGIN');
+  const form = expiredEvidence(response('<form action="/authserver/login?service=x&ticket=ST-secret"></form>'));
+  assert.equal(form, 'login-form: <form action="/authserver/login');
+  const redirect = expiredEvidence(response('<script>top.location.href="/loginCAS?ticket=ST-secret"</script>'));
+  assert.match(redirect, /^login-redirect: /);
+  assert.doesNotMatch(redirect, /ST-secret/);
+  assert.match(expiredEvidence(response('<p>登录已失效</p>')), /^expired-message: 登录已失效/);
+  for (const working of [response(terms('xnxq')), response('<a href="/loginCAS">退出登录</a>' + terms('xnxq')),
+    response(benbuVpnVerify, 503), response(shenzhenTerms)]) {
+    assert.equal(expiredEvidence(working), '');
+    assert.equal(isExpiredEasResponse(working), false);
+  }
+});
+
+test('the client logs which rule marked a session expired, never its cookies', () => {
+  const client = fs.readFileSync(path.join(root, 'feature/eas/EasApiClient.ets'), 'utf8');
+  const branch = client.slice(client.indexOf('const evidence: string = expiredEvidence(resp);'), client.indexOf('return resp;'));
+  assert.match(branch, /hilog\.info\(DOMAIN, TAG, 'Auth failure campus=%\{public\}s path=%\{public\}s status=%\{public\}d attempt=%\{public\}d evidence=%\{public\}s'/);
+  assert.match(branch, /hilog\.warn\(DOMAIN, TAG, 'Marking session expired campus=%\{public\}s path=%\{public\}s evidence=%\{public\}s'[\s\S]*?markExpired\(session,\s*describeExpiredEvidence\(evidence\) \+ '（' \+ EasApiClient\.redirectTarget\(path\) \+ '）'\)/);
+  assert.match(branch, /EasApiClient\.redirectTarget\(path\)/);
+  assert.doesNotMatch(branch.replace(/\/\/[^\r\n]*/g, ''), /cookieHeader|webCookies|Cookie/);
+});
+
+test('VPN scripts injected into a working EAS page are not expiry, while the near-empty bootstrap still is', () => {
+  const working = terms('pageXnxq') + '<table><tr><td>高等数学</td><td>95</td></tr></table>';
+  const injected = [
+    benbuVpnShortcut.replace('</body>', working + '</body>'),
+    benbuVpnVerify.replace('</head>', '</head><body>' + working + '</body>'),
+    '<script>function timeout(){top.location.href="/loginCAS"}</script>' + working
+  ];
+  for (const body of injected) {
+    assert.equal(expiredEvidence(response(body)), '', body.slice(0, 60));
+  }
+  // The real bootstrap and redirect pages carry no EAS content and remain definite failures.
+  assert.equal(expiredEvidence(response(benbuVpnShortcut)), 'vpn-shortcut-bootstrap');
+  assert.equal(expiredEvidence(response(benbuVpnVerify)), 'vpn-verify-redirect');
+  assert.match(expiredEvidence(response('<script>alert("登录超时");top.location.href="/loginCAS"</script>')),
+    /^login-redirect: /);
+  // A sign-in form is evidence however much else the page shows.
+  assert.match(expiredEvidence(response(working + '<form action="/authserver/login"><input type="password"></form>')),
+    /^login-form: /);
+});
+
+test('a marked session keeps a readable reason until the next successful login clears it', async () => {
+  const previousStore = EasSessionStore.instance;
+  const previousHttp = EasApiClient.doHttp;
+  try {
+    const { store, data } = storedSessions(); EasSessionStore.instance = store;
+    const saved = session(Campus.BENBU); await store.save(saved);
+    EasApiClient.doHttp = async () => response(benbuVpnShortcut);
+    await new EasApiClient().request(saved, easWebLoginConfigFor(Campus.BENBU, '1'),
+      '/cjcx/queryQmcj?xnxq=2026-20271', new EasApiClientOptions());
+    const expired = await storedSessions(data).store.load(Campus.BENBU);
+    assert.equal(expired.loginExpired, true);
+    assert.equal(expired.expiredReason, 'VPN 返回登录引导页（/cjcx/queryQmcj）');
+    await store.save(session(Campus.BENBU));
+    const fresh = await store.load(Campus.BENBU);
+    assert.equal(fresh.loginExpired, false);
+    assert.equal(fresh.expiredReason, '');
+    const legacy = JSON.parse(saved.encode()); delete legacy.expiredReason;
+    assert.equal(EasSession.decode(JSON.stringify(legacy)).expiredReason, '');
+  } finally { EasApiClient.doHttp = previousHttp; EasSessionStore.instance = previousStore; }
+  for (const [evidence, label] of [['http-401', '服务器返回 401'], ['vpn-verify-redirect', 'VPN 要求重新验证'],
+    ['login-form: <form action="/login', '返回了登录表单'], ['expired-message: 登录已失效', '页面提示登录失效']]) {
+    assert.equal(describeExpiredEvidence(evidence), label);
+  }
+  const home = fs.readFileSync(path.join(root, 'pages/Home.ets'), 'utf8');
+  const sheet = home.slice(home.indexOf('  sessionSheet()'), home.indexOf('  sessionCampusButton('));
+  assert.match(sheet, /if \(this\.sessionSheetStatus === EasSessionStatus\.EXPIRED && this\.sessionSheetInfo\.expiredReason\.length > 0\) \{\s*Text\('失效原因：' \+ this\.sessionSheetInfo\.expiredReason\)/);
 });

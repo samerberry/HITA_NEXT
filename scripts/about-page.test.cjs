@@ -48,7 +48,7 @@ test('about and privacy pages are registered and linked', () => {
   assert.match(about, /url: 'pages\/PrivacyPolicyPage'/);
   assert.match(about, /url: 'pages\/WebBrowserPage'/);
   const home = read('ets/pages/Home.ets');
-  assert.match(home, /'关于',\s*'关于HITA NEXT'/);
+  assert.match(home, /title: '关于',\s*subtitle: '关于HITA NEXT'/);
 });
 
 test('about lists the three contributors in order with real names, GitHub nicknames and avatars', () => {

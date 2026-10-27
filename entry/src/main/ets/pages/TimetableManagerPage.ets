@@ -16,6 +16,7 @@ import { fileIo } from '@kit.CoreFileKit';
 import { RdbHelper } from '../common/db/RdbHelper';
 import { EasTimetable } from '../common/model/timetable/TimetableModels';
 import { HitaColors } from '../common/theme/HitaColors';
+import { HitaTag, HitaTagTone } from '../common/components/HitaTag';
 import { IcsExporter } from '../common/util/ICSExport';
 import { TimetableSelectionStore } from '../feature/timetable/data/TimetableSelectionStore';
 import { IcsImportResult, TimetableIcsImporter } from '../feature/timetable/data/TimetableIcsImporter';
@@ -282,9 +283,7 @@ struct TimetableManagerPage {
           .fontSize(HitaDesign.caption).fontColor(HitaColors.onSurfaceVariant)
           .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
         if (!this.selectionMode && this.activeTimetableId === timetable.id) {
-          Text('当前课表').fontSize(HitaDesign.label).fontColor(HitaColors.primary)
-            .padding({ left: 8, right: 8, top: 4, bottom: 4 })
-            .backgroundColor($r('app.color.hita_selected')).borderRadius(8)
+          HitaTag({ text: '当前课表', tone: HitaTagTone.BRAND })
         }
       }.layoutWeight(1).alignItems(HorizontalAlign.Start)
       if (this.selectionMode) {
@@ -408,8 +407,9 @@ struct TimetableManagerPage {
               .fontSize(HitaDesign.body)
               .fontWeight(FontWeight.Medium)
               .fontColor(HitaColors.error)
-              .padding({ left: 14, right: 14, top: 10, bottom: 10 })
-              .borderRadius(22)
+              .padding({ left: HitaDesign.spaceMd, right: HitaDesign.spaceMd, top: HitaDesign.spaceSm,
+                bottom: HitaDesign.spaceSm })
+              .borderRadius(HitaDesign.radiusXl)
               .attributeModifier(new CompatibleMaterialModifier(Color.Transparent))
               .onClick(() => {
                 this.confirmDelete();

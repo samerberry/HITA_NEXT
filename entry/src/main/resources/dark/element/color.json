@@ -9,6 +9,10 @@
       "value": "#8C24272B"
     },
     {
+      "name": "hita_immersive_card_base",
+      "value": "#00000000"
+    },
+    {
       "name": "hita_immersive_segment_selected",
       "value": "#1FFFFFFF"
     },
