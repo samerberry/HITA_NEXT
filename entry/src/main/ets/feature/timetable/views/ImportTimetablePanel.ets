@@ -399,7 +399,7 @@ export struct ImportTimetablePanel {
             .textOverflow({ overflow: TextOverflow.Ellipsis });
           Text(this.selectedTerm() === undefined ? '点击选择教务学期' :
             (this.selectedTerm() as EasTermItem).getCode())
-            .fontSize(HitaDesign.label)
+            .fontSize(HitaDesign.caption)
             .fontColor(TEXT_SECONDARY)
             .margin({ top: 4 });
         }
@@ -469,7 +469,7 @@ export struct ImportTimetablePanel {
       }
       .width('100%');
       Text('点击任意一节可修改开始或结束时间')
-        .fontSize(HitaDesign.label)
+        .fontSize(HitaDesign.caption)
         .fontColor(TEXT_SECONDARY)
         .width('100%')
         .margin({ top: 5, bottom: 10 });

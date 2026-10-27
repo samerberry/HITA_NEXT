@@ -78,7 +78,7 @@ struct AppAboutPage {
           .borderRadius(16);
 
           Text(AboutContent.DISCLAIMER)
-            .fontSize(HitaDesign.label)
+            .fontSize(HitaDesign.caption)
             .fontColor(TEXT_SECONDARY)
             .margin({ top: 24, bottom: 32 });
         }
@@ -188,7 +188,7 @@ struct AppAboutPage {
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis });
         Text(person.github)
-          .fontSize(HitaDesign.label)
+          .fontSize(HitaDesign.caption)
           .fontColor(TEXT_SECONDARY)
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -215,7 +215,7 @@ struct AppAboutPage {
           .fontSize(HitaDesign.caption)
           .fontColor(TEXT_PRIMARY);
         Text(credit.detail)
-          .fontSize(HitaDesign.label)
+          .fontSize(HitaDesign.caption)
           .fontColor(TEXT_SECONDARY)
           .margin({ top: 4 });
       }

@@ -145,7 +145,7 @@ export struct ScorePage {
   metric(label: string, value: string) {
     Column({ space: 5 }) {
       Text(value || '—').fontSize(HitaDesign.title).fontWeight(FontWeight.Medium).fontColor($r('app.color.hita_text'))
-      Text(label).fontSize(HitaDesign.label).fontColor($r('app.color.hita_text_secondary'))
+      Text(label).fontSize(HitaDesign.caption).fontColor($r('app.color.hita_text_secondary'))
     }.layoutWeight(1).alignItems(HorizontalAlign.Center)
   }
 
@@ -161,17 +161,17 @@ export struct ScorePage {
         }.width('100%')
         if (this.summary.earnedCredits || this.summary.passedCourses) {
           Text('获得学分 ' + (this.summary.earnedCredits || '—') + ' · 通过课程 ' + (this.summary.passedCourses || '—'))
-            .fontSize(HitaDesign.label).fontColor($r('app.color.hita_text_secondary'))
+            .fontSize(HitaDesign.caption).fontColor($r('app.color.hita_text_secondary'))
         }
         if (this.summary.allCourseWeightedAverage || this.summary.allPassedCourseGpa) {
           Text('全部课程学分绩 ' + (this.summary.allCourseWeightedAverage || '—') +
             ' · 全部及格课程 GPA ' + (this.summary.allPassedCourseGpa || '—'))
-            .fontSize(HitaDesign.label).fontColor($r('app.color.hita_text_secondary'))
+            .fontSize(HitaDesign.caption).fontColor($r('app.color.hita_text_secondary'))
         }
       }.width('100%').padding(16).borderRadius(16).backgroundColor($r('app.color.hita_surface'))
     }
     if (this.summaryMessage) {
-      Text(this.summaryMessage).fontSize(HitaDesign.label).fontColor($r('app.color.hita_text_secondary')).width('100%')
+      Text(this.summaryMessage).fontSize(HitaDesign.caption).fontColor($r('app.color.hita_text_secondary')).width('100%')
     }
     Column({ space: 12 }) {
       Text('当前列表统计 · ' + this.statistics.count + ' 门').fontSize(HitaDesign.caption).fontWeight(FontWeight.Medium)
@@ -189,11 +189,11 @@ export struct ScorePage {
       }.width('100%')
       Text('学分合计 ' + this.number(this.statistics.credits) + (TYPES[this.typeIndex] === ScoreTestType.MIDTERM ? '' :
         ' · 通过学分 ' + this.number(this.statistics.passedCredits)))
-        .fontSize(HitaDesign.label).fontColor($r('app.color.hita_text_secondary')).width('100%')
+        .fontSize(HitaDesign.caption).fontColor($r('app.color.hita_text_secondary')).width('100%')
       Text(TYPES[this.typeIndex] === ScoreTestType.MIDTERM ?
         '期中按原始数值计算，不判定课程是否通过。不同课程可能采用不同满分或折算方式，均分仅供参考。' :
         '均分只统计 0～100 的数值成绩，等级制不换算分数；按百分制及格线估算通过情况。此处不等于教务 GPA、毕业学分或官方排名。')
-        .fontSize(HitaDesign.label).lineHeight(18).fontColor($r('app.color.hita_text_secondary')).width('100%')
+        .fontSize(HitaDesign.caption).lineHeight(20).fontColor($r('app.color.hita_text_secondary')).width('100%')
     }.width('100%').padding(16).borderRadius(16).backgroundColor($r('app.color.hita_surface'))
   }
 
@@ -264,7 +264,7 @@ export struct ScorePage {
                       $r('app.color.hita_error') : $r('app.color.hita_primary'))
                 }.width('100%')
                 Text([item.courseCode, item.courseProperty, item.credits + ' 学分'].filter((v: string) => v.length > 0).join(' · '))
-                  .fontSize(HitaDesign.label).fontColor($r('app.color.hita_text_secondary')).width('100%')
+                  .fontSize(HitaDesign.caption).fontColor($r('app.color.hita_text_secondary')).width('100%')
               }.width('100%').padding(16).borderRadius(HitaDesign.cardRadius).backgroundColor($r('app.color.hita_surface'))
                 .onClick(() => this.details(item))
             })

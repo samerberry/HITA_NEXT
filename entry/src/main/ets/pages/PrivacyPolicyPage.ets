@@ -33,7 +33,7 @@ struct PrivacyPolicyPage {
               .fontWeight(FontWeight.Medium)
               .fontColor(TEXT_PRIMARY);
             Text('更新日期：' + AboutContent.POLICY_UPDATED)
-              .fontSize(HitaDesign.label)
+              .fontSize(HitaDesign.caption)
               .fontColor(TEXT_SECONDARY)
               .margin({ top: 8 });
             ForEach(AboutContent.policyIntro(), (paragraph: string) => {
@@ -54,7 +54,7 @@ struct PrivacyPolicyPage {
             this.sectionCard(section);
           }, (section: PolicySection) => section.title);
           Text('生效日期：' + AboutContent.POLICY_EFFECTIVE)
-            .fontSize(HitaDesign.label)
+            .fontSize(HitaDesign.caption)
             .fontColor(TEXT_SECONDARY)
             .alignSelf(ItemAlign.Start)
             .margin({ left: 4 });

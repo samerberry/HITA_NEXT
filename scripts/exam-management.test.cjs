@@ -145,10 +145,10 @@ test('list keeps event identity, filters courses and sorts by time across timeta
   const list = source.slice(source.indexOf('List({ space: 8, scroller: this.pageScroller })'), source.indexOf('.bindSheet('));
   assert.match(list, /this\.examCard\(it\)/);
   assert.doesNotMatch(list, /openEditExam|confirmDeleteExam|sys\.symbol\.trash/);
-  const detail = source.slice(source.indexOf('private examDetailSheet('));
-  assert.match(detail, /Text\('编辑'\)[\s\S]*?this\.openEditExam\(event\)/);
-  assert.match(detail, /Row\(\) \{\s*Blank\(\)\s*Text\('删除考试'\)/);
-  assert.match(detail, /this\.confirmDeleteExam\(event\)/);
+  const detail = source.slice(source.indexOf('private examDetailSheet('), source.indexOf('private remoteDetailSheet('));
+  assert.doesNotMatch(detail, /Text\('编辑'\)|Text\('删除考试'\)/);
+  assert.match(detail, /DetailActionBar\(\{\s*deleteLabel: '删除',[\s\S]*?onEdit: \(\) => this\.openEditExam\(event\),[\s\S]*?onDelete: \(\) => this\.confirmDeleteExam\(event\)/);
+  assert.ok(detail.indexOf('DetailActionBar({') > detail.lastIndexOf('this.examDetailRow('));
   const editor = read('pages/AddEventPage.ets');
   assert.match(editor, /\.layoutWeight\(1\)/);
   assert.match(editor, /Column\(\) \{[\s\S]*?Button\(this\.loading \? '正在读取'/);

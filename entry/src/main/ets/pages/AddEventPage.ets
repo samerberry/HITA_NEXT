@@ -773,7 +773,7 @@ export struct EventEditorForm {
                 .fontWeight(FontWeight.Medium)
                 .fontColor($r('app.color.hita_text_1d2b45'))
               Text(this.sheetSubtitle())
-                .fontSize(HitaDesign.label)
+                .fontSize(HitaDesign.caption)
                 .fontColor($r('app.color.hita_text_secondary_72809a'))
                 .margin({ top: 4 })
             }
@@ -861,7 +861,7 @@ export struct EventEditorForm {
         if (this.typeIdx === 1 && !this.loading && this.hint.length === 0 &&
           this.courseSaveSummary().length > 0) {
           Text(this.courseSaveSummary())
-            .fontSize(HitaDesign.label)
+            .fontSize(HitaDesign.caption)
             .fontColor($r('app.color.hita_text_secondary_72809a'))
             .width('100%')
             .maxLines(2)
@@ -936,7 +936,7 @@ export struct EventEditorForm {
           .onChange((value: boolean) => { this.stoppingCourse = value; this.hint = ''; })
       }.width('100%')
       Text('已选 ' + this.editTargets().length.toString() + ' 个课次')
-        .fontSize(HitaDesign.label).fontColor($r('app.color.hita_text_secondary_72809a'))
+        .fontSize(HitaDesign.caption).fontColor($r('app.color.hita_text_secondary_72809a'))
     }.width('100%').padding(16).borderRadius(HitaDesign.cardRadius)
     .alignItems(HorizontalAlign.Start).backgroundColor(this.courseCardColor())
   }
@@ -951,7 +951,7 @@ export struct EventEditorForm {
       }.width('100%')
       if (this.courseTimetable !== undefined) {
         Text('添加至 ' + this.courseTimetable.name)
-          .fontSize(HitaDesign.label).fontColor($r('app.color.hita_text_secondary_72809a'))
+          .fontSize(HitaDesign.caption).fontColor($r('app.color.hita_text_secondary_72809a'))
           .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
       }
       if (this.editId.length === 0) {
@@ -1127,7 +1127,7 @@ export struct EventEditorForm {
         Text('已选 ' + this.selectedWeeks.length.toString() + ' 周 · ' +
           this.selectedWeekdays.length.toString() + ' 天/周，共 ' +
           (this.selectedWeeks.length * this.selectedWeekdays.length).toString() + ' 个课次')
-          .fontSize(HitaDesign.label)
+          .fontSize(HitaDesign.caption)
           .fontColor($r('app.color.hita_text_secondary_72809a'))
       }
       if (this.extensionHint().length > 0) {
@@ -1205,7 +1205,7 @@ export struct EventEditorForm {
         Row() {
           Column() {
             Text(this.usesPeriods() ? '开始节次' : '开始时间')
-              .fontSize(HitaDesign.label)
+              .fontSize(HitaDesign.caption)
               .fontColor($r('app.color.hita_text_secondary_72809a'))
             Text(this.usesPeriods() ? (this.fromPeriod > 0 ? '第 ' + this.fromPeriod.toString() + ' 节' : '请选择') : this.startLabel())
               .fontSize(HitaDesign.section)
@@ -1230,7 +1230,7 @@ export struct EventEditorForm {
         Row() {
           Column() {
             Text(this.usesPeriods() ? '结束节次' : '结束时间')
-              .fontSize(HitaDesign.label)
+              .fontSize(HitaDesign.caption)
               .fontColor($r('app.color.hita_text_secondary_72809a'))
             Text(this.usesPeriods() ? (this.toPeriod > 0 ? '第 ' + this.toPeriod.toString() + ' 节' : '请选择') : this.endLabel())
               .fontSize(HitaDesign.section)
@@ -1257,7 +1257,7 @@ export struct EventEditorForm {
       .margin({ top: 8 })
       if (this.usesPeriods() && this.selectedTime()[0] >= 0) {
         Text(this.startLabel() + '–' + this.endLabel())
-          .fontSize(HitaDesign.label).fontColor($r('app.color.hita_text_secondary_72809a')).margin({ top: 8 })
+          .fontSize(HitaDesign.caption).fontColor($r('app.color.hita_text_secondary_72809a')).margin({ top: 8 })
       }
     }
     .width('100%')

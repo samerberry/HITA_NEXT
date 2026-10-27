@@ -288,7 +288,7 @@ test('appearance matches surrounding settings rows and reveals choices only when
   assert.doesNotMatch(setting, /this\.moreNavigationRow\(/);
   const row = home.slice(home.indexOf('  moreNavigationRow('));
   for (const style of ['.width(40)', '.height(40)', '.borderRadius(20)', '.fontSize(HitaDesign.iconMd)',
-    '.fontSize(HitaDesign.body)', '.fontSize(HitaDesign.label)', '.constraintSize({ minHeight: HitaDesign.rowMinHeight })', '.padding({ left: 16, right: 16 })',
+    '.fontSize(HitaDesign.body)', '.fontSize(HitaDesign.caption)', '.constraintSize({ minHeight: HitaDesign.rowMinHeight })', '.padding({ left: 16, right: 16 })',
     '.margin({ left: 12 })', '.backgroundColor(COLOR_NAV_ACTIVE)']) {
     assert.ok(row.includes(style), `Reference row: ${style}`);
     assert.ok(setting.includes(style), `Appearance row: ${style}`);

@@ -262,16 +262,17 @@ test('cancelling an unstarted pan never locks out a light tap, regardless of nat
 
 test('skip UI exists only in timetable class details and uses the red material host', () => {
   const detail = fs.readFileSync(path.join(root, 'feature/timetable/views/CourseDetailContent.ets'), 'utf8');
+  const actions = fs.readFileSync(path.join(root, 'common/components/DetailActionBar.ets'), 'utf8');
   assert.match(home, /CourseDetailContent\(\{/);
   assert.match(detail, /deleteLabel: string = '翘课'/);
-  assert.match(detail, /Button\('编辑'[\s\S]*Button\(this\.deleteLabel/);
-  assert.match(detail, /if \(this\.event\.type === EasEventType\.CLASS\)[\s\S]*Button\(this\.deleteLabel/);
-  assert.match(detail, /ImmersiveHeader\(\{ barHeight: 56/);
-  assert.match(detail, /CompatibleMaterialModifier\(\$r\('app.color.hita_error_fill'\), true/);
-  assert.match(detail, /\$r\('app.color.hita_error_fill'\), false\)/);
-  assert.match(detail, /Button\(this\.deleteLabel[\s\S]*?\.height\(HitaDesign.buttonHeight\)[\s\S]*?\.fontSize\(HitaDesign.body\)/);
-  assert.doesNotMatch(detail, /\.width\(132\)|\.height\(52\)/);
-  assert.match(detail, /\.justifyContent\(FlexAlign\.End\)/);
+  assert.match(detail, /if \(this\.event\.type === EasEventType\.CLASS\)[\s\S]*DetailActionBar\(\{\s*deleteLabel: this\.deleteLabel/);
+  assert.match(actions, /Button\('编辑'[\s\S]*Button\(this\.deleteLabel/);
+  assert.match(actions, /ImmersiveHeader\(\{ barHeight: 44/);
+  assert.match(actions, /CompatibleMaterialModifier\(\$r\('app.color.hita_error_fill'\), true/);
+  assert.match(actions, /\$r\('app.color.hita_error_fill'\), false\)/);
+  assert.equal((actions.match(/\.height\(36\)/g) || []).length, 2);
+  assert.equal((actions.match(/\.fontSize\(HitaDesign.caption\)/g) || []).length, 2);
+  assert.match(actions, /\.justifyContent\(FlexAlign\.End\)/);
   for (const file of ['TimetableDetailPage.ets', 'ExamPage.ets']) {
     assert.doesNotMatch(fs.readFileSync(path.join(root, 'pages', file), 'utf8'), /Button\('翘课'/);
   }

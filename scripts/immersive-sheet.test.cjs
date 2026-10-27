@@ -142,7 +142,12 @@ test('Home retains one sheet lifecycle for authentication, timetable and calenda
   assert.match(home, /onWillDisappear: \(\) => \{\s*this.closeActiveSheet\(\)/);
   const detail = read('ets/pages/TimetableDetailPage.ets');
   assert.match(detail, /\.bindSheet\(\$\$this\.sheetVisible, this\.eventSheetContent\(\), CompatibleSheetMaterial.options\(\{/);
-  assert.match(detail, /\}, this\.eventSheetMode === 2\)\)/);
+  assert.doesNotMatch(detail, /\}, this\.eventSheetMode === 2\)\)/);
+  const exam = read('ets/pages/ExamPage.ets');
+  assert.match(exam, /\.bindSheet\(\$\$this\.sheetVisible, this\.examSheetContent\(\), CompatibleSheetMaterial.options\(\{/);
+  assert.match(exam, /new CompatibleLightModifier\(24, CompatibleSheetMaterial.isEnabled\(\), true\)/);
+  assert.match(exam, /onWillDisappear: \(\) => \{\s*this.closeSheet\(\)/);
+  assert.match(exam, /onDisappear: \(\) => \{\s*this.sheetVisible = false;\s*this.resetSheetState\(\)/);
 });
 
 test('more opens the reusable timetable importer as an expanded sheet while preserving its standalone route', () => {
@@ -193,7 +198,7 @@ test('course and timetable text color actions share the material footer while re
   const display = read('ets/feature/timetable/views/TimetableDisplaySettings.ets');
   assert.match(display, /textMode: this\.editing === 'text',[\s\S]*immersiveControls: true/);
   assert.match(display, /new CompatibleMaterialModifier/);
-  assert.doesNotMatch(read('ets/pages/ExamPage.ets'), /immersiveControls/);
+  assert.equal((read('ets/pages/ExamPage.ets').match(/immersiveControls: true/g) || []).length, 2);
   const editor = read('ets/feature/timetable/views/CourseColorEditor.ets');
   assert.match(editor, /@Prop immersiveControls: boolean = false/);
   assert.match(editor, /if \(this.immersiveControls && CompatibleSheetMaterial.isEnabled\(\)\) \{\s*ImmersiveHeader/);

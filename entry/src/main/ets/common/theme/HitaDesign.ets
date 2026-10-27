@@ -1,10 +1,13 @@
 /** Shared layout and typography for application pages; timetable cells retain their compact scale. */
 export class HitaDesign {
+  /** Large standalone metrics; ordinary page headings use title. */
   static readonly display: number = 28;
   static readonly title: number = 22;
   static readonly section: number = 18;
   static readonly body: number = 16;
+  /** Dates, places, teachers, field labels and other readable supporting text. */
   static readonly caption: number = 14;
+  /** Short badges only; never use for a sentence or a field label. */
   static readonly label: number = 12;
   static readonly iconXs: number = 12;
   static readonly iconSm: number = 16;

@@ -279,7 +279,7 @@ struct TimetableManagerPage {
           .fontColor(HitaColors.onSurface).maxLines(2)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
         Text(TimetableManagerPage.dateRange(timetable))
-          .fontSize(HitaDesign.label).fontColor(HitaColors.onSurfaceVariant)
+          .fontSize(HitaDesign.caption).fontColor(HitaColors.onSurfaceVariant)
           .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
         if (!this.selectionMode && this.activeTimetableId === timetable.id) {
           Text('当前课表').fontSize(HitaDesign.label).fontColor(HitaColors.primary)

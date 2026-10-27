@@ -372,7 +372,7 @@ export struct EmptyClassroomPage {
         this.selector(2, '选择周次', FlexAlign.End, () => this.chooseWeek())
       }.width('100%').padding({ left: 12, right: 12 }).backgroundColor($r('app.color.hita_surface')).borderRadius(16)
       if (this.cachedAt > 0) {
-        Text(this.cacheLabel()).fontSize(HitaDesign.label).fontColor(SECONDARY).padding({ left: 8, right: 8 }).width('100%')
+        Text(this.cacheLabel()).fontSize(HitaDesign.caption).fontColor(SECONDARY).padding({ left: 8, right: 8 }).width('100%')
       }
       if (this.error.length > 0) {
         Text(this.error).fontSize(HitaDesign.caption).fontColor(SECONDARY).textAlign(TextAlign.Center)
@@ -433,7 +433,7 @@ export struct EmptyClassroomPage {
           Text(this.detailRoom.name + ' 空闲情况').fontSize(HitaDesign.title).fontWeight(FontWeight.Medium).fontColor(TEXT)
             .layoutWeight(1).maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
           Text(this.termLabel() + '\n第 ' + this.selectedWeek.toString() + ' 周')
-            .fontSize(HitaDesign.label).fontColor(SECONDARY).padding(8).borderRadius(12).backgroundColor($r('app.color.hita_control'))
+            .fontSize(HitaDesign.caption).fontColor(SECONDARY).padding(8).borderRadius(12).backgroundColor($r('app.color.hita_control'))
         }.width('100%')
         Row({ space: 4 }) {
           ForEach(DAYS, (day: string, index: number) => {

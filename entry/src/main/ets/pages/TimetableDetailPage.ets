@@ -499,7 +499,7 @@ struct TimetableDetailPage {
         Text(TimetableDetailPage.typeName(row.subject.type) + ' · ' +
           TimetableDetailPage.numberText(row.subject.credit) + ' 学分 · ' +
           row.classCount.toString() + ' 次课')
-          .fontSize(HitaDesign.label)
+          .fontSize(HitaDesign.caption)
           .fontColor($r('app.color.hita_text_secondary_7b8498'))
           .margin({ top: 8 })
           .maxLines(1)
@@ -583,7 +583,7 @@ struct TimetableDetailPage {
           .padding({ left: 14, right: 14 })
           if (row.sessions.length === 0) {
             Text('暂无课时记录')
-              .fontSize(HitaDesign.label)
+              .fontSize(HitaDesign.caption)
               .fontColor($r('app.color.hita_text_hint_9aa2b1'))
               .width('100%')
               .textAlign(TextAlign.Center)
@@ -641,12 +641,12 @@ struct TimetableDetailPage {
         .fontWeight(FontWeight.Medium)
         .fontColor($r('app.color.hita_text_303746'))
       Text(TimetableDetailPage.timeRange(session))
-        .fontSize(HitaDesign.label)
+        .fontSize(HitaDesign.caption)
         .fontColor($r('app.color.hita_text_secondary_7b8498'))
         .margin({ left: 10 })
       Blank()
       Text(TimetableDetailPage.sessionPlaceText(session))
-        .fontSize(HitaDesign.label)
+        .fontSize(HitaDesign.caption)
         .fontColor($r('app.color.hita_text_hint'))
         .maxLines(1)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -688,7 +688,7 @@ struct TimetableDetailPage {
         .fontColor($r('app.color.hita_text_303746'))
         .margin({ left: 12 })
       Text('-')
-        .fontSize(HitaDesign.label)
+        .fontSize(HitaDesign.caption)
         .fontColor($r('app.color.hita_text_hint_a0a7b5'))
         .margin({ left: 7, right: 7 })
       Text(period.to.toString())
@@ -697,7 +697,7 @@ struct TimetableDetailPage {
         .fontColor($r('app.color.hita_text_303746'))
       Blank()
       Text(period.getLengthInMinutes().toString() + ' 分钟')
-        .fontSize(HitaDesign.label)
+        .fontSize(HitaDesign.caption)
         .fontColor($r('app.color.hita_text_hint'))
     }
     .width('100%')
@@ -828,7 +828,7 @@ struct TimetableDetailPage {
                   .fontColor($r('app.color.hita_text_202633'))
                   .layoutWeight(1)
                 Text(this.subjectRows.length.toString() + ' 门')
-                  .fontSize(HitaDesign.label)
+                  .fontSize(HitaDesign.caption)
                   .fontColor($r('app.color.hita_text_hint_9aa2b1'))
               }
               .width('100%')
@@ -839,7 +839,7 @@ struct TimetableDetailPage {
                     .fontSize(HitaDesign.body)
                     .fontColor($r('app.color.hita_text_secondary_7b8498'))
                   Text('从教务导入或点击上方“添加课程”后显示在这里')
-                    .fontSize(HitaDesign.label)
+                    .fontSize(HitaDesign.caption)
                     .fontColor($r('app.color.hita_text_hint_a0a7b5'))
                     .margin({ top: 8 })
                 }
@@ -890,7 +890,7 @@ struct TimetableDetailPage {
               .borderRadius(HitaDesign.cardRadius)
               .clip(true)
               Text('左滑课程可删除整门课程')
-                .fontSize(HitaDesign.label)
+                .fontSize(HitaDesign.caption)
                 .fontColor($r('app.color.hita_text_hint_9aa2b1'))
                 .margin({ top: 14, bottom: 36 })
               Blank().height(72)
@@ -956,7 +956,7 @@ struct TimetableDetailPage {
         this.sheetVisible = false;
         this.resetSheetState();
       }
-    }, this.eventSheetMode === 2))
+    }))
   }
 
   private static dateText(ms: number): string {

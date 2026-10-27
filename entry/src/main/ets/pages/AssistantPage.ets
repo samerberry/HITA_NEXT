@@ -295,7 +295,7 @@ struct AssistantPage {
         .fontWeight(FontWeight.Medium)
         .fontColor(COLOR_TEXT_PRIMARY);
       Text('课表问题始终由本地数据回答；填写 API Key 后，其他问题会连同未来 7 天课表摘要发送给所选模型。')
-        .fontSize(HitaDesign.label)
+        .fontSize(HitaDesign.caption)
         .fontColor(COLOR_TEXT_SECONDARY)
         .lineHeight(18)
         .margin({ top: 4 });
@@ -404,7 +404,7 @@ struct AssistantPage {
           .copyOption(CopyOptions.LocalDevice);
         if (message.source.length > 0) {
           Text('来自 ' + message.source)
-            .fontSize(HitaDesign.label)
+            .fontSize(HitaDesign.caption)
             .fontColor(COLOR_TEXT_HINT)
             .margin({ top: 8 });
         }

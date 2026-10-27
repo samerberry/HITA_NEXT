@@ -2672,7 +2672,7 @@ struct Home {
       if (this.calendarSyncEnabled && (this.calendarSyncStatus.indexOf('未完成') >= 0 ||
         this.calendarSyncStatus.indexOf('提醒已关闭') >= 0)) {
         Text(this.calendarSyncStatus)
-          .fontSize(HitaDesign.label)
+          .fontSize(HitaDesign.caption)
           .lineHeight(18)
           .fontColor(COLOR_TEXT_SECONDARY)
           .width('100%')
@@ -3301,7 +3301,7 @@ struct Home {
             Column() {
               Text(this.currentTimetable === undefined ? '时间表' :
                 '第' + this.timetableWeek.toString() + '周')
-                .fontSize(HitaDesign.display)
+                .fontSize(HitaDesign.title)
                 .fontWeight(FontWeight.Medium)
                 .fontColor(this.timetableInk())
                 .maxLines(1)
@@ -3585,7 +3585,7 @@ struct Home {
 
       Row() {
         Text('功能中心')
-          .fontSize(HitaDesign.display)
+          .fontSize(HitaDesign.title)
           .fontWeight(FontWeight.Medium)
           .fontColor(COLOR_TEXT_PRIMARY)
           .maxLines(1)
@@ -3639,7 +3639,7 @@ struct Home {
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis });
           Text('下一节课倒计时')
-            .fontSize(HitaDesign.label)
+            .fontSize(HitaDesign.caption)
             .fontColor(COLOR_TEXT_SECONDARY)
             .margin({ top: 4 })
             .maxLines(1)
@@ -3760,7 +3760,7 @@ struct Home {
             .textOverflow({ overflow: TextOverflow.Ellipsis });
           Text(this.appearanceMode === AppearanceMode.DARK ? '已开启' :
             (this.appearanceMode === AppearanceMode.LIGHT ? '已关闭' : '跟随系统'))
-            .fontSize(HitaDesign.label)
+            .fontSize(HitaDesign.caption)
             .fontColor(COLOR_TEXT_SECONDARY)
             .margin({ top: 4 })
             .maxLines(1)
@@ -3876,7 +3876,7 @@ struct Home {
             Home.campusName(this.sessionInfo.campus) +
             (this.sessionInfo.school.length > 0 ? ' · ' + this.sessionInfo.school : '') +
             (this.sessionInfo.major.length > 0 ? ' · ' + this.sessionInfo.major : '')))
-          .fontSize(HitaDesign.label)
+          .fontSize(HitaDesign.caption)
           .fontColor(COLOR_TEXT_SECONDARY)
           .margin({ top: 4 })
           .maxLines(2)
@@ -3964,7 +3964,7 @@ struct Home {
 
       Column() {
         Text('认证校区')
-          .fontSize(HitaDesign.label)
+          .fontSize(HitaDesign.caption)
           .fontWeight(FontWeight.Medium)
           .fontColor(COLOR_TEXT_SECONDARY)
           .width('100%');
@@ -4087,7 +4087,7 @@ struct Home {
                 .fontWeight(FontWeight.Medium)
                 .fontColor(COLOR_TEXT_PRIMARY);
               Text('将打开对应校区的官方认证页')
-                .fontSize(HitaDesign.label)
+                .fontSize(HitaDesign.caption)
                 .fontColor(COLOR_TEXT_SECONDARY)
                 .margin({ top: 3 });
             }
@@ -4117,7 +4117,7 @@ struct Home {
               .fontSize(HitaDesign.iconSm)
               .fontColor([COLOR_TEXT_HINT]);
             Text('HITA 不保存您的教务密码')
-              .fontSize(HitaDesign.label)
+              .fontSize(HitaDesign.caption)
               .fontColor(COLOR_TEXT_HINT)
               .margin({ left: 6 });
           }
@@ -4182,7 +4182,7 @@ struct Home {
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis });
         Text(options.subtitle)
-          .fontSize(HitaDesign.label)
+          .fontSize(HitaDesign.caption)
           .fontColor(COLOR_TEXT_SECONDARY)
           .margin({ top: 4 })
           .maxLines(1)
@@ -4236,7 +4236,7 @@ struct Home {
             .textOverflow({ overflow: TextOverflow.Ellipsis });
           if (this.classReminderSubtitle().length > 0) {
             Text(this.examReminderEnabled ? this.classReminderSubtitle() + ' · 考试前 ' + this.examReminderLeadMinutes.toString() + ' 分钟' : this.classReminderSubtitle())
-              .fontSize(HitaDesign.label)
+              .fontSize(HitaDesign.caption)
               .fontColor(COLOR_TEXT_SECONDARY)
               .margin({ top: 4 })
               .maxLines(1)
@@ -4276,7 +4276,7 @@ struct Home {
                     COLOR_TEXT_PRIMARY)
                   .maxLines(1);
                 Text('应用在前台或后台运行时会通知。')
-                  .fontSize(HitaDesign.label)
+                  .fontSize(HitaDesign.caption)
                   .fontColor(COLOR_TEXT_SECONDARY)
                   .margin({ top: 4 })
                   .maxLines(2);
@@ -4391,7 +4391,7 @@ struct Home {
           .textOverflow({ overflow: TextOverflow.Ellipsis });
         if (subtitle.length > 0) {
           Text(subtitle)
-            .fontSize(HitaDesign.label)
+            .fontSize(HitaDesign.caption)
             .fontColor(COLOR_TEXT_SECONDARY)
             .margin({ top: 4 })
             .maxLines(1)

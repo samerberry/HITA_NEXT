@@ -167,7 +167,7 @@ struct NewsPage {
           .fontWeight(FontWeight.Medium)
           .fontColor(COLOR_TEXT_PRIMARY);
         Text('博客与通知')
-          .fontSize(HitaDesign.label)
+          .fontSize(HitaDesign.caption)
           .fontColor(COLOR_TEXT_SECONDARY)
           .margin({ top: 2 });
       }
@@ -338,7 +338,7 @@ struct NewsPage {
         }
       } else if (!this.hasMore && this.items.length > 0) {
         Text('没有更多了')
-          .fontSize(HitaDesign.label)
+          .fontSize(HitaDesign.caption)
           .fontColor(COLOR_TEXT_HINT);
       }
     }

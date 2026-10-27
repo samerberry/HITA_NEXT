@@ -215,7 +215,7 @@ struct PortalsPage {
           .maxLines(2)
           .textOverflow({ overflow: TextOverflow.Ellipsis });
         Text(portal.url)
-          .fontSize(HitaDesign.label)
+          .fontSize(HitaDesign.caption)
           .fontColor(COLOR_TEXT_SECONDARY)
           .margin({ top: 4 })
           .maxLines(1)

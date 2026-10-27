@@ -1,5 +1,6 @@
 import { HitaDesign } from '../common/theme/HitaDesign';
 import { SheetContent } from '../common/components/SheetContent';
+import { DetailActionBar } from '../common/components/DetailActionBar';
 /**
  * ExamPage.ets — 考试查询。
  *
@@ -573,7 +574,7 @@ export struct ExamPage {
           if (this.queryContext.length > 0) {
             ListItem() {
               Text(this.queryContext)
-                .fontSize(HitaDesign.label)
+                .fontSize(HitaDesign.caption)
                 .fontColor($r('app.color.hita_text_secondary_72809a'))
                 .width('100%')
             }
@@ -662,7 +663,7 @@ export struct ExamPage {
       if (!this.preparingQuery && !this.querying && this.queryContext.length > 0 &&
         this.exams.length === 0 && this.remoteExams.length === 0) {
         Text(this.queryContext)
-          .fontSize(HitaDesign.label)
+          .fontSize(HitaDesign.caption)
           .fontColor($r('app.color.hita_text_secondary_72809a'))
           .width('100%')
           .padding({ left: 16, right: 16 })
@@ -713,19 +714,22 @@ export struct ExamPage {
     .height('100%')
     .padding({ top: this.presentedAsSheet ? 0 : this.statusBarInset })
     .backgroundColor(this.presentedAsSheet ? CompatibleSheetMaterial.bodyColor(PAGE_BG) : PAGE_BG)
-    .bindSheet(this.sheetVisible, this.examSheetContent(), {
+    .bindSheet($$this.sheetVisible, this.examSheetContent(), CompatibleSheetMaterial.options({
       height: this.examSheetMode === 2 ? '78%' : SheetSize.FIT_CONTENT,
       dragBar: true,
       showClose: false,
       preferType: SheetType.BOTTOM,
       backgroundColor: $r('app.color.hita_surface_soft'),
       maskColor: $r('app.color.hita_sheet_mask'),
+      onWillDisappear: () => {
+        this.closeSheet();
+      },
       onDisappear: () => {
         this.sheetVisible = false;
         this.resetSheetState();
         this.finishDeleteSheetDismissal();
       }
-    })
+    }))
     .attributeModifier(new CompatibleLightModifier(24, this.presentedAsSheet &&
       CompatibleSheetMaterial.isEnabled(), true))
   }
@@ -843,27 +847,32 @@ export struct ExamPage {
   @Builder
   private examSheetContent() {
     SheetContent({ fillHeight: this.examSheetMode === 2 }) {
-      if (this.examSheetMode === 2) {
-        EventEditorForm({
-          eventId: this.sheetEventId,
-          targetTimetableId: this.targetTimetableId,
-          initialType: 'EXAM',
-          sheetMode: true,
-          onCancel: () => {
-            this.closeSheet();
-          },
-          onSaved: (_event: EasEventItem) => {
-            this.closeSheet();
-            this.loadExams();
-          }
-        })
-          .width('100%')
-          .height('100%');
-      } else if (this.examSheetMode === 3 && this.selectedRemote !== undefined) {
-        this.remoteDetailSheet(this.selectedRemote as EasExamItem);
-      } else if (this.selectedExam !== undefined) {
-        this.examDetailSheet(this.selectedExam as EasEventItem);
+      Column() {
+        if (this.examSheetMode === 2) {
+          EventEditorForm({
+            eventId: this.sheetEventId,
+            targetTimetableId: this.targetTimetableId,
+            initialType: 'EXAM',
+            sheetMode: true,
+            onCancel: () => {
+              this.closeSheet();
+            },
+            onSaved: (_event: EasEventItem) => {
+              this.closeSheet();
+              this.loadExams();
+            }
+          })
+            .width('100%')
+            .height('100%');
+        } else if (this.examSheetMode === 3 && this.selectedRemote !== undefined) {
+          this.remoteDetailSheet(this.selectedRemote as EasExamItem);
+        } else if (this.selectedExam !== undefined) {
+          this.examDetailSheet(this.selectedExam as EasEventItem);
+        }
       }
+      .width('100%')
+      .height(this.examSheetMode === 2 ? '100%' : undefined)
+      .attributeModifier(new CompatibleLightModifier(24, CompatibleSheetMaterial.isEnabled(), true))
     }
   }
 
@@ -893,16 +902,6 @@ export struct ExamPage {
         .alignItems(HorizontalAlign.Start)
         .margin({ left: DETAIL_TEXT_GAP })
         this.examColorButton(ExamPage.examColor(event))
-        if (!this.examColorEditing) {
-          Text('编辑')
-            .fontSize(HitaDesign.caption)
-            .fontColor($r('app.color.hita_primary_3390ec'))
-            .fontWeight(FontWeight.Medium)
-            .padding({ left: 8, right: 8, top: 8, bottom: 8 })
-            .flexShrink(0)
-            .enabled(this.pendingDeleteId.length === 0)
-            .onClick(() => this.openEditExam(event))
-        }
       }
       .width('100%')
       .alignItems(VerticalAlign.Center)
@@ -911,6 +910,7 @@ export struct ExamPage {
       if (this.examColorEditing) {
         CourseColorEditor({
           initialColor: ExamPage.examColor(event),
+          immersiveControls: true,
           examMode: true,
           onPreview: (color: number) => { this.examColorPreview = color; },
           onSave: async (color: number) => { await this.saveExamColor(event, color); },
@@ -928,24 +928,14 @@ export struct ExamPage {
         this.examDetailRow($r('sys.symbol.checkmark'), '状态',
           ExamSchedule.remainingLabel(event.from, event.to, Date.now()))
 
-        Row() {
-          Blank()
-          Text('删除考试')
-            .fontSize(HitaDesign.caption)
-            .fontColor($r('app.color.hita_error'))
-            .fontWeight(FontWeight.Medium)
-            .padding({ left: 14, right: 14, top: 9, bottom: 9 })
-            .backgroundColor($r('app.color.hita_error_surface_fdecec'))
-            .borderRadius(HitaDesign.cardRadius)
-            .enabled(this.pendingDeleteId.length === 0)
-            .onClick(() => this.confirmDeleteExam(event))
-        }
-        .width('100%')
-        .margin({ top: 8 })
+        DetailActionBar({
+          deleteLabel: '删除', busy: this.pendingDeleteId.length > 0 || this.openingEditor,
+          onEdit: () => this.openEditExam(event), onDelete: () => this.confirmDeleteExam(event)
+        })
       }
     }
     .width('100%')
-    .padding({ left: 20, right: 20, top: 0, bottom: 20 })
+    .padding({ left: HitaDesign.inset, right: HitaDesign.inset, top: 0, bottom: 24 })
   }
 
   @Builder
@@ -982,6 +972,7 @@ export struct ExamPage {
       if (this.examColorEditing) {
         CourseColorEditor({
           initialColor: this.remoteExamColor(item),
+          immersiveControls: true,
           examMode: true,
           onPreview: (color: number) => { this.examColorPreview = color; },
           onSave: async (color: number) => { await this.saveRemoteExamColor(item, color); },
@@ -1001,7 +992,7 @@ export struct ExamPage {
         this.examDetailRow($r('sys.symbol.magnifyingglass'), '校区',
           item.campusName.length > 0 ? item.campusName : '未填写')
 
-        ImmersiveHeader({ barHeight: 46 }) {
+        ImmersiveHeader({ barHeight: 46, materialEnabled: CompatibleSheetMaterial.isEnabled() }) {
           Row() {
             Blank()
             Button('导入到课表', { type: ButtonType.Capsule })
@@ -1023,27 +1014,35 @@ export struct ExamPage {
       }
     }
     .width('100%')
-    .padding({ left: 20, right: 20, top: 0, bottom: 20 })
+    .padding({ left: HitaDesign.inset, right: HitaDesign.inset, top: 0, bottom: 24 })
   }
 
   @Builder
   private examColorButton(color: number) {
-    Button({ type: ButtonType.Circle }) {
-      SymbolGlyph($r('sys.symbol.paintpalette'))
-        .fontSize(HitaDesign.iconMd)
-        .fontColor([$r('app.color.hita_primary_3390ec')])
+    Column() {
+      ImmersiveHeader({ barHeight: 44, materialEnabled: CompatibleSheetMaterial.isEnabled() }) {
+        Button({ type: ButtonType.Circle }) {
+          SymbolGlyph($r('sys.symbol.paintpalette'))
+            .fontSize(HitaDesign.iconMd)
+            .fontColor([CompatibleSheetMaterial.isEnabled() ?
+              CompatibleMaterialModifier.foreground($r('app.color.hita_primary_3390ec')) :
+              $r('app.color.hita_primary_3390ec')])
+        }
+        .width(44)
+        .height(44)
+        .padding(0)
+        .backgroundColor($r('app.color.hita_selected_e4f0ff'))
+        .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_selected_e4f0ff'), false,
+          CompatibleSheetMaterial.isEnabled()))
+        .accessibilityText('修改考试颜色')
+        .enabled(!this.savingExamColor && !this.openingEditor && this.pendingDeleteId.length === 0)
+        .onClick(() => this.toggleExamColor(color))
+      }
     }
     .width(44)
     .height(44)
-    .padding(0)
     .margin({ left: 8 })
     .flexShrink(0)
-    .backgroundColor($r('app.color.hita_selected_e4f0ff'))
-    .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_selected_e4f0ff'), false,
-      !this.presentedAsSheet || CompatibleSheetMaterial.isEnabled()))
-    .accessibilityText('修改考试颜色')
-    .enabled(!this.savingExamColor && !this.openingEditor && this.pendingDeleteId.length === 0)
-    .onClick(() => this.toggleExamColor(color))
   }
 
   @Builder
@@ -1062,7 +1061,7 @@ export struct ExamPage {
       .alignContent(Alignment.Center)
       Column() {
         Text(label)
-          .fontSize(HitaDesign.label)
+          .fontSize(HitaDesign.caption)
           .fontColor($r('app.color.hita_text_secondary_72809a'))
         Text(value)
           .fontSize(HitaDesign.body)

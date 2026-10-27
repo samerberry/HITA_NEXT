@@ -1,4 +1,5 @@
 import { HitaDesign } from '../../../common/theme/HitaDesign';
+import { DetailActionBar } from '../../../common/components/DetailActionBar';
 import { EasEventItem, EasEventType } from '../../../common/model/timetable/TimetableModels';
 import { EasTimeTools } from '../../../common/util/EasTimeTools';
 import { ImmersiveHeader } from '../../../common/components/ImmersiveHeader';
@@ -108,35 +109,10 @@ export struct CourseDetailContent {
         this.courseDetailRow($r('sys.symbol.repeat_1'), '课程进度', this.progressText);
       }
       if (this.event.type === EasEventType.CLASS) {
-        Column() {
-          ImmersiveHeader({ barHeight: 56, materialEnabled: CompatibleSheetMaterial.isEnabled() }) {
-            Row({ space: 8 }) {
-              Button('编辑', { type: ButtonType.Capsule })
-                .height(HitaDesign.buttonHeight).padding({ left: 20, right: 20 }).fontSize(HitaDesign.body)
-                .fontWeight(FontWeight.Medium).fontColor(CompatibleSheetMaterial.isEnabled() ?
-                  CompatibleMaterialModifier.foreground(COLOR_PRIMARY) : COLOR_PRIMARY)
-                .backgroundColor(COLOR_NAV_ACTIVE)
-                .attributeModifier(new CompatibleMaterialModifier(COLOR_NAV_ACTIVE, false, CompatibleSheetMaterial.isEnabled()))
-                .enabled(!this.busy).onClick(() => this.onEdit());
-              Button(this.deleteLabel, { type: ButtonType.Capsule })
-                .height(HitaDesign.buttonHeight)
-                .padding({ left: 20, right: 20 })
-                .fontSize(HitaDesign.body)
-                .fontWeight(FontWeight.Medium)
-                .fontColor('#FFFFFF')
-                .backgroundColor($r('app.color.hita_error_fill'))
-                .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_error_fill'), true,
-                  CompatibleSheetMaterial.isEnabled(), $r('app.color.hita_error_fill'), false))
-                .enabled(!this.busy)
-                .onClick(() => { this.onDelete(); });
-            }
-            .width('100%')
-            .height(56)
-            .justifyContent(FlexAlign.End);
-          }
-        }
-        .width('100%')
-        .margin({ top: 12 });
+        DetailActionBar({
+          deleteLabel: this.deleteLabel, busy: this.busy,
+          onEdit: () => this.onEdit(), onDelete: () => this.onDelete()
+        });
       }
       }
     }
@@ -161,7 +137,7 @@ export struct CourseDetailContent {
       .alignContent(Alignment.Center);
       Column() {
         Text(label)
-          .fontSize(HitaDesign.label)
+          .fontSize(HitaDesign.caption)
           .fontColor(COLOR_TEXT_SECONDARY);
         Text(value)
           .fontSize(HitaDesign.body)
