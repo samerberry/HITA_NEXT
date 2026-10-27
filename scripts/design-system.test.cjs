@@ -97,12 +97,23 @@ test('no button anywhere puts fixed white text on an untinted material', () => {
     for (const m of text.matchAll(/\bButton\(/g)) {
       const end = text.indexOf('.onClick(', m.index);
       const chain = text.slice(m.index, end < 0 ? m.index + 800 : end);
-      // A second argument of true selects the tinted material, which keeps a dark fill behind the label.
+      // A second argument of true selects the tinted material; inside a material host it keeps a dark fill behind the label.
       const untinted = /new CompatibleMaterialModifier\([^,()]*(?:\([^()]*\))?[^,()]*(?:\)|,\s*false)/.test(chain);
       if (untinted && white.test(chain)) violations.push(`${file}:${text.slice(0, m.index).split('\n').length}`);
     }
   }
   assert.deepEqual(violations, []);
+});
+
+test('white icons outside a material host sit on solid fills', () => {
+  // Outside an ImmersiveHeader or a sheet even a tinted material renders clear, leaving white icons on the light page.
+  const assistant = read('pages/AssistantPage.ets');
+  const composer = assistant.slice(assistant.indexOf('  inputBar() {'));
+  const detail = read('pages/TimetableDetailPage.ets');
+  const swipeDelete = detail.slice(detail.indexOf('  private courseDeleteAction('), detail.indexOf('  private sessionRow('));
+  for (const control of [composer, swipeDelete]) assert.doesNotMatch(control, /CompatibleMaterialModifier/);
+  assert.match(composer, /paperplane_fill[\s\S]*?\.backgroundColor\(\$r\('app\.color\.hita_primary_fill'\)\)/);
+  assert.match(swipeDelete, /\.backgroundColor\(\$r\('app\.color\.hita_error_fill'\)\)/);
 });
 
 test('pages brought onto the scale keep 4 vp spacing and token sizes', () => {

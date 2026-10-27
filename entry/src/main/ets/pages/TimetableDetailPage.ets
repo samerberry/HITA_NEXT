@@ -625,8 +625,7 @@ struct TimetableDetailPage {
     .height('100%')
     .margin({ left: 8 })
     .borderRadius(HitaDesign.cardRadius)
-    .backgroundColor(HitaColors.error)
-    .attributeModifier(new CompatibleMaterialModifier(HitaColors.error, true, true, HitaColors.error))
+    .backgroundColor($r('app.color.hita_error_fill'))
     .accessibilityText('删除' + row.subject.name + '及全部课时')
     .onClick(() => {
       this.confirmDeleteCourse(row);

@@ -77,7 +77,8 @@ padding、margin 和 space 只用 4 的倍数；描边宽度和进度条粗细�
 
 - 材质上的文字和图标，要么用 `CompatibleMaterialModifier.foreground(...)` 跟随系统前景色，要么放在实心底上。
 - 禁止把固定白字压在无着色材质上（`CompatibleMaterialModifier` 第二个参数为 `false` 或省略）：这种材质是半透明的，
-  会替换原来的底色，浅色模式下白字就看不见了。着色材质（第二个参数为 `true`，如主视觉卡、编辑页的主按钮）自带深色底，可以用白字。
+  会替换原来的底色，浅色模式下白字就看不见了。着色材质（第二个参数为 `true`）只在 `ImmersiveHeader` 宿主或弹层里显出底色，
+  这时才能配白字，如编辑页的主按钮；页面普通区域和列表滑动操作里它同样会变透明，白字、白图标的按钮改用实心底。
 - 页面和弹层里的按钮统一用 `HitaButton`：它只有实心底，不接受材质修饰。
 
 ## 8. 组件
@@ -100,7 +101,7 @@ padding、margin 和 space 只用 4 的倍数；描边宽度和进度条粗细�
 
 ## 10. 检查
 
-- 运行 `node --test scripts/design-system.test.cjs`。它检查：令牌刻度；公共组件只用令牌；按钮不把固定白字压在无着色材质上；
+- 运行 `node --test scripts/design-system.test.cjs`。它检查：令牌刻度；公共组件只用令牌；按钮不把固定白字压在无着色材质上，宿主外的白图标按钮用实心底；
   除绘制例外以外的每个页面、弹层和对话框都没有 4 倍数以外的间距、写死的字号和圆角；全仓散值和硬编码颜色的数量只能减少。
 - 绘制例外（尺寸跟随画布、Dock 绘制或桌面卡片）：`DockRail`、`FrostedDock`、`CourseColorEditor`、`WidgetBackgroundPage`、
   `NextClassCard`，以及课表配色、背景和资讯头像配色这类颜色算法文件。

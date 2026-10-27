@@ -450,13 +450,9 @@ struct AssistantPage {
           .fontSize(HitaDesign.iconMd)
           .fontColor([$r('app.color.hita_on_primary')]);
       }
-      .width(44)
-      .height(44)
-      .backgroundColor(this.input.trim().length > 0 && !this.chat.sending ?
-        $r('app.color.hita_primary_fill') : $r('app.color.hita_disabled'))
-      .attributeModifier(new CompatibleMaterialModifier(this.input.trim().length > 0 && !this.chat.sending ?
-        $r('app.color.hita_primary_fill') : $r('app.color.hita_disabled'), true, true,
-        this.input.trim().length > 0 && !this.chat.sending ? undefined : $r('app.color.hita_disabled')))
+      .width(HitaDesign.minTouchTarget)
+      .height(HitaDesign.minTouchTarget)
+      .backgroundColor($r('app.color.hita_primary_fill'))
       .enabled(this.input.trim().length > 0 && !this.chat.sending)
       .accessibilityText('发送')
       .onClick(() => {

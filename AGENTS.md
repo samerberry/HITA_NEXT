@@ -15,7 +15,7 @@
 
 - 完整规范见 `docs/design-system.md`。字号、间距、圆角取自 `HitaDesign`，颜色取自 `HitaColors` 或颜色资源。页面里不新增 `'#RRGGBB'`、`fontSize(数字)`、`borderRadius(数字)`，也不使用 4 的倍数以外的间距（Canvas、桌面卡片、课表格子除外）。
 - 品牌色保留 `hita_primary`（#0068D9）。层次用材质表现，用了材质的表面不加阴影。顶部标题左对齐，返回键在左。
-- 材质上的文字要么跟随系统前景色（`CompatibleMaterialModifier.foreground`），要么放在实心底或着色材质上；固定白字不能压在无着色材质上。按钮统一用 `HitaButton`，它只用实心底；标题栏文字操作用 `HeaderActionButton`；状态标签用 `HitaTag`；设置和功能列表的行用 `HitaListRow`。
+- 材质上的文字要么跟随系统前景色（`CompatibleMaterialModifier.foreground`），要么放在实心底上；着色材质只在 `ImmersiveHeader` 宿主或弹层里显出底色，宿主外的白字、白图标按钮用实心底；固定白字不能压在无着色材质上。按钮统一用 `HitaButton`，它只用实心底；标题栏文字操作用 `HeaderActionButton`；状态标签用 `HitaTag`；设置和功能列表的行用 `HitaListRow`。
 - 改界面后运行 `scripts/design-system.test.cjs`，并在模拟器上分别截取浅色和深色截图检查。该测试的基线数字只能调低，不能为了让新代码通过而调高。
 
 ## 教务状态
