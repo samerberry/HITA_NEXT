@@ -2,6 +2,7 @@ import { TimetableBackup } from '../../common/model/timetable/TimetableBackup';
 import { newId } from '../../common/model/timetable/TimetableModels';
 import { TimetableDisplayOptions } from '../timetable/data/TimetableDisplayOptions';
 import { WidgetBackgroundState } from '../widget/WidgetBackgroundModel';
+import { LearningTask, LearningTaskRules } from '../../common/model/learning/LearningTask';
 
 export class BackupSettings {
   classEnabled: boolean = false;
@@ -23,9 +24,10 @@ export class BackupAsset {
 
 export class BackupManifest {
   format: string = 'HITA NEXT';
-  version: number = 1;
+  version: number = 2;
   createdAt: number = Date.now();
   timetables: TimetableBackup[] = [];
+  tasks: LearningTask[] = [];
   settings: BackupSettings = new BackupSettings();
   assets: BackupAsset[] = [];
   widget: WidgetBackgroundState | undefined = undefined;
@@ -41,7 +43,7 @@ export class BackupModel {
       const value = JSON.parse(raw) as BackupManifest;
       BackupModel.object(value);
       if (value.format !== 'HITA NEXT') throw new Error();
-      if (value.version !== 1) throw new Error('VERSION');
+      if (value.version !== 1 && value.version !== 2) throw new Error('VERSION');
       BackupModel.integer(value.createdAt, 1, 8640000000000000);
       BackupModel.array(value.timetables, 500);
       const tableIds = new Set<string>();
@@ -104,6 +106,22 @@ export class BackupModel {
           BackupModel.integer(b.to, b.from, 8640000000000000);
         }
       }
+      if (value.version === 1) value.tasks = [];
+      BackupModel.array(value.tasks, 50000);
+      const taskIds = new Set<string>();
+      for (const task of value.tasks) {
+        BackupModel.object(task);
+        BackupModel.identity(task.id, taskIds);
+        BackupModel.strings(task, ['kind', 'title', 'note', 'timetableId', 'subjectId', 'courseName', 'courseCode', 'examId', 'examName']);
+        BackupModel.bool(task.allDay);
+        if (LearningTaskRules.validation(task).length > 0) throw new Error();
+        // Removed courses/exams may leave intentional name snapshots; existing references must still agree.
+        for (const item of value.timetables) {
+          if (item.subjects.some(subject => subject.id === task.subjectId) && item.timetable.id !== task.timetableId) throw new Error();
+          const exam = item.events.find(event => event.id === task.examId);
+          if (exam !== undefined && (exam.type !== 'EXAM' || exam.timetableId !== task.timetableId)) throw new Error();
+        }
+      }
       const s = value.settings;
       BackupModel.object(s);
       BackupModel.bool(s.classEnabled);
@@ -157,6 +175,8 @@ export class BackupModel {
   static remap(value: BackupManifest): BackupManifest {
     const copy = BackupModel.parse(JSON.stringify(value));
     const ids = new Map<string, string>();
+    const allSubjectIds = new Map<string, string>();
+    const allEventIds = new Map<string, string>();
     for (const item of copy.timetables) {
       const old = item.timetable.id;
       item.timetable.id = newId();
@@ -167,13 +187,23 @@ export class BackupModel {
         const oldSubject = subject.id;
         subject.id = newId();
         subjectIds.set(oldSubject, subject.id);
+        allSubjectIds.set(oldSubject, subject.id);
         subject.timetableId = item.timetable.id;
       }
       for (const event of item.events) {
+        const oldEvent = event.id;
         event.id = newId();
+        allEventIds.set(oldEvent, event.id);
         event.timetableId = item.timetable.id;
         event.subjectId = subjectIds.get(event.subjectId) ?? '';
       }
+    }
+    for (const task of copy.tasks) {
+      task.id = newId();
+      task.timetableId = ids.get(task.timetableId) ?? '';
+      task.subjectId = allSubjectIds.get(task.subjectId) ?? '';
+      task.examId = allEventIds.get(task.examId) ?? '';
+      // Already delivered reminders stay delivered; future ones are scheduled from restored timestamps.
     }
     copy.settings.activeTimetable = ids.get(copy.settings.activeTimetable) ?? copy.timetables[0]?.timetable.id ?? '';
     return copy;

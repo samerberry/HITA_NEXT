@@ -45,7 +45,7 @@ export class BackupService {
       const rdb = RdbHelper.getInstance();
       await rdb.init(context);
       const manifest = new BackupManifest();
-      manifest.timetables = await rdb.createBackupSnapshot();
+      manifest.timetables = await rdb.createBackupSnapshot(manifest.tasks);
       manifest.settings = await BackupService.readSettings(context);
       // A removed/stale selection is not an invalid backup; the first table is the display fallback.
       if (!manifest.timetables.some(item => item.timetable.id === manifest.settings.activeTimetable)) {
@@ -150,7 +150,7 @@ export class BackupService {
           BackupService.writeText(widgetFile, JSON.stringify(w));
         } else BackupService.unlink(widgetFile);
         BackupService.writeText(context.getApplicationContext().filesDir + '/active_timetable_id.txt', copy.settings.activeTimetable);
-      });
+      }, copy.tasks);
       // A committed receipt makes startup recovery finish the operation even after a process exit here.
       BackupService.finishCommitted(context, journal);
       BackupService.unlink(context.filesDir + JOURNAL);

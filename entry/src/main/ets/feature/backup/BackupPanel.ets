@@ -92,7 +92,8 @@ export struct BackupPanel {
     const m = this.prepared?.manifest;
     if (m === undefined) return '';
     const events = m.timetables.reduce((count, item) => count + item.events.length, 0);
-    return m.timetables.length.toString() + ' 张课表 · ' + events.toString() + ' 项课程与考试';
+    return m.timetables.length.toString() + ' 张课表 · ' + events.toString() + ' 项课程与考试 · ' +
+      m.tasks.length.toString() + ' 项待办';
   }
   private mediaSummary(): string {
     const m = this.prepared?.manifest;
@@ -119,7 +120,7 @@ export struct BackupPanel {
               Column({ space: 5 }) {
                 Text('保存你的课表').fontSize(HitaDesign.section).fontWeight(FontWeight.Medium)
                   .fontColor($r('app.color.hita_text_1a1a1a'))
-                Text('课表、考试、颜色、提醒与显示设置').fontSize(HitaDesign.caption)
+                Text('课表、考试、学习待办与显示设置').fontSize(HitaDesign.caption)
                   .fontColor($r('app.color.hita_text_secondary_566276'))
                 Text('包含背景图片、视频及服务卡片背景').fontSize(HitaDesign.caption)
                   .fontColor($r('app.color.hita_text_secondary_566276'))

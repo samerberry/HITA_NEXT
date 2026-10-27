@@ -58,6 +58,7 @@ function harness() {
     }
   };
   const rdb = {
+    getLearningTasks: async () => [],
     async init() {},
     async getTimetableById(id, strict) {
       if (state.failDb) throw new Error('Database unavailable');

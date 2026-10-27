@@ -101,6 +101,7 @@ function summaryHarness() {
     startDockHandedness() {}
     checkTimetableUpdate() {}
     async openPendingReminder() {}
+    openPendingLearningTask() {}
     updateTodayHighlights() {}
     drawTimetableNow() {}
     static defaultCanvasColor() { return 1; }

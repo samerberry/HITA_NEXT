@@ -7,6 +7,10 @@ export class ScheduleChangeSignal {
     ScheduleChangeSignal.subscribers.set(key, listener);
   }
 
+  static unsubscribe(key: string): void {
+    ScheduleChangeSignal.subscribers.delete(key);
+  }
+
   static notify(): void {
     try { ScheduleChangeSignal.listener?.(); } catch (_) {}
     ScheduleChangeSignal.subscribers.forEach((listener: () => void): void => {

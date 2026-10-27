@@ -25,6 +25,7 @@ import { TimetableBackup } from '../model/timetable/TimetableBackup';
 import { CourseDateSelection } from '../../feature/timetable/CourseDateSelection';
 import { normalizeHtmlSpaces } from '../util/HtmlSpaces';
 import { ScheduleChangeSignal } from '../util/ScheduleChangeSignal';
+import { LearningContext, LearningTask, LearningTaskKind, LearningTaskRules } from '../model/learning/LearningTask';
 
 // The first prototype shipped a different schema under this name.  Use a
 // versioned store so an upgrade cannot keep an incompatible old table layout.
@@ -60,6 +61,12 @@ const CREATE_IMPORT_BASE: string =
   'signature TEXT NOT NULL)';
 
 const CREATE_BACKUP_RECEIPT: string = 'CREATE TABLE IF NOT EXISTS backup_restore_receipt (id TEXT PRIMARY KEY)';
+const CREATE_LEARNING_TASK: string = 'CREATE TABLE IF NOT EXISTS learning_task (' +
+  'id TEXT PRIMARY KEY, kind TEXT NOT NULL, title TEXT NOT NULL, note TEXT NOT NULL, ' +
+  'timetableId TEXT NOT NULL, subjectId TEXT NOT NULL, courseName TEXT NOT NULL, courseCode TEXT NOT NULL, ' +
+  'examId TEXT NOT NULL, examName TEXT NOT NULL, examAt INTEGER NOT NULL, dueAt INTEGER NOT NULL, ' +
+  'allDay INTEGER NOT NULL, completedAt INTEGER NOT NULL, remindAt INTEGER NOT NULL, notifiedAt INTEGER NOT NULL, ' +
+  'createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL)';
 
 export class RdbHelper {
   private static instance: RdbHelper | undefined = undefined;
@@ -107,6 +114,7 @@ export class RdbHelper {
     await this.execSql(CREATE_EVENTS);
     await this.execSql(CREATE_IMPORT_BASE);
     await this.execSql(CREATE_BACKUP_RECEIPT);
+    await this.execSql(CREATE_LEARNING_TASK);
     await this.ensureEventColorColumn();
     await this.repairLegacyWeihaiTimetables();
     await this.repairLegacyBenbuTimetables();
@@ -930,8 +938,143 @@ export class RdbHelper {
   // 私有：行 → 模型
   // ------------------------------------------------------------------
 
+  async getLearningTasks(): Promise<LearningTask[]> {
+    return RdbHelper.readRows(await this.s().query(new relationalStore.RdbPredicates('learning_task')),
+      RdbHelper.learningTaskMapper, true);
+  }
+
+  async getLearningContext(): Promise<LearningContext> {
+    const tx: relationalStore.Transaction = await this.s().createTransaction();
+    try {
+      const context: LearningContext = new LearningContext();
+      context.timetables = RdbHelper.readRows(await tx.query(new relationalStore.RdbPredicates('timetable')),
+        RdbHelper.timetableMapper, true);
+      context.subjects = RdbHelper.readRows(await tx.query(new relationalStore.RdbPredicates('subject')),
+        RdbHelper.subjectMapper, true);
+      context.events = RdbHelper.readRows(await tx.query(new relationalStore.RdbPredicates('events')),
+        RdbHelper.eventMapper, true);
+      await tx.commit();
+      return context;
+    } catch (error) { await tx.rollback(); throw error as Error; }
+  }
+
+  /** Preserve completion and notification state when saving an editor opened before a reminder fired. */
+  async saveLearningTask(task: LearningTask, isNew: boolean): Promise<void> {
+    const message: string = LearningTaskRules.validation(task);
+    if (message.length > 0) throw new Error(message);
+    await this.writeTransaction(async (tx: relationalStore.Transaction): Promise<void> => {
+      const predicate: relationalStore.RdbPredicates = new relationalStore.RdbPredicates('learning_task').equalTo('id', task.id);
+      const previous: LearningTask | undefined = RdbHelper.firstRow(await tx.query(predicate), RdbHelper.learningTaskMapper, true);
+      if (isNew ? previous !== undefined : previous === undefined) throw new Error('待办不存在或已被删除，请重新打开');
+      if (previous !== undefined && previous.updatedAt !== task.updatedAt) throw new Error('待办已变化，请重新打开后编辑');
+      const next: LearningTask = LearningTaskRules.copy(task);
+      // Recheck associations in the write transaction: a picker snapshot can outlive a course/exam.
+      if (isNew || previous?.kind !== next.kind || previous?.timetableId !== next.timetableId ||
+        (next.kind === LearningTaskKind.HOMEWORK ? previous?.subjectId !== next.subjectId : previous?.examId !== next.examId)) {
+        const timetable: EasTimetable | undefined = RdbHelper.firstRow(await tx.query(
+          new relationalStore.RdbPredicates('timetable').equalTo('id', next.timetableId)), RdbHelper.timetableMapper, true);
+        if (timetable === undefined) throw new Error('课表已变化，请重新选择');
+        if (next.kind === LearningTaskKind.HOMEWORK) {
+          const subject: EasTermSubject | undefined = RdbHelper.firstRow(await tx.query(
+            new relationalStore.RdbPredicates('subject').equalTo('id', next.subjectId)
+              .equalTo('timetableId', next.timetableId)), RdbHelper.subjectMapper, true);
+          if (subject === undefined) throw new Error('课程已变化，请重新选择');
+          next.courseName = subject.name; next.courseCode = subject.code;
+        } else {
+          const exam: EasEventItem | undefined = RdbHelper.firstRow(await tx.query(
+            new relationalStore.RdbPredicates('events').equalTo('id', next.examId)
+              .equalTo('timetableId', next.timetableId).equalTo('type', EasEventType.EXAM)), RdbHelper.eventMapper, true);
+          if (exam === undefined) throw new Error('考试已变化，请重新选择');
+          next.examName = exam.name; next.examAt = exam.from;
+        }
+      }
+      next.title = next.title.trim();
+      next.note = next.note.trim();
+      next.completedAt = previous?.completedAt ?? 0;
+      next.notifiedAt = previous !== undefined && previous.remindAt === task.remindAt ? previous.notifiedAt : 0;
+      next.updatedAt = Math.max(Date.now(), (previous?.updatedAt ?? 0) + 1);
+      if (isNew) {
+        if (await tx.insert('learning_task', RdbHelper.learningTaskValues(next)) < 0) throw new Error('待办保存失败');
+      } else if (await tx.update(RdbHelper.learningTaskValues(next), predicate) !== 1) throw new Error('待办保存失败');
+    });
+  }
+
+  async setLearningTaskCompleted(id: string, completed: boolean): Promise<void> {
+    await this.writeTransaction(async (tx: relationalStore.Transaction): Promise<void> => {
+      const predicate: relationalStore.RdbPredicates = new relationalStore.RdbPredicates('learning_task').equalTo('id', id);
+      const task: LearningTask | undefined = RdbHelper.firstRow(await tx.query(predicate), RdbHelper.learningTaskMapper, true);
+      if (task === undefined) throw new Error('待办不存在或已被删除');
+      if (await tx.update({ completedAt: completed ? Date.now() : 0,
+        updatedAt: Math.max(Date.now(), task.updatedAt + 1) }, predicate) !== 1) throw new Error('待办保存失败');
+    });
+  }
+
+  async deleteLearningTask(id: string): Promise<void> {
+    if (await this.s().delete(new relationalStore.RdbPredicates('learning_task').equalTo('id', id)) !== 1) {
+      throw new Error('待办不存在或已被删除');
+    }
+    ScheduleChangeSignal.notify();
+  }
+
+  async markLearningTaskNotified(id: string, remindAt: number): Promise<void> {
+    await this.s().update({ notifiedAt: remindAt }, new relationalStore.RdbPredicates('learning_task')
+      .equalTo('id', id).equalTo('remindAt', remindAt).equalTo('completedAt', 0));
+  }
+
+  async shiftLearningTasksForExam(examId: string, expectedFrom: number): Promise<void> {
+    await this.writeTransaction(async (tx: relationalStore.Transaction): Promise<void> => {
+      const exam: EasEventItem | undefined = RdbHelper.firstRow(await tx.query(new relationalStore.RdbPredicates('events')
+        .equalTo('id', examId).equalTo('type', EasEventType.EXAM)), RdbHelper.eventMapper, true);
+      if (exam === undefined || exam.from !== expectedFrom) throw new Error('考试已变化，请重新打开');
+      const tasks: LearningTask[] = RdbHelper.readRows(await tx.query(new relationalStore.RdbPredicates('learning_task')
+        .equalTo('examId', examId).equalTo('timetableId', exam.timetableId).equalTo('completedAt', 0)), RdbHelper.learningTaskMapper, true);
+      for (const task of tasks) {
+        if (task.examAt === 0 || task.examAt === exam.from) continue;
+        const next: LearningTask = LearningTaskRules.shifted(task, exam);
+        if (LearningTaskRules.validation(next).length > 0) throw new Error('调整后的日期无效，请逐项编辑');
+        next.updatedAt = Math.max(Date.now(), task.updatedAt + 1);
+        if (await tx.update(RdbHelper.learningTaskValues(next), new relationalStore.RdbPredicates('learning_task')
+          .equalTo('id', task.id)) !== 1) throw new Error('复习任务已变化，请刷新后重试');
+      }
+    });
+  }
+
+  private static learningTaskValues(task: LearningTask): relationalStore.ValuesBucket {
+    return {
+      id: task.id, kind: task.kind, title: task.title, note: task.note,
+      timetableId: task.timetableId, subjectId: task.subjectId, courseName: task.courseName, courseCode: task.courseCode,
+      examId: task.examId, examName: task.examName, examAt: task.examAt, dueAt: task.dueAt,
+      allDay: task.allDay ? 1 : 0, completedAt: task.completedAt, remindAt: task.remindAt,
+      notifiedAt: task.notifiedAt, createdAt: task.createdAt, updatedAt: task.updatedAt
+    };
+  }
+
+  private static learningTaskMapper(col: (name: string) => ValueGetter): LearningTask {
+    const task: LearningTask = new LearningTask();
+    task.id = col('id').str();
+    task.kind = col('kind').str() as LearningTaskKind;
+    task.title = col('title').str();
+    task.note = col('note').str();
+    task.timetableId = col('timetableId').str();
+    task.subjectId = col('subjectId').str();
+    task.courseName = col('courseName').str();
+    task.courseCode = col('courseCode').str();
+    task.examId = col('examId').str();
+    task.examName = col('examName').str();
+    task.examAt = col('examAt').num();
+    task.dueAt = col('dueAt').num();
+    task.allDay = col('allDay').num() !== 0;
+    task.completedAt = col('completedAt').num();
+    task.remindAt = col('remindAt').num();
+    task.notifiedAt = col('notifiedAt').num();
+    task.createdAt = col('createdAt').num();
+    task.updatedAt = col('updatedAt').num();
+    if (LearningTaskRules.validation(task).length > 0) throw new Error('Invalid learning task');
+    return task;
+  }
+
   /** A single database snapshot: read failures must never become an apparently empty backup. */
-  async createBackupSnapshot(): Promise<TimetableBackup[]> {
+  async createBackupSnapshot(tasks?: LearningTask[]): Promise<TimetableBackup[]> {
     const tx = await this.s().createTransaction();
     try {
       const tables = RdbHelper.readRows(await tx.query(new relationalStore.RdbPredicates('timetable')
@@ -950,7 +1093,10 @@ export class RdbHelper {
             col('signature').str()), true);
         result.push(item);
       }
+      const taskRows: LearningTask[] = tasks === undefined ? [] : RdbHelper.readRows(await tx.query(
+        new relationalStore.RdbPredicates('learning_task')), RdbHelper.learningTaskMapper, true);
       await tx.commit();
+      if (tasks !== undefined) tasks.push(...taskRows);
       return result;
     } catch (error) {
       await tx.rollback();
@@ -959,7 +1105,8 @@ export class RdbHelper {
   }
 
   /** New IDs only. The receipt distinguishes committed restores from interrupted settings writes. */
-  async restoreBackup(items: TimetableBackup[], receipt: string, applySettings: () => Promise<void>): Promise<void> {
+  async restoreBackup(items: TimetableBackup[], receipt: string, applySettings: () => Promise<void>,
+    tasks: LearningTask[] = []): Promise<void> {
     await this.writeTransaction(async (tx: relationalStore.Transaction): Promise<void> => {
       for (const item of items) {
         if (await tx.insert('timetable', RdbHelper.timetableValues(item.timetable)) < 0) throw new Error('Restore failed');
@@ -970,6 +1117,10 @@ export class RdbHelper {
           if (await tx.insert('events', RdbHelper.eventValues(event)) < 0) throw new Error('Restore failed');
         }
         await RdbHelper.replaceImportBase(tx, item.timetable.id, item.importBase);
+      }
+      for (const task of tasks) {
+        if (LearningTaskRules.validation(task).length > 0 ||
+          await tx.insert('learning_task', RdbHelper.learningTaskValues(task)) < 0) throw new Error('Restore failed');
       }
       if (await tx.insert('backup_restore_receipt', { 'id': receipt }) < 0) throw new Error('Restore failed');
       await applySettings();

@@ -1,6 +1,10 @@
 import { HitaDesign } from '../common/theme/HitaDesign';
 import { SheetContent } from '../common/components/SheetContent';
 import { DetailActionBar } from '../common/components/DetailActionBar';
+import { LearningTaskLink } from '../feature/learning/LearningTaskLink';
+import { LearningTasksPanel } from '../feature/learning/LearningTasksPanel';
+import { LearningTask } from '../common/model/learning/LearningTask';
+import { ScheduleChangeSignal } from '../common/util/ScheduleChangeSignal';
 /**
  * ExamPage.ets — 考试查询。
  *
@@ -21,7 +25,7 @@ import { DeleteParticleCard } from '../common/components/DeleteParticleCard';
 import { DeleteEffectController } from '../common/util/DeleteEffectController';
 import { NAV_BAR_INSET_FALLBACK, STATUS_BAR_INSET_FALLBACK } from '../common/theme/StatusBarInset';
 import { RdbHelper } from '../common/db/RdbHelper';
-import { EasEventItem, EasEventType, EasTimetable } from '../common/model/timetable/TimetableModels';
+import { EasEventItem, EasEventType, EasTimetable, newId } from '../common/model/timetable/TimetableModels';
 import { DOW_FULL, EasTimeTools } from '../common/util/EasTimeTools';
 import { TimetableSelectionStore } from '../feature/timetable/data/TimetableSelectionStore';
 import { CourseColorEditor } from '../feature/timetable/views/CourseColorEditor';
@@ -47,11 +51,15 @@ const DEFAULT_EXAM_COLOR: number = 0xFFB24B63;
 export struct ExamPage {
   @Prop presentedAsSheet: boolean = false;
   onClose: () => void = () => {};
+  onBusyChanged: (busy: boolean) => void = () => {};
   @State exams: EasEventItem[] = [];
   @State upcoming: EasEventItem[] = [];
   @State past: EasEventItem[] = [];
   @State remoteExams: EasExamItem[] = [];
   @State loading: boolean = true;
+  @State reviewView: boolean = false;
+  @State learningBusy: boolean = false;
+  @State learningTasks: LearningTask[] = [];
   @State querying: boolean = false;
   @State preparingQuery: boolean = true;
   @State loadError: boolean = false;
@@ -84,12 +92,17 @@ export struct ExamPage {
   private deleteSheetDismissed: (() => void) | undefined = undefined;
   private deleteSheetTimer: number = -1;
   private sheetLoadStarted: boolean = false;
+  private learningSignalKey: string = 'exam-review-' + newId();
+  private learningGeneration: number = 0;
+  private learningActive: boolean = false;
 
   async aboutToAppear(): Promise<void> {
+    ScheduleChangeSignal.subscribe(this.learningSignalKey, () => { void this.loadLearningTasks(); });
     if (this.presentedAsSheet && !this.sheetLoadStarted) await this.onPageShow();
   }
 
   async onPageShow(): Promise<void> {
+    this.learningActive = true;
     if (this.presentedAsSheet) {
       if (this.sheetLoadStarted) return;
       this.sheetLoadStarted = true;
@@ -117,6 +130,8 @@ export struct ExamPage {
   }
 
   onPageHide(): void {
+    this.learningActive = false;
+    this.learningGeneration++;
     this.sheetLoadStarted = false;
     this.pageGeneration++;
     this.deleteEffects.pause();
@@ -127,6 +142,7 @@ export struct ExamPage {
   }
 
   aboutToDisappear(): void {
+    ScheduleChangeSignal.unsubscribe(this.learningSignalKey);
     this.onPageHide();
   }
 
@@ -178,11 +194,26 @@ export struct ExamPage {
       this.upcoming = events.filter((event: EasEventItem): boolean => ExamSchedule.isUpcoming(event.to, now));
       this.past = events.filter((event: EasEventItem): boolean => !ExamSchedule.isUpcoming(event.to, now));
       this.remoteExams = this.filterImported(this.remoteExams, events);
+      await this.loadLearningTasks();
     } catch (_) {
       this.loadError = true;
     } finally {
       this.loading = false;
     }
+  }
+
+  private async loadLearningTasks(): Promise<void> {
+    const generation: number = ++this.learningGeneration;
+    try {
+      const tasks: LearningTask[] = await RdbHelper.getInstance().getLearningTasks();
+      if (this.learningActive && generation === this.learningGeneration) this.learningTasks = tasks;
+    } catch (_) {}
+  }
+
+  private reviewProgress(examId: string): string {
+    const tasks: LearningTask[] = this.learningTasks.filter(task => task.examId === examId && task.kind === 'REVIEW');
+    return tasks.length === 0 ? '' : '复习清单 ' + tasks.filter(task => task.completedAt > 0).length.toString() +
+      ' / ' + tasks.length.toString() + ' 项已完成';
   }
 
   private filterImported(items: EasExamItem[], events: EasEventItem[]): EasExamItem[] {
@@ -511,7 +542,11 @@ export struct ExamPage {
 
   build() {
     Stack({ alignContent: Alignment.Top }) {
-      if (this.preparingQuery || this.querying ||
+      if (this.reviewView) {
+        LearningTasksPanel({ filterKind: 'REVIEW', embedded: true,
+          onBusyChanged: (busy: boolean) => { this.learningBusy = busy; this.onBusyChanged(busy); }
+        }).width('100%').height('100%').padding({ top: HEADER_HEIGHT })
+      } else if (this.preparingQuery || this.querying ||
         (this.loading && this.exams.length === 0 && this.remoteExams.length === 0)) {
         Column({ space: 12 }) {
           LoadingProgress()
@@ -623,7 +658,7 @@ export struct ExamPage {
             }
             .enabled(this.pendingDeleteId.length === 0)
             .transition(TransitionEffect.OPACITY)
-          }, (it: EasEventItem) => it.id + '|' + it.color.toString())
+          }, (it: EasEventItem) => it.id + '|' + it.color.toString() + '|' + this.reviewProgress(it.id))
           ForEach(this.remoteExams, (remote: EasExamItem) => {
             ListItem() {
               this.remoteExamCard(remote)
@@ -648,7 +683,7 @@ export struct ExamPage {
             }
             .enabled(this.pendingDeleteId.length === 0)
             .transition(TransitionEffect.OPACITY)
-          }, (it: EasEventItem) => it.id + '|' + it.color.toString())
+          }, (it: EasEventItem) => it.id + '|' + it.color.toString() + '|' + this.reviewProgress(it.id))
         }
         .width('100%')
         .height('100%')
@@ -660,7 +695,7 @@ export struct ExamPage {
         })
       }
 
-      if (!this.preparingQuery && !this.querying && this.queryContext.length > 0 &&
+      if (!this.reviewView && !this.preparingQuery && !this.querying && this.queryContext.length > 0 &&
         this.exams.length === 0 && this.remoteExams.length === 0) {
         Text(this.queryContext)
           .fontSize(HitaDesign.caption)
@@ -683,15 +718,13 @@ export struct ExamPage {
             onBack: () => this.navigateBack()
           })
             .margin({ right: 12 })
-          Text('考试查询')
-            .fontSize(HitaDesign.title)
-            .fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.hita_text_1a1a1a'))
-            .layoutWeight(1)
-            .maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
-
-          this.headerAction('查询', this.pendingDeleteId.length === 0, () => {
+          Row({ space: 4 }) {
+            this.viewTab('考试', false)
+            this.viewTab('复习', true)
+          }.padding(4).backgroundColor($r('app.color.hita_control')).borderRadius(24)
+          Blank()
+          if (!this.reviewView) {
+            this.headerAction('查询', this.pendingDeleteId.length === 0, () => {
               if (!this.preparingQuery) {
                 this.queryEasExams();
               }
@@ -702,6 +735,7 @@ export struct ExamPage {
                 this.openAddExam();
               }
             })
+          }
         }
         .width('100%')
         .height(HEADER_HEIGHT)
@@ -732,6 +766,16 @@ export struct ExamPage {
     }))
     .attributeModifier(new CompatibleLightModifier(24, this.presentedAsSheet &&
       CompatibleSheetMaterial.isEnabled(), true))
+  }
+
+  @Builder
+  private viewTab(title: string, review: boolean) {
+    Button(title, { type: ButtonType.Capsule }).height(36).fontSize(HitaDesign.body).padding({ left: 12, right: 12 })
+      .fontWeight(this.reviewView === review ? FontWeight.Medium : FontWeight.Regular)
+      .fontColor(this.reviewView === review ? $r('app.color.hita_primary') : $r('app.color.hita_text_secondary'))
+      .backgroundColor(this.reviewView === review ? $r('app.color.hita_selected') : Color.Transparent)
+      .enabled(!this.learningBusy && this.pendingDeleteId.length === 0 && !this.sheetVisible)
+      .onClick(() => { this.reviewView = review; this.fadeOpacity = 0; })
   }
 
   @Builder
@@ -777,6 +821,9 @@ export struct ExamPage {
           .margin({ top: 4 })
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
+        if (this.reviewProgress(it.id).length > 0) {
+          Text(this.reviewProgress(it.id)).fontSize(HitaDesign.caption).fontColor($r('app.color.hita_primary')).margin({ top: 8 })
+        }
       }
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start)
@@ -928,6 +975,7 @@ export struct ExamPage {
         this.examDetailRow($r('sys.symbol.checkmark'), '状态',
           ExamSchedule.remainingLabel(event.from, event.to, Date.now()))
 
+        LearningTaskLink({ event: event })
         DetailActionBar({
           deleteLabel: '删除', busy: this.pendingDeleteId.length > 0 || this.openingEditor,
           onEdit: () => this.openEditExam(event), onDelete: () => this.confirmDeleteExam(event)
@@ -1101,6 +1149,7 @@ export struct ExamPage {
   }
 
   navigateBack(): void {
+    if (this.learningBusy) return;
     if (this.presentedAsSheet) {
       this.onClose();
     } else {

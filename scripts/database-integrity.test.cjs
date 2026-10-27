@@ -46,6 +46,7 @@ const { EasTimetable, EasTimePeriodInDay, EasTermSubject, EasEventItem, EasEvent
 const { EasTimetableImporter } = load('feature/eas/EasTimetableImporter.ets');
 const { EasSession, EasCampus } = load('feature/eas/EasSession.ets');
 const { EasCourseItem, EasTermItem } = load('feature/eas/model/EasModels.ets');
+const { LearningTask } = load('common/model/learning/LearningTask.ets');
 const day = 86400000;
 const start = new Date(2026, 7, 31).getTime();
 const legacyBenbuTimes = [
@@ -80,7 +81,7 @@ function database() {
   const source = read('common/db/RdbHelper.ets');
   const schemas = source.slice(source.indexOf('const CREATE_TIMETABLE:'), source.indexOf('export class RdbHelper'));
   for (const schema of new Function(compile(schemas +
-    '\nreturn [CREATE_TIMETABLE, CREATE_SUBJECT, CREATE_EVENTS, CREATE_IMPORT_BASE, CREATE_BACKUP_RECEIPT];'))()) {
+    '\nreturn [CREATE_TIMETABLE, CREATE_SUBJECT, CREATE_EVENTS, CREATE_IMPORT_BASE, CREATE_BACKUP_RECEIPT, CREATE_LEARNING_TASK];'))()) {
     sql.exec(schema);
   }
   const ops = {
@@ -596,5 +597,119 @@ test('backup snapshot refuses cursor failures instead of exporting partial data'
     };
     await assert.rejects(f.db.createBackupSnapshot(), /row read failed/);
     assert.equal(f.sql.isTransaction, false);
+  } finally { f.sql.close(); }
+});
+function learningTask(values = {}) {
+  return Object.assign(new LearningTask(), { title: 'Exercises', timetableId: 'a', subjectId: 'math', courseName: 'Math' }, values);
+}
+
+test('task writes reject stale edits and resurrection, preserve delivered reminders, and use monotonic completion revisions', async () => {
+  const f = database();
+  try {
+    await seed(f.db);
+    const input = learningTask({ id: 'homework', remindAt: start, dueAt: start + day });
+    await f.db.saveLearningTask(input, true);
+    const saved = (await f.db.getLearningTasks())[0];
+    await f.db.markLearningTaskNotified(saved.id, saved.remindAt);
+    await f.db.saveLearningTask({ ...saved, title: 'Changed' }, false);
+    const notified = (await f.db.getLearningTasks())[0];
+    assert.equal(notified.notifiedAt, saved.remindAt);
+    assert.equal(notified.title, 'Changed');
+    await assert.rejects(f.db.saveLearningTask(saved, false), /待办已变化/);
+    // Even two writes in the same clock tick must invalidate an editor snapshot.
+    const clock = Date.now;
+    Date.now = () => notified.updatedAt;
+    try { await f.db.setLearningTaskCompleted(saved.id, true); } finally { Date.now = clock; }
+    const done = (await f.db.getLearningTasks())[0];
+    assert.equal(done.updatedAt, notified.updatedAt + 1);
+    assert.ok(done.completedAt > 0);
+    await assert.rejects(f.db.saveLearningTask(notified, false), /待办已变化/);
+    await f.db.setLearningTaskCompleted(saved.id, false);
+    assert.equal((await f.db.getLearningTasks())[0].completedAt, 0);
+    await f.db.deleteLearningTask(saved.id);
+    await assert.rejects(f.db.saveLearningTask(done, false), /不存在/);
+    await assert.rejects(f.db.setLearningTaskCompleted(saved.id, true), /不存在/);
+    assert.deepEqual(await f.db.getLearningTasks(), []);
+  } finally { f.sql.close(); }
+});
+
+test('task creation validates associations atomically; deleting a class or timetable preserves existing task contents', async () => {
+  const f = database();
+  try {
+    await seed(f.db);
+    await assert.rejects(f.db.saveLearningTask(learningTask({ subjectId: 'other-subject' }), true), /课程已变化/);
+    await assert.rejects(f.db.saveLearningTask(learningTask({ kind: 'REVIEW', examId: 'old-one' }), true), /考试已变化/);
+    await assert.rejects(f.db.saveLearningTask(learningTask({ timetableId: 'removed' }), true), /课表已变化/);
+    await f.db.saveLearningTask(learningTask({ id: 'retained' }), true);
+    const before = await f.db.getLearningTasks();
+    await f.db.deleteEvent('old-one');
+    assert.deepEqual(await f.db.getLearningTasks(), before);
+    await f.db.deleteTimetablesCascade(['a']);
+    assert.deepEqual(await f.db.getLearningTasks(), before);
+    await f.db.saveLearningTask({ ...before[0], title: 'Still editable' }, false);
+    assert.equal((await f.db.getLearningTasks())[0].title, 'Still editable');
+  } finally { f.sql.close(); }
+});
+
+test('exam rescheduling moves only pending associated tasks and rolls back the entire batch on failure', async () => {
+  const f = database();
+  try {
+    await seed(f.db);
+    const exam = (await f.db.getLearningContext()).events.find(e => e.id === 'exam');
+    for (const id of ['pending-a', 'pending-b', 'completed']) {
+      await f.db.saveLearningTask(learningTask({ id, kind: 'REVIEW', examId: exam.id,
+        dueAt: exam.from - day, remindAt: exam.from - day - 3600000 }), true);
+    }
+    await f.db.setLearningTaskCompleted('completed', true);
+    const before = await f.db.getLearningTasks();
+    exam.from += 2 * day; exam.to += 2 * day;
+    await f.db.saveEvent(exam);
+    await assert.rejects(f.db.shiftLearningTasksForExam(exam.id, exam.from - 1), /考试已变化/);
+    f.sql.exec("CREATE TRIGGER fail_shift BEFORE UPDATE ON learning_task WHEN OLD.id='pending-b' BEGIN SELECT RAISE(ABORT, 'disk full'); END");
+    await assert.rejects(f.db.shiftLearningTasksForExam(exam.id, exam.from), /disk full/);
+    assert.deepEqual(await f.db.getLearningTasks(), before);
+    f.sql.exec('DROP TRIGGER fail_shift');
+    await f.db.shiftLearningTasksForExam(exam.id, exam.from);
+    const after = await f.db.getLearningTasks();
+    for (const task of after) {
+      const original = before.find(t => t.id === task.id);
+      if (task.completedAt) assert.deepEqual(task, original);
+      else {
+        assert.equal(task.dueAt, original.dueAt + 2 * day);
+        assert.equal(task.remindAt, original.remindAt + 2 * day);
+        assert.equal(task.examAt, exam.from);
+      }
+    }
+    await f.db.shiftLearningTasksForExam(exam.id, exam.from);
+    assert.deepEqual(await f.db.getLearningTasks(), after);
+  } finally { f.sql.close(); }
+});
+
+test('task backup is a strict snapshot and restore rolls task rows back alongside schedules and settings', async () => {
+  const f = database();
+  try {
+    await seed(f.db);
+    await f.db.saveLearningTask(learningTask({ id: 'original' }), true);
+    const tasks = [];
+    await f.db.createBackupSnapshot(tasks);
+    assert.equal(tasks[0].id, 'original');
+    const restoreTask = { ...tasks[0], id: 'restored-task', timetableId: 'restored-table', subjectId: '' };
+    const schedule = { timetable: table('restored-table'), subjects: [], events: [], importBase: [] };
+    await assert.rejects(f.db.restoreBackup([schedule], 'failed-task', async () => { throw Error('settings failed'); }, [restoreTask]), /settings failed/);
+    assert.equal(await f.db.getTimetableById('restored-table'), undefined);
+    assert.deepEqual(await f.db.getLearningTasks(), tasks);
+    assert.equal(await f.db.hasBackupReceipt('failed-task'), false);
+    await f.db.restoreBackup([schedule], 'tasks-restored', async () => {}, [restoreTask]);
+    assert.equal((await f.db.getLearningTasks()).length, 2);
+    assert.equal(await f.db.hasBackupReceipt('tasks-restored'), true);
+    const create = f.db.store.createTransaction;
+    f.db.store.createTransaction = async () => {
+      const tx = await create(); const query = tx.query;
+      tx.query = async pred => pred.table === 'learning_task' ? { goToNextRow() { throw Error('cursor failed'); }, close() {} } : query(pred);
+      return tx;
+    };
+    const exported = [];
+    await assert.rejects(f.db.createBackupSnapshot(exported), /row read failed/);
+    assert.deepEqual(exported, []);
   } finally { f.sql.close(); }
 });

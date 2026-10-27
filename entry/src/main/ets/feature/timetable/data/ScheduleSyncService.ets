@@ -8,6 +8,7 @@ import { ClassReminderScheduler } from './ClassReminderScheduler';
 import { CalendarExportResult, TimetableCalendarExporter } from './TimetableCalendarExporter';
 import { TimetableSelectionStore } from './TimetableSelectionStore';
 import { TimetableResolver } from './TimetableResolver';
+import { LearningTaskReminders } from '../../learning/LearningTaskReminders';
 
 /** Serialize opt-in calendar reconciliation, including changes arriving during a sync. */
 export class ScheduleSyncService {
@@ -165,6 +166,7 @@ export class ScheduleSyncService {
     if (timetable === undefined) timetable = await TimetableResolver.getForDisplay(rdb);
     await ClassReminderStore.getInstance().init(context);
     await ClassReminderScheduler.sync(context, timetable === undefined ? [] : await rdb.getEventsOfTimetable(timetable.id, true));
+    await LearningTaskReminders.refresh(context).catch(() => {});
   }
 
   private static status(message: string): void {

@@ -38,7 +38,8 @@ export default class EntryAbility extends UIAbility {
 
   onNewWant(want: Want): void {
     this.captureReminderWant(want);
-    if (typeof want.parameters?.['hitaReminderEventId'] === 'string') {
+    if (typeof want.parameters?.['hitaReminderEventId'] === 'string' ||
+      typeof want.parameters?.['hitaLearningTaskId'] === 'string') {
       void window.getLastWindow(this.context).then((mainWindow: window.Window): void => {
         const router = mainWindow.getUIContext().getRouter();
         if (Number(router.getLength()) > 1) router.back({ url: 'pages/Home' });
@@ -51,6 +52,8 @@ export default class EntryAbility extends UIAbility {
     if (typeof id === 'string' && id.length > 0) {
       AppStorage.setOrCreate('hita_reminder_open_event', id);
     }
+    const taskId = want.parameters?.['hitaLearningTaskId'];
+    if (typeof taskId === 'string' && taskId.length > 0) AppStorage.setOrCreate('hita_learning_open_task', taskId);
   }
 
   onDestroy(): void {

@@ -68,6 +68,7 @@ import { WidgetBackgroundPage } from '../feature/widget/WidgetBackgroundPage';
 import { ImportTimetablePanel } from '../feature/timetable/views/ImportTimetablePanel';
 import { ExamPage } from './ExamPage';
 import { BackupPanel } from '../feature/backup/BackupPanel';
+import { LearningTasksPanel } from '../feature/learning/LearningTasksPanel';
 import { ScorePage } from './ScorePage';
 import { CreditPage } from './CreditPage';
 import { EmptyClassroomPage } from './EmptyClassroomPage';
@@ -169,6 +170,8 @@ struct Home {
   @State backupBusy: boolean = false;
   @State academicPanelOpen: boolean = false;
   @State academicPanelKind: number = 0;
+  @State learningBusy: boolean = false;
+  @State learningTaskId: string = '';
   @State widgetBackgroundDirty: boolean = false;
   @State widgetBackgroundBusy: boolean = false;
   private widgetBackgroundConfirmDismiss: ((dismiss: () => void, springBack: () => void) => void) | undefined =
@@ -217,6 +220,7 @@ struct Home {
   @State calendarExportSyncEnabled: boolean = false;
   @StorageProp('hita_calendar_sync_status') calendarSyncStatus: string = '';
   @StorageProp('hita_reminder_open_event') @Watch('onPendingReminderChanged') pendingReminderEvent: string = '';
+  @StorageProp('hita_learning_open_task') @Watch('onPendingLearningTaskChanged') pendingLearningTask: string = '';
   private remindersReady: boolean = false;
   private reminderOpening: boolean = false;
   @State classReminderEnabled: boolean = false;
@@ -366,6 +370,7 @@ struct Home {
     await this.refreshSummaries();
     this.remindersReady = true;
     await this.openPendingReminder();
+    this.openPendingLearningTask();
     this.startClock();
     this.checkTimetableUpdate();
   }
@@ -385,6 +390,7 @@ struct Home {
     this.returningFromCourseEditor = false;
     await this.refreshSummaries(preserveWeek);
     await this.openPendingReminder();
+    this.openPendingLearningTask();
     this.checkTimetableUpdate();
   }
 
@@ -1504,7 +1510,7 @@ struct Home {
   }
 
   private closeActiveSheet(): void {
-    if (this.backupSheetOpen && this.backupBusy) return;
+    if ((this.backupSheetOpen && this.backupBusy) || this.learningBusy) return;
     // Invalidate pending reads immediately, but retain content until the exit animation ends.
     this.sheetRequestGeneration++;
     this.sessionSheetLoading = false;
@@ -1536,12 +1542,21 @@ struct Home {
   }
 
   private openAcademicPanel(kind: number): void {
-    if (!this.canOpenSheet() || kind < 1 || kind > 4) {
+    if (!this.canOpenSheet() || kind < 1 || kind > 5) {
       return;
     }
     this.academicPanelKind = kind;
     this.academicPanelOpen = true;
     this.activeSheetVisible = true;
+  }
+
+  private onPendingLearningTaskChanged(): void { this.openPendingLearningTask(); }
+
+  private openPendingLearningTask(): void {
+    if (!this.remindersReady || this.pendingLearningTask.length === 0 || !this.canOpenSheet()) return;
+    this.learningTaskId = this.pendingLearningTask;
+    this.openAcademicPanel(5);
+    if (this.activeSheetVisible && this.academicPanelKind === 5) AppStorage.setOrCreate('hita_learning_open_task', '');
   }
 
   private springBackWidgetBackgroundSheet(): void {
@@ -2424,11 +2439,15 @@ struct Home {
       maskColor: $r('app.color.hita_sheet_mask'),
       shouldDismiss: this.backupSheetOpen ? (sheetDismiss: SheetDismiss) => {
         if (!this.backupBusy) sheetDismiss.dismiss();
+      } : this.academicPanelOpen ? (sheetDismiss: SheetDismiss) => {
+        if (!this.learningBusy) sheetDismiss.dismiss();
       } : this.widgetBackgroundSheetOpen ? (sheetDismiss: SheetDismiss) => {
         this.confirmWidgetBackgroundDismiss(() => sheetDismiss.dismiss());
       } : undefined,
       onWillSpringBackWhenDismiss: this.backupSheetOpen ? (springBack: SpringBackAction) => {
         if (this.backupBusy) springBack.springBack();
+      } : this.academicPanelOpen ? (springBack: SpringBackAction) => {
+        if (this.learningBusy) springBack.springBack();
       } : this.widgetBackgroundSheetOpen ? (springBack: SpringBackAction) => {
         // Defer the rebound until confirmation is declined; successful dismissals close directly.
         this.widgetBackgroundSpringBack = () => springBack.springBack();
@@ -2447,6 +2466,8 @@ struct Home {
         this.backupBusy = false;
         this.academicPanelOpen = false;
         this.academicPanelKind = 0;
+        this.learningBusy = false;
+        this.learningTaskId = '';
         this.widgetBackgroundDirty = false;
         this.widgetBackgroundBusy = false;
         this.widgetBackgroundConfirmDismiss = undefined;
@@ -2457,6 +2478,7 @@ struct Home {
         this.calendarExportSheetOpen = false;
         this.calendarExportTimetable = undefined;
         this.finishCourseSheetDismissal();
+        this.openPendingLearningTask();
       }
     }, this.loginSheetOpen || this.sessionSheetOpen || this.courseSheetOpen || this.timetableDisplayOpen ||
       this.calendarExportSheetOpen || this.widgetBackgroundSheetOpen || this.importTimetableSheetOpen ||
@@ -2599,7 +2621,8 @@ struct Home {
           onRestored: () => { void this.onBackupRestored(); }
         }).width('100%').height('100%');
       } else if (this.academicPanelOpen && this.academicPanelKind === 1) {
-        ExamPage({ presentedAsSheet: true, onClose: () => this.closeActiveSheet() })
+        ExamPage({ presentedAsSheet: true, onClose: () => this.closeActiveSheet(),
+          onBusyChanged: (busy: boolean) => { this.learningBusy = busy; } })
           .width('100%').height('100%');
       } else if (this.academicPanelOpen && this.academicPanelKind === 2) {
         ScorePage({ presentedAsSheet: true, onClose: () => this.closeActiveSheet() })
@@ -2610,6 +2633,13 @@ struct Home {
       } else if (this.academicPanelOpen && this.academicPanelKind === 4) {
         EmptyClassroomPage({ presentedAsSheet: true, onClose: () => this.closeActiveSheet() })
           .width('100%').height('100%');
+      } else if (this.academicPanelOpen && this.academicPanelKind === 5) {
+        LearningTasksPanel({
+          initialTaskId: this.learningTaskId,
+          onClose: () => this.closeActiveSheet(),
+          onBusyChanged: (busy: boolean) => { this.learningBusy = busy; }
+        }).width('100%').height('100%')
+          .attributeModifier(new CompatibleLightModifier(24, CompatibleSheetMaterial.isEnabled(), true));
       } else if (this.timetableDisplayOpen) {
         TimetableDisplaySettings({
           options: this.timetableDisplay,
@@ -3480,6 +3510,9 @@ struct Home {
           this.moreSectionTitle('课表工具');
           Column() {
             this.desktopWidgetSettings();
+            this.moreNavigationRow($r('sys.symbol.checkmark_circle_fill'), '学习待办', '课程作业与考试复习', () => {
+              this.openAcademicPanel(5);
+            });
             this.moreNavigationRow($r('sys.symbol.repeat_1'), '导入课表',
               this.importing ? '正在从教务系统同步' : '从教务系统同步当前学期', () => {
                 this.openImportTimetableSheet();

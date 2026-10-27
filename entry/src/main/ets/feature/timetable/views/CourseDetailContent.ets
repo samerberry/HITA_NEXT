@@ -1,5 +1,6 @@
 import { HitaDesign } from '../../../common/theme/HitaDesign';
 import { DetailActionBar } from '../../../common/components/DetailActionBar';
+import { LearningTaskLink } from '../../learning/LearningTaskLink';
 import { EasEventItem, EasEventType } from '../../../common/model/timetable/TimetableModels';
 import { EasTimeTools } from '../../../common/util/EasTimeTools';
 import { ImmersiveHeader } from '../../../common/components/ImmersiveHeader';
@@ -109,6 +110,7 @@ export struct CourseDetailContent {
         this.courseDetailRow($r('sys.symbol.repeat_1'), '课程进度', this.progressText);
       }
       if (this.event.type === EasEventType.CLASS) {
+        LearningTaskLink({ event: this.event });
         DetailActionBar({
           deleteLabel: this.deleteLabel, busy: this.busy,
           onEdit: () => this.onEdit(), onDelete: () => this.onDelete()

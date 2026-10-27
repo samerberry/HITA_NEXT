@@ -495,7 +495,9 @@ test('initial loading stays active until the remote query settles, including fai
 test('the native loading branch precedes both cached lists and empty/error result views', () => {
   const page = read('pages/ExamPage.ets');
   const build = page.slice(page.indexOf('  build()'));
-  const firstBranch = build.slice(0, build.indexOf('} else if'));
+  // The independent review view precedes the exam branch; exams still show loading before cached results.
+  const examBranch = build.slice(build.indexOf('} else if (this.preparingQuery'));
+  const firstBranch = examBranch.slice(0, examBranch.indexOf('} else if', 1));
   assert.match(firstBranch, /this\.preparingQuery \|\| this\.querying/);
   assert.match(firstBranch, /LoadingProgress\(\)/);
   assert.match(firstBranch, /正在刷新考试安排/);

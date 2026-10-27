@@ -296,3 +296,37 @@ test('More places backup between portals and notices; its medium sheet keeps a s
   const page = fs.readFileSync(path.join(root, 'feature/backup/BackupPanel.ets'), 'utf8');
   assert.match(page, /padding\(\{ top: this\.presentedAsSheet \? 0 : this\.statusBarInset \}\)/);
 });
+test('backup v1 remains compatible; v2 remaps task associations and rejects invalid or cross-term tasks', () => {
+  const h = harness();
+  try {
+    const { BackupModel } = h.load('feature/backup/BackupModel.ets');
+    const { LearningTask } = h.load('common/model/learning/LearningTask.ets');
+    const original = fixture(h);
+    const legacy = structuredClone(original); legacy.version = 1; delete legacy.tasks;
+    assert.deepEqual(BackupModel.parse(JSON.stringify(legacy)).tasks, []);
+    original.timetables[0].events.push({ ...original.timetables[0].events[0], id: 'exam', type: 'EXAM' });
+    original.tasks = [
+      Object.assign(new LearningTask(), { id: 'homework', title: 'Exercises', timetableId: 'same-id', subjectId: 'same-id', courseName: 'Math', remindAt: 100, notifiedAt: 100 }),
+      Object.assign(new LearningTask(), { id: 'review', kind: 'REVIEW', title: 'Chapter one', timetableId: 'same-id', examId: 'exam', examName: 'Math', examAt: 120 }),
+      Object.assign(new LearningTask(), { id: 'orphan', title: 'Old homework', timetableId: 'removed-table', subjectId: 'removed-course', courseName: 'Old course' })
+    ];
+    const parsed = BackupModel.parse(JSON.stringify(original));
+    const copy = BackupModel.remap(parsed);
+    assert.equal(copy.tasks[0].subjectId, copy.timetables[0].subjects[0].id);
+    assert.equal(copy.tasks[0].timetableId, copy.timetables[0].timetable.id);
+    assert.equal(copy.tasks[1].examId, copy.timetables[0].events.find(e => e.type === 'EXAM').id);
+    assert.notEqual(copy.tasks[0].id, original.tasks[0].id);
+    assert.equal(copy.tasks[0].notifiedAt, 100);
+    assert.equal(copy.tasks[2].subjectId, ''); assert.equal(copy.tasks[2].timetableId, '');
+    assert.equal(copy.tasks[2].courseName, 'Old course');
+    for (const mutate of [
+      m => { delete m.tasks; }, m => { m.tasks[0].title = ''; },
+      m => { m.tasks[0].timetableId = 'wrong-term'; },
+      m => { m.tasks[1].examId = 'lesson'; },
+      m => { m.tasks[0].remindAt = NaN; }, m => { m.tasks.push(m.tasks[0]); }
+    ]) {
+      const bad = structuredClone(original); mutate(bad);
+      assert.throws(() => BackupModel.parse(JSON.stringify(bad)));
+    }
+  } finally { h.close(); }
+});
