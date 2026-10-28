@@ -84,6 +84,7 @@ export class CampusPortal {
       new CampusPortal('研究生教务', 'https://yjsgl.hitwh.edu.cn/', $r('sys.symbol.doc_plaintext')),
       new CampusPortal('图书馆', 'http://lib.hitwh.edu.cn', $r('sys.symbol.magnifyingglass')),
       new CampusPortal('大学物理实验', 'http://wlsy.hitwh.edu.cn/', $r('sys.symbol.doc_plaintext')),
+      new CampusPortal('物理实验计算工具', 'https://y.cybzh.cn/', $r('sys.symbol.doc_plaintext')),
       new CampusPortal('电工电子实验', 'http://ilab.hitwh.edu.cn/', $r('sys.symbol.doc_plaintext')),
       new CampusPortal('实验室系统', 'http://openlab.hitwh.edu.cn/#/login?redirect=/index', $r('sys.symbol.doc_plaintext'))
     ]),
@@ -104,7 +105,8 @@ export class CampusPortal {
       new CampusPortal('电子邮箱', 'https://mail.hit.edu.cn')
     ]),
     new CampusPortalGroup('资源', [
-      new CampusPortal('教师主页', 'http://homepage.hit.edu.cn/home-index', $r('sys.symbol.person_crop_circle_fill'))
+      new CampusPortal('教师主页', 'http://homepage.hit.edu.cn/home-index', $r('sys.symbol.person_crop_circle_fill')),
+      new CampusPortal('资料共享站', 'https://qqptr.top/', $r('sys.symbol.doc_plaintext'))
     ])
   ];
 

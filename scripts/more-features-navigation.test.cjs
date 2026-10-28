@@ -369,7 +369,7 @@ test('each campus has the four Android link groups and its own academic systems'
   for (const [campus, name, sizes, undergraduate, postgraduate] of [
     ['BENBU', '本部', [5, 7, 2, 1], 'http://jwes.hit.edu.cn', 'http://jwts.hit.edu.cn'],
     ['SHENZHEN', '深圳', [6, 6, 4, 3], 'https://jw.hitsz.edu.cn/', 'https://lab.hitsz.edu.cn/'],
-    ['WEIHAI', '威海', [6, 6, 6, 1], 'http://jwts.hitwh.edu.cn/', 'https://yjsgl.hitwh.edu.cn/']
+    ['WEIHAI', '威海', [7, 6, 6, 2], 'http://jwts.hitwh.edu.cn/', 'https://yjsgl.hitwh.edu.cn/']
   ]) {
     const groups = CampusPortal.groupsFor(campus);
     assert.equal(CampusPortal.campusName(campus), name);
@@ -386,6 +386,9 @@ test('each campus has the four Android link groups and its own academic systems'
       }
     }
   }
+  const weihai = CampusPortal.groupsFor('WEIHAI');
+  assert.ok(weihai[0].portals.some(portal => portal.url === 'https://y.cybzh.cn/'));
+  assert.ok(weihai[3].portals.some(portal => portal.url === 'https://qqptr.top/'));
   assert.deepEqual(CampusPortal.groupsFor(undefined), []);
   assert.deepEqual(CampusPortal.groupsFor('invalid'), []);
   assert.equal(CampusPortal.campusName(undefined), '');
