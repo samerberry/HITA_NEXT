@@ -347,7 +347,7 @@ export function isPortalHomePage(url: string, campus: EasCampus): boolean {
     return isWeihaiHost && !isLoginPath && (isRoot || hasPortalIndicator);
   }
   // BENBU
-  return host === 'i-hit-edu-cn.ivpn.hit.edu.cn' && (path === '/portal/home' || path === '/portal');
+  return host === hostOf(EasCampusUrls.BENBU_BASE) && (path === '/portal/home' || path === '/portal');
 }
 
 /** isTrustPortalPage L3015-3033：host==trust.hitsz.edu.cn 且 path startsWith /portal。 */

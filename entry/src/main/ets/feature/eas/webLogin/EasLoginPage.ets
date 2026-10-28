@@ -451,7 +451,10 @@ export struct EasLoginPage {
                 } catch (e) {
                   errStr = String(event.error);
                 }
-                this.loginController.notifyLoadError(errStr);
+                if (this.loginController.notifyLoadError(errStr,
+                  event.request !== undefined && event.request.isMainFrame())) {
+                  return;
+                }
                 if (event.request !== undefined && event.request.isMainFrame()) {
                   this.clearPageLoadTimer();
                   if (this.recoveryPending) {

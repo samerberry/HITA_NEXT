@@ -4,7 +4,7 @@
  * 校区数据端点形态：
  *  - 深圳：JSON（ParsedShenzhenWebScores: code/msg/content.list[] …）
  *  - 威海：webvpn 编码前缀下的端点（kjscx/queryJxlListBySjid、cjcx/queryQmcj …），带 JSESSIONID
- *  - 本部：ivpn 内网域名 + CAS 会话（HIT / JSESSIONID）
+ *  - 本部：vpn 代理域名 + CAS 会话（HIT / JSESSIONID）
  * 请求路径由 EasDataProvider 配置。
  */
 import { http } from '@kit.NetworkKit';

@@ -71,7 +71,7 @@ export class CampusPortal {
     ]),
     new CampusPortalGroup('网络与系统', [
       new CampusPortal('校园门户', 'http://i.hit.edu.cn'),
-      new CampusPortal('VPN 通道', 'https://ivpn.hit.edu.cn')
+      new CampusPortal('VPN 通道', 'https://vpn.hit.edu.cn')
     ]),
     new CampusPortalGroup('资源', [
       new CampusPortal('哈工大教师主页', 'https://homepage.hit.edu.cn', $r('sys.symbol.person_crop_circle_fill'))

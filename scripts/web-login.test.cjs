@@ -143,6 +143,16 @@ test('Benbu undergraduate login and cookie probes use the new VPN EAS address', 
   assert.ok(cfg.cookieProbeUrls.includes(base + '/kbcx/queryGrkb'));
   assert.ok(cfg.cookieDomains.includes('jwts-hit-edu-cn.vpn.hit.edu.cn'));
   assert.equal(easWebLoginConfigFor('BENBU', '2').loginUrl, h.urls.BENBU_LOGIN);
+  for (const key of ['BENBU_BASE', 'GRADUATE_BASE', 'EELABINFO_URL', 'SJJX_BASE']) {
+    assert.ok(new URL(h.urls[key]).hostname.endsWith('.vpn.hit.edu.cn'), key);
+  }
+  for (const type of ['1', '2']) {
+    const campusConfig = easWebLoginConfigFor('BENBU', type);
+    for (const url of [campusConfig.loginUrl, campusConfig.jwtsUrl, ...campusConfig.cookieProbeUrls]) {
+      assert.ok(new URL(url).hostname.endsWith('.vpn.hit.edu.cn'), url);
+    }
+    assert.ok(campusConfig.cookieDomains.every(host => host.endsWith('.vpn.hit.edu.cn')));
+  }
 });
 
 test('Benbu recognizes the new VPN gateway without accepting lookalike or other-campus hosts', () => {
@@ -629,7 +639,7 @@ test('Benbu authentication, unrelated hosts and graduate pages never use undergr
     ['1', 'https://jwts-hit-edu-cn.vpn.hit.edu.cn.evil.example/index'],
     ['1', 'http://jwts-hit-edu-cn.ivpn.hit.edu.cn:1080/index'],
     ['1', 'https://unrelated.hit.edu.cn/index'],
-    ['2', 'http://yjsgl-hit-edu-cn.ivpn.hit.edu.cn:1080/xs/index']
+    ['2', 'http://yjsgl-hit-edu-cn.vpn.hit.edu.cn:1080/xs/index']
   ]) {
     const h = setup();
     h.state.cookie = 'JSESSIONID=stale; HIT=stale';
@@ -795,9 +805,9 @@ test('a stalled experiment bridge remains optional and completes the verified te
   h.state.cookie = 'JSESSIONID=teaching; HIT=gateway';
   h.ctrl.start('BENBU', '1');
   await h.page(h.urls.BENBU_JWTS);
-  await h.tick(15000);
+  await h.tick(4000);
   assert.equal(h.state.navigations.at(-1), h.urls.EELABINFO_URL + '/api/cas/loginSuccess');
-  await h.tick(10001);
+  await h.tick(4001);
   assert.equal(h.state.finished.length, 1);
   assert.equal(h.state.finished[0].webCookies.get('JSESSIONID'), 'teaching');
   assert.equal(h.state.finished[0].sjjxCookies.size, 0);
@@ -808,7 +818,7 @@ test('an experiment cookie read arriving after the bridge timeout cannot change 
   h.state.cookie = 'JSESSIONID=teaching; HIT=gateway';
   h.ctrl.start('BENBU', '1');
   await h.page(h.urls.BENBU_JWTS);
-  await h.tick(13900);
+  await h.tick(2900);
   let release;
   h.state.fetchCookie = () => new Promise(resolve => { release = resolve; });
   await h.page(h.urls.SJJX_BASE + '/to-welcome');
@@ -820,4 +830,63 @@ test('an experiment cookie read arriving after the bridge timeout cannot change 
   await h.tick(10001);
   assert.equal(h.state.finished.length, 1);
   assert.equal(h.state.finished[0].sjjxCookies.size, 0);
+});
+
+test('optional experiment page completion works even when ArkWeb omits page begin', async () => {
+  const h = setup();
+  h.state.cookie = 'JSESSIONID=teaching';
+  h.ctrl.start('BENBU', '1');
+  await h.page(h.urls.BENBU_JWTS);
+  h.state.cookie = 'JSESSIONID=lab';
+  await h.ctrl.notifyPageEnd(h.urls.SJJX_BASE + '/to-welcome');
+  await h.tick(1000);
+  assert.equal(h.ctrl.pendingSjjxCookies.get('JSESSIONID'), 'lab');
+  await h.tick(7000);
+  assert.equal(h.state.finished.length, 1);
+  assert.equal(h.state.finished[0].webCookies.get('JSESSIONID'), 'teaching');
+});
+
+test('optional experiment authentication redirects finish the verified main session immediately', async () => {
+  for (const target of ['https://ids.hit.edu.cn/authserver/login', 'https://vpn.hit.edu.cn/portal/']) {
+    const h = setup();
+    await enterSjjx(h);
+    h.ctrl.notifyPageBegin(target);
+    assert.equal(h.state.finished.length, 1);
+    assert.equal(h.state.finished[0].webCookies.get('JSESSIONID'), 'teaching');
+    assert.equal(h.timers.size, 0);
+  }
+});
+
+test('only optional main-frame errors complete login, never resource or unverified authentication errors', async () => {
+  const h = setup();
+  h.ctrl.start('BENBU', '1');
+  assert.equal(h.ctrl.notifyLoadError('authentication unavailable', true), false);
+  assert.equal(h.state.finished.length, 0);
+  await enterSjjx(h);
+  assert.equal(h.ctrl.notifyLoadError('image unavailable', false), false);
+  assert.equal(h.state.finished.length, 0);
+  assert.equal(h.ctrl.notifyLoadError('laboratory unavailable', true), true);
+  assert.equal(h.state.finished.length, 1);
+  assert.equal(h.state.finished[0].webCookies.get('JSESSIONID'), 'teaching');
+  await h.tick(30000);
+  assert.equal(h.state.finished.length, 1);
+});
+
+test('a stalled electronic token request cannot extend the shared experiment deadline or finish twice', async () => {
+  const h = setup();
+  await enterSjjx(h);
+  await h.tick(1000);
+  let release;
+  h.ctrl.fetchEelabToken = () => new Promise(resolve => { release = resolve; });
+  await h.page(h.urls.EELABINFO_URL + '/login.html?t=suc');
+  await h.tick(1000);
+  assert.equal(typeof release, 'function');
+  await h.tick(6000);
+  assert.equal(h.state.finished.length, 1);
+  assert.equal(h.state.finished[0].sjjxCookies.get('JSESSIONID'), 'lab');
+  assert.equal(h.state.finished[0].electronicExpToken, '');
+  release('late-token');
+  await flush();
+  assert.equal(h.state.finished.length, 1);
+  assert.equal(h.state.finished[0].electronicExpToken, '');
 });

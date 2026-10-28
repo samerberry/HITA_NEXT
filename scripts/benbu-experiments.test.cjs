@@ -243,6 +243,8 @@ test('SSO redirects forward the laboratory cookie without replacing the EAS sess
     assert.equal((await service.getExperiments(s)).length, 1);
     assert.equal(calls.length, 4);
     assert.equal(calls[0].target, 'http://jwts-hit-edu-cn.vpn.hit.edu.cn:1080/loginsysj/loginSygl');
+    assert.equal(calls[1].target, 'http://sjjx-hit-edu-cn.vpn.hit.edu.cn:1080/sso?ticket=fixture');
+    assert.equal(calls[3].target, 'http://sjjx-hit-edu-cn.vpn.hit.edu.cn:1080/xskb/queryXszkb');
     assert.ok(calls.every(x => x.followRedirects === false));
     assert.doesNotMatch(calls[1].cookie, /JSESSIONID=/, 'do not send the teaching system session to the laboratory');
     assert.match(calls[2].cookie, /JSESSIONID=lab/); assert.match(calls[3].cookie, /JSESSIONID=lab/);

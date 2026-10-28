@@ -8,7 +8,7 @@ import { url } from '@kit.ArkTS';
 
 /** Auxiliary sessions belong to their own hosts, never overwrite the EAS JSESSIONID. */
 export class BenbuExperimentService {
-  static readonly EXPERIMENT_BASE: string = 'http://sjjx-hit-edu-cn.ivpn.hit.edu.cn:1080';
+  static readonly EXPERIMENT_BASE: string = EasCampusUrls.SJJX_BASE;
 
   static mergeCookies(target: Map<string, string>, raw: string): void {
     const parts: string[] = raw.split(/[;\r\n]|,(?=\s*[^\s;,=]+=)/);
@@ -40,7 +40,7 @@ export class BenbuExperimentService {
       if ((endpoint.protocol !== 'http:' && endpoint.protocol !== 'https:') ||
         endpoint.username.length > 0 || endpoint.password.length > 0 ||
         !(endpoint.origin === EasCampusUrls.JWTS_BASE ||
-        endpoint.hostname === 'ivpn.hit.edu.cn' || endpoint.hostname.endsWith('.ivpn.hit.edu.cn'))) {
+        endpoint.origin === EasCampusUrls.SJJX_BASE || endpoint.origin === 'https://vpn.hit.edu.cn')) {
         break;
       }
       let cookies: Map<string, string> | undefined = jars.get(endpoint.origin);
@@ -62,7 +62,7 @@ export class BenbuExperimentService {
   }
 
   static async getExperiments(session: EasSession, warnings: string[] = []): Promise<EasCourseItem[]> {
-    // 优先使用登录阶段经 jwts 桥接捕获的 sjjx 会话：iVPN 网关已对该目标完成授权。
+    // 优先使用登录阶段经 jwts 桥接捕获的 sjjx 会话：VPN 网关已对该目标完成授权。
     if (EasSession.isNotBlank(EasSession.cookieValue(session.sjjxCookies, 'JSESSIONID'))) {
       try {
         const sjjxResponse: EasApiResponse = await EasApiClient.doHttp(

@@ -30,6 +30,7 @@ import {
   isBenbuEasPage,
   isBlank,
   isJwtsPage,
+  isIvpnRedirectPage,
   isMfaPage,
   isPortalHomePage,
   isShenzhenProxyJwPage,
@@ -57,7 +58,8 @@ export enum EasLoginPhase {
 const COOKIE_RETRY_COUNT_MAX: number = 30;
 const COOKIE_RETRY_DELAY_MS: number = 500;
 const EELAB_NAV_TIMEOUT_MS: number = 10000;
-const SJJX_NAV_TIMEOUT_MS: number = 15000;
+const SJJX_NAV_TIMEOUT_MS: number = 4000;
+const EXPERIMENT_TOTAL_TIMEOUT_MS: number = 8000;
 const EELAB_USER_AGENT: string =
   'Mozilla/5.0 (Linux; Android 16; sdk_gphone64_arm64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.6998.135 Mobile Safari/537.36';
 
@@ -105,6 +107,7 @@ export class EasWebLoginController {
   private sjjxFetchTimer: number = -1;
   private sjjxTimeoutTimer: number = -1;
   private pendingSjjxCookies: Map<string, string> = new Map<string, string>();
+  private experimentTimeoutTimer: number = -1;
 
   // —— BENBU 本科 EELAB token 流程 ——
   private navigatingToEelab: boolean = false;
@@ -190,6 +193,11 @@ export class EasWebLoginController {
     this.cookiePollingGeneration++;
     this.cookiePollingActive = false;
     this.stopSjjxBridge();
+    this.navigatingToEelab = false;
+    if (this.experimentTimeoutTimer >= 0) {
+      clearTimeout(this.experimentTimeoutTimer);
+      this.experimentTimeoutTimer = -1;
+    }
     if (this.eelabFetchTimer >= 0) {
       clearTimeout(this.eelabFetchTimer);
       this.eelabFetchTimer = -1;
@@ -211,6 +219,12 @@ export class EasWebLoginController {
     }
     hilog.info(DOMAIN, TAG, 'notifyPageBegin: %{public}s', url);
     this.lastUrl = url;
+    // 实验系统是主教务验证成功后的可选补充，不再要求用户完成第二次认证。
+    if ((this.navigatingToSjjx || this.navigatingToEelab) &&
+      (isAuthenticationPage(url) || isMfaPage(url) || isIvpnRedirectPage(url, EasCampus.BENBU))) {
+      this.finish(this.collectedEasCookies, url, '');
+      return;
+    }
     this.navigationGeneration++;
     this.completing = false;
     this.stopCookiePolling();
@@ -231,7 +245,7 @@ export class EasWebLoginController {
   }
 
   async notifyPageEnd(url: string): Promise<void> {
-    if (this.finished || this.cfg === undefined || this.completing) {
+    if (this.finished || this.cfg === undefined) {
       return;
     }
     hilog.info(DOMAIN, TAG, 'notifyPageEnd: %{public}s', url);
@@ -252,6 +266,9 @@ export class EasWebLoginController {
     // 2. 本部本科 EELAB 流程中转处理
     if (this.navigatingToEelab) {
       this.advanceEelabIfReady();
+      return;
+    }
+    if (this.completing) {
       return;
     }
 
@@ -371,8 +388,13 @@ export class EasWebLoginController {
     this.setProgress(percent);
   }
 
-  notifyLoadError(message: string): void {
+  notifyLoadError(message: string, isMainFrame: boolean = false): boolean {
     hilog.warn(DOMAIN, TAG, 'notifyLoadError: %{public}s', message);
+    if (!this.finished && isMainFrame && (this.navigatingToSjjx || this.navigatingToEelab)) {
+      this.finish(this.collectedEasCookies, this.lastUrl, '');
+      return true;
+    }
+    return false;
   }
 
   // ------------------------------------------------------------------
@@ -678,6 +700,14 @@ export class EasWebLoginController {
     if (this.cfg.campus === EasCampus.BENBU && this.cfg.studentType !== '2') {
       // 本部本科：先经 jwts 桥接取得 sjjx 实验教学会话，再走 EELAB token
       this.setPhase(EasLoginPhase.SUCCESS_PROBE, '登录成功，正在获取实验教学会话…');
+      // 全流程共用时限，跳转、Cookie 读取和 Token 请求均不得延长主登录等待。
+      const generation: number = this.loginGeneration;
+      this.experimentTimeoutTimer = setTimeout(() => {
+        this.experimentTimeoutTimer = -1;
+        if (!this.finished && generation === this.loginGeneration) {
+          this.finish(this.collectedEasCookies, this.lastUrl, '');
+        }
+      }, EXPERIMENT_TOTAL_TIMEOUT_MS);
       this.enterSjjxBridgeFlow(cookies);
       return;
     }
@@ -949,6 +979,7 @@ export class EasWebLoginController {
   }
 
   private enterSjjxBridgeFlow(cookies: Map<string, string>): void {
+    this.collectedEasCookies = cookies;
     const wc: webview.WebviewController | undefined = this.webController;
     if (wc === undefined || this.navigatingToSjjx) {
       this.enterEelabTokenFlow(cookies);
@@ -1024,7 +1055,11 @@ export class EasWebLoginController {
 
   private enterEelabTokenFlow(cookies: Map<string, string>): void {
     const wc: webview.WebviewController | undefined = this.webController;
-    if (wc === undefined || this.navigatingToEelab) {
+    if (wc === undefined) {
+      this.finish(cookies, this.lastUrl, '');
+      return;
+    }
+    if (this.navigatingToEelab) {
       return;
     }
     this.navigatingToEelab = true;
@@ -1047,7 +1082,7 @@ export class EasWebLoginController {
 
   private async advanceEelabIfReady(): Promise<void> {
     const url: string = this.lastUrl;
-    const eelabHost: string = 'eelabinfo-hit-edu-cn.ivpn.hit.edu.cn';
+    const eelabHost: string = hostOf(EasCampusUrls.EELABINFO_URL);
     if (hostOf(url) !== eelabHost) {
       // Android 在离开 EELAB 且尚未开始取 Token 时立即完成登录。
       if (this.eelabFetchTimer >= 0) {
@@ -1088,7 +1123,12 @@ export class EasWebLoginController {
       this.finish(this.collectedEasCookies, this.lastUrl, '');
       return;
     }
-    const token: string = await this.fetchEelabToken(eelabCookies);
+    let token: string = '';
+    try {
+      token = await this.fetchEelabToken(eelabCookies);
+    } catch (_) {
+      hilog.warn(DOMAIN, TAG, 'optional electronic experiment token request failed');
+    }
     if (this.finished || generation !== this.loginGeneration) {
       return;
     }
@@ -1190,11 +1230,11 @@ export class EasWebLoginController {
         'authserver.hitsz.edu.cn',
         'ids.hit.edu.cn',
         'hit.edu.cn',
-        'i-hit-edu-cn.ivpn.hit.edu.cn',
+        'i-hit-edu-cn.vpn.hit.edu.cn',
         'jwts-hit-edu-cn.vpn.hit.edu.cn',
-        'sjjx-hit-edu-cn.ivpn.hit.edu.cn',
-        'yjsgl-hit-edu-cn.ivpn.hit.edu.cn',
-        'eelabinfo-hit-edu-cn.ivpn.hit.edu.cn',
+        'sjjx-hit-edu-cn.vpn.hit.edu.cn',
+        'yjsgl-hit-edu-cn.vpn.hit.edu.cn',
+        'eelabinfo-hit-edu-cn.vpn.hit.edu.cn',
         'webvpn.hitwh.edu.cn'
       ]);
     } catch (e) {}

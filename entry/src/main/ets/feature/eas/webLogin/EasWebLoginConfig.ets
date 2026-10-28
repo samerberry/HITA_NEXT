@@ -15,15 +15,15 @@ export class EasCampusUrls {
   static readonly SHENZHEN_JWTS: string = 'https://jw-hitsz-edu-cn.hitsz.edu.cn/authentication/main';
 
   // —— 本部（VPN）——
-  static readonly BENBU_BASE: string = 'http://i-hit-edu-cn.ivpn.hit.edu.cn:1080';
+  static readonly BENBU_BASE: string = 'http://i-hit-edu-cn.vpn.hit.edu.cn:1080';
   static readonly JWTS_BASE: string = 'http://jwts-hit-edu-cn.vpn.hit.edu.cn:1080';
-  static readonly GRADUATE_BASE: string = 'http://yjsgl-hit-edu-cn.ivpn.hit.edu.cn:1080';
-  static readonly EELABINFO_URL: string = 'http://eelabinfo-hit-edu-cn.ivpn.hit.edu.cn:1080';
+  static readonly GRADUATE_BASE: string = 'http://yjsgl-hit-edu-cn.vpn.hit.edu.cn:1080';
+  static readonly EELABINFO_URL: string = 'http://eelabinfo-hit-edu-cn.vpn.hit.edu.cn:1080';
   /** 实验教学管理系统（sjjx）：经 jwts 的 /loginsysj/loginSygl 桥接后使用 */
-  static readonly SJJX_BASE: string = 'http://sjjx-hit-edu-cn.ivpn.hit.edu.cn:1080';
-  static readonly BENBU_LOGIN: string = 'http://i-hit-edu-cn.ivpn.hit.edu.cn:1080/portal/home/';
+  static readonly SJJX_BASE: string = 'http://sjjx-hit-edu-cn.vpn.hit.edu.cn:1080';
+  static readonly BENBU_LOGIN: string = 'http://i-hit-edu-cn.vpn.hit.edu.cn:1080/portal/home/';
   static readonly BENBU_JWTS: string = EasCampusUrls.JWTS_BASE + '/loginCAS';
-  static readonly BENBU_GRADUATE_JWTS: string = 'http://yjsgl-hit-edu-cn.ivpn.hit.edu.cn:1080/common/casLogin';
+  static readonly BENBU_GRADUATE_JWTS: string = 'http://yjsgl-hit-edu-cn.vpn.hit.edu.cn:1080/common/casLogin';
 
   // —— 威海（webvpn）——
   static readonly WEIHAI_BASE: string = 'https://webvpn.hitwh.edu.cn';
@@ -138,7 +138,7 @@ export function easWebLoginConfigFor(campus: EasCampus, studentType: string): Ea
         EasCampusUrls.GRADUATE_BASE + '/'
       ],
       '2',
-      ['i-hit-edu-cn.ivpn.hit.edu.cn', 'yjsgl-hit-edu-cn.ivpn.hit.edu.cn', 'jwts-hit-edu-cn.vpn.hit.edu.cn'],
+      ['i-hit-edu-cn.vpn.hit.edu.cn', 'yjsgl-hit-edu-cn.vpn.hit.edu.cn', 'jwts-hit-edu-cn.vpn.hit.edu.cn'],
       '本部(研究生)'
     );
   }
@@ -154,7 +154,7 @@ export function easWebLoginConfigFor(campus: EasCampus, studentType: string): Ea
       EasCampusUrls.BENBU_LOGIN
     ],
     '1',
-    ['i-hit-edu-cn.ivpn.hit.edu.cn', 'jwts-hit-edu-cn.vpn.hit.edu.cn'],
+    ['i-hit-edu-cn.vpn.hit.edu.cn', 'jwts-hit-edu-cn.vpn.hit.edu.cn'],
     '本部'
   );
 }
