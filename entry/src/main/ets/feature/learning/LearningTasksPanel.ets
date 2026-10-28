@@ -18,7 +18,6 @@ export struct LearningTasksPanel {
   @Prop timetableId: string = '';
   @Prop examId: string = '';
   @Prop filterKind: string = '';
-  @Prop embedded: boolean = false;
   @Prop initialTaskId: string = '';
   onClose: () => void = () => {};
   onBusyChanged: (busy: boolean) => void = () => {};
@@ -26,7 +25,7 @@ export struct LearningTasksPanel {
   @State data: LearningContext = new LearningContext();
   @State loading: boolean = true;
   @State error: string = '';
-  @State selectedKind: string = '';
+  @State selectedKind: string = LearningTaskKind.HOMEWORK;
   @State editing: boolean = false;
   @State isNew: boolean = true;
   @State draft: LearningTask = new LearningTask();
@@ -42,7 +41,7 @@ export struct LearningTasksPanel {
 
   aboutToAppear(): void {
     this.active = true;
-    this.selectedKind = this.filterKind;
+    if (this.filterKind.length > 0) this.selectedKind = this.filterKind;
     ScheduleChangeSignal.subscribe(this.signalKey, () => { if (!this.editing && !this.busy) void this.load(); });
     this.timer = setInterval(() => { this.now = Date.now(); }, 30000);
     void this.load();
@@ -66,8 +65,11 @@ export struct LearningTasksPanel {
       if (!this.openedInitial && this.initialTaskId.length > 0) {
         this.openedInitial = true;
         const task: LearningTask | undefined = tasks.find(item => item.id === this.initialTaskId);
-        if (task !== undefined) this.edit(task);
-        else this.error = '这条待办已被删除';
+        if (task !== undefined) {
+          // Show the opened task's tab behind the editor, so it is in the list after saving.
+          if (this.filterKind.length === 0) this.selectedKind = task.kind;
+          this.edit(task);
+        } else this.error = '这条待办已被删除';
       }
     } catch (_) { if (this.active && generation === this.generation) this.error = '待办加载失败，请重试'; }
     finally { if (this.active && generation === this.generation) this.loading = false; }
@@ -78,7 +80,7 @@ export struct LearningTasksPanel {
       if (this.subjectId.length > 0 && (task.kind !== LearningTaskKind.HOMEWORK ||
         task.timetableId !== this.timetableId || LearningTaskRules.subject(task, this.data)?.id !== this.subjectId)) return false;
       if (this.examId.length > 0 && (task.examId !== this.examId || task.timetableId !== this.timetableId)) return false;
-      return this.selectedKind.length === 0 || task.kind === this.selectedKind;
+      return task.kind === this.selectedKind;
     });
   }
 
@@ -87,8 +89,7 @@ export struct LearningTasksPanel {
   }
 
   private title(): string {
-    return this.subjectId.length > 0 ? '课程作业' : this.examId.length > 0 ? '复习清单' :
-      this.filterKind === LearningTaskKind.REVIEW ? '复习安排' : '学习待办';
+    return this.subjectId.length > 0 ? '课程作业' : this.examId.length > 0 ? '复习清单' : '学习待办';
   }
 
   private scopeTitle(): string {
@@ -251,9 +252,9 @@ export struct LearningTasksPanel {
       } else {
         ImmersiveHeader({ barHeight: 60, materialEnabled: CompatibleSheetMaterial.isEnabled() }) {
           Row({ space: 12 }) {
-            if (!this.embedded) HeaderBackButton({ onBack: () => { if (!this.busy) this.onClose(); } })
+            HeaderBackButton({ onBack: () => { if (!this.busy) this.onClose(); } })
             Column({ space: 4 }) {
-              Text(this.title()).fontSize(this.embedded ? HitaDesign.section : HitaDesign.title)
+              Text(this.title()).fontSize(HitaDesign.title)
                 .fontWeight(FontWeight.Medium).fontColor($r('app.color.hita_text'))
               Text(this.scopeTitle()).fontSize(HitaDesign.caption).fontColor($r('app.color.hita_text_secondary'))
                 .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -264,7 +265,6 @@ export struct LearningTasksPanel {
         }
         if (this.filterKind.length === 0 && this.subjectId.length === 0 && this.examId.length === 0) {
           Row({ space: 4 }) {
-            this.kindTab('全部', '')
             this.kindTab('作业', LearningTaskKind.HOMEWORK)
             this.kindTab('复习', LearningTaskKind.REVIEW)
           }.width('100%').padding({ left: 16, right: 16, bottom: 8 })
@@ -291,7 +291,7 @@ export struct LearningTasksPanel {
             if (this.scoped().length === 0 && this.error.length === 0) {
               ListItem() {
                 Column({ space: 8 }) {
-                  Text('暂无' + (this.selectedKind === LearningTaskKind.REVIEW ? '复习任务' : '待办'))
+                  Text('暂无' + (this.selectedKind === LearningTaskKind.REVIEW ? '复习任务' : '作业'))
                     .fontSize(HitaDesign.body).fontWeight(FontWeight.Medium).fontColor($r('app.color.hita_text'))
                   Text('点击右上角添加').fontSize(HitaDesign.caption).fontColor($r('app.color.hita_text_secondary'))
                 }.width('100%').padding({ top: 48, bottom: 48 })

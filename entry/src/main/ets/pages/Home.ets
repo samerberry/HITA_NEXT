@@ -2616,8 +2616,7 @@ struct Home {
           onRestored: () => { void this.onBackupRestored(); }
         }).width('100%').height('100%');
       } else if (this.academicPanelOpen && this.academicPanelKind === 1) {
-        ExamPage({ presentedAsSheet: true, onClose: () => this.closeActiveSheet(),
-          onBusyChanged: (busy: boolean) => { this.learningBusy = busy; } })
+        ExamPage({ presentedAsSheet: true, onClose: () => this.closeActiveSheet() })
           .width('100%').height('100%');
       } else if (this.academicPanelOpen && this.academicPanelKind === 2) {
         ScorePage({ presentedAsSheet: true, onClose: () => this.closeActiveSheet() })

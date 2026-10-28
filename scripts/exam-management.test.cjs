@@ -147,6 +147,10 @@ test('list keeps event identity, filters courses and sorts by time across timeta
   assert.doesNotMatch(list, /openEditExam|confirmDeleteExam|sys\.symbol\.trash/);
   const detail = source.slice(source.indexOf('private examDetailSheet('), source.indexOf('private remoteDetailSheet('));
   assert.doesNotMatch(detail, /Text\('编辑'\)|Text\('删除考试'\)/);
+  // Review tasks live in 学习待办; an exam keeps only its own link to them.
+  assert.doesNotMatch(source, /reviewView|viewTab|LearningTasksPanel/);
+  assert.match(source, /Text\('考试安排'\)/);
+  assert.match(detail, /LearningTaskLink\(\{ event: event \}\)/);
   assert.match(detail, /DetailActionBar\(\{\s*deleteLabel: '删除',[\s\S]*?onEdit: \(\) => this\.openEditExam\(event\),[\s\S]*?onDelete: \(\) => this\.confirmDeleteExam\(event\)/);
   assert.ok(detail.indexOf('DetailActionBar({') > detail.lastIndexOf('this.examDetailRow('));
   const editor = read('pages/AddEventPage.ets');
@@ -496,9 +500,9 @@ test('initial loading stays active until the remote query settles, including fai
 test('the native loading branch precedes both cached lists and empty/error result views', () => {
   const page = read('pages/ExamPage.ets');
   const build = page.slice(page.indexOf('  build()'));
-  // The independent review view precedes the exam branch; exams still show loading before cached results.
-  const examBranch = build.slice(build.indexOf('} else if (this.preparingQuery'));
-  const firstBranch = examBranch.slice(0, examBranch.indexOf('} else if', 1));
+  // Loading is the first branch, so exams show it before cached results.
+  const examBranch = build.slice(build.indexOf('if (this.preparingQuery'));
+  const firstBranch = examBranch.slice(0, examBranch.indexOf('} else if'));
   assert.match(firstBranch, /this\.preparingQuery \|\| this\.querying/);
   assert.match(firstBranch, /LoadingProgress\(\)/);
   assert.match(firstBranch, /正在刷新考试安排/);

@@ -23,6 +23,15 @@ const { LearningTask, LearningContext, LearningTaskRules: rules } = load('common
 const now = new Date(2026, 9, 27, 14, 0).getTime();
 const task = values => Object.assign(new LearningTask(), { title: 'Exercises', timetableId: 'term', subjectId: 'math', courseName: 'Math' }, values);
 
+test('the task list offers only homework and review tabs and opens on homework', () => {
+  const panel = fs.readFileSync(path.join(root, 'feature/learning/LearningTasksPanel.ets'), 'utf8');
+  assert.doesNotMatch(panel, /kindTab\('全部'|embedded/);
+  assert.match(panel, /this\.kindTab\('作业', LearningTaskKind\.HOMEWORK\)\s*this\.kindTab\('复习', LearningTaskKind\.REVIEW\)/);
+  assert.match(panel, /@State selectedKind: string = LearningTaskKind\.HOMEWORK;/);
+  assert.match(panel, /if \(this\.filterKind\.length > 0\) this\.selectedKind = this\.filterKind;/);
+  assert.match(panel, /if \(this\.filterKind\.length === 0\) this\.selectedKind = task\.kind;/);
+});
+
 test('all-day deadlines remain pending until local midnight; timed tasks become overdue, completion wins', () => {
   const date = new Date(2026, 9, 27).getTime();
   const allDay = task({ dueAt: date, allDay: true });

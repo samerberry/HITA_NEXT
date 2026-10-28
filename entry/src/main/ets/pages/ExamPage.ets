@@ -2,7 +2,6 @@ import { HitaDesign } from '../common/theme/HitaDesign';
 import { SheetContent } from '../common/components/SheetContent';
 import { DetailActionBar } from '../common/components/DetailActionBar';
 import { LearningTaskLink } from '../feature/learning/LearningTaskLink';
-import { LearningTasksPanel } from '../feature/learning/LearningTasksPanel';
 import { LearningTask } from '../common/model/learning/LearningTask';
 import { ScheduleChangeSignal } from '../common/util/ScheduleChangeSignal';
 /**
@@ -55,14 +54,11 @@ const DEFAULT_EXAM_COLOR: number = 0xFFB24B63;
 export struct ExamPage {
   @Prop presentedAsSheet: boolean = false;
   onClose: () => void = () => {};
-  onBusyChanged: (busy: boolean) => void = () => {};
   @State exams: EasEventItem[] = [];
   @State upcoming: EasEventItem[] = [];
   @State past: EasEventItem[] = [];
   @State remoteExams: EasExamItem[] = [];
   @State loading: boolean = true;
-  @State reviewView: boolean = false;
-  @State learningBusy: boolean = false;
   @State learningTasks: LearningTask[] = [];
   @State querying: boolean = false;
   @State preparingQuery: boolean = true;
@@ -545,11 +541,7 @@ export struct ExamPage {
 
   build() {
     Stack({ alignContent: Alignment.Top }) {
-      if (this.reviewView) {
-        LearningTasksPanel({ filterKind: 'REVIEW', embedded: true,
-          onBusyChanged: (busy: boolean) => { this.learningBusy = busy; this.onBusyChanged(busy); }
-        }).width('100%').height('100%').padding({ top: HEADER_HEIGHT })
-      } else if (this.preparingQuery || this.querying ||
+      if (this.preparingQuery || this.querying ||
         (this.loading && this.exams.length === 0 && this.remoteExams.length === 0)) {
         Column({ space: 12 }) {
           LoadingProgress()
@@ -692,7 +684,7 @@ export struct ExamPage {
         })
       }
 
-      if (!this.reviewView && !this.preparingQuery && !this.querying && this.queryContext.length > 0 &&
+      if (!this.preparingQuery && !this.querying && this.queryContext.length > 0 &&
         this.exams.length === 0 && this.remoteExams.length === 0) {
         Text(this.queryContext)
           .fontSize(HitaDesign.caption)
@@ -715,27 +707,22 @@ export struct ExamPage {
             onBack: () => this.navigateBack()
           })
             .margin({ right: 12 })
-          Row({ space: 4 }) {
-            this.viewTab('考试', false)
-            this.viewTab('复习', true)
-          }.padding(HitaDesign.space2xs).backgroundColor($r('app.color.hita_control')).borderRadius(HitaDesign.radiusXl)
-          Blank()
-          if (!this.reviewView) {
-            HeaderActionButton({ label: '查询', disabled: this.pendingDeleteId.length > 0,
-              materialEnabled: !this.presentedAsSheet || CompatibleSheetMaterial.isEnabled(), onTap: () => {
-                if (!this.preparingQuery) {
-                  this.queryEasExams();
-                }
-              } })
-              .margin({ left: HitaDesign.spaceXs })
-            HeaderActionButton({ label: '添加', disabled: this.openingEditor || this.pendingDeleteId.length > 0,
-              materialEnabled: !this.presentedAsSheet || CompatibleSheetMaterial.isEnabled(), onTap: () => {
-                if (!this.preparingQuery && !this.querying) {
-                  this.openAddExam();
-                }
-              } })
-              .margin({ left: HitaDesign.spaceXs })
-          }
+          Text('考试安排').fontSize(HitaDesign.title).fontWeight(FontWeight.Medium).fontColor($r('app.color.hita_text'))
+            .layoutWeight(1).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+          HeaderActionButton({ label: '查询', disabled: this.pendingDeleteId.length > 0,
+            materialEnabled: !this.presentedAsSheet || CompatibleSheetMaterial.isEnabled(), onTap: () => {
+              if (!this.preparingQuery) {
+                this.queryEasExams();
+              }
+            } })
+            .margin({ left: HitaDesign.spaceXs })
+          HeaderActionButton({ label: '添加', disabled: this.openingEditor || this.pendingDeleteId.length > 0,
+            materialEnabled: !this.presentedAsSheet || CompatibleSheetMaterial.isEnabled(), onTap: () => {
+              if (!this.preparingQuery && !this.querying) {
+                this.openAddExam();
+              }
+            } })
+            .margin({ left: HitaDesign.spaceXs })
         }
         .width('100%')
         .height(HEADER_HEIGHT)
@@ -766,16 +753,6 @@ export struct ExamPage {
     }))
     .attributeModifier(new CompatibleLightModifier(24, this.presentedAsSheet &&
       CompatibleSheetMaterial.isEnabled(), true))
-  }
-
-  @Builder
-  private viewTab(title: string, review: boolean) {
-    Button(title, { type: ButtonType.Capsule }).height(36).fontSize(HitaDesign.body).padding({ left: 12, right: 12 })
-      .fontWeight(this.reviewView === review ? FontWeight.Medium : FontWeight.Regular)
-      .fontColor(this.reviewView === review ? $r('app.color.hita_primary') : $r('app.color.hita_text_secondary'))
-      .backgroundColor(this.reviewView === review ? $r('app.color.hita_selected') : Color.Transparent)
-      .enabled(!this.learningBusy && this.pendingDeleteId.length === 0 && !this.sheetVisible)
-      .onClick(() => { this.reviewView = review; this.fadeOpacity = 0; })
   }
 
   @Builder
@@ -1111,7 +1088,6 @@ export struct ExamPage {
   }
 
   navigateBack(): void {
-    if (this.learningBusy) return;
     if (this.presentedAsSheet) {
       this.onClose();
     } else {
