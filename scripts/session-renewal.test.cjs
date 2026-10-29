@@ -396,6 +396,13 @@ test('a main-frame load failure ends hidden login at once, but a navigation canc
   assert.equal(h.timers.size, 0);
 });
 
+test('optional laboratory steps cannot fail a hidden renewal that already verified the EAS session', () => {
+  const source = fs.readFileSync(path.join(root, 'feature/eas/webLogin/EasSilentLogin.ets'), 'utf8');
+  assert.match(source, /if \(this\.loginController\.notifyLoadError\(errorInfo, true\)\) \{\s*return;/);
+  assert.match(source, /private probePrompt\(\): void \{\s*if \([^)]*this\.loginController\.inOptionalSteps\(\)\)/);
+  assert.match(source, /isCredentialPromptPage\(url\) && !this\.loginController\.inOptionalSteps\(\)/);
+});
+
 test('hidden login gives up after its time limit and leaves no timers behind', async () => {
   const h = setup();
   const run = silent(h, h.EasCampus.BENBU);

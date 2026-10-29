@@ -123,7 +123,7 @@ export class EasSilentLogin {
       return;
     }
     this.pageReady = true;
-    if (isCredentialPromptPage(url)) {
+    if (isCredentialPromptPage(url) && !this.loginController.inOptionalSteps()) {
       this.fail('sign-in required at ' + hostOf(url));
       return;
     }
@@ -156,6 +156,10 @@ export class EasSilentLogin {
   /** 主框架加载失败时登录无法推进，立即放弃；被新导航取消（UA 切换后重载）的不算。 */
   mainFrameError(errorInfo: string): void {
     if (this.done || /ABORTED/i.test(errorInfo)) {
+      return;
+    }
+    // 只差可选的实验系统时，控制器会带着已验证的教务会话直接完成。
+    if (this.loginController.notifyLoadError(errorInfo, true)) {
       return;
     }
     this.fail('page load failed: ' + errorInfo);
@@ -193,7 +197,7 @@ export class EasSilentLogin {
   }
 
   private probePrompt(): void {
-    if (this.done || !this.started || this.probing) {
+    if (this.done || !this.started || this.probing || this.loginController.inOptionalSteps()) {
       return;
     }
     let url: string = '';

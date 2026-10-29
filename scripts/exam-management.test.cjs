@@ -433,10 +433,17 @@ test('RDB edit uses a single UPDATE, preserves all columns and refuses missing I
   });
   const db = new RdbHelper();
   const calls = [];
+  let result = async () => 1;
   db.store = {
-    update: async (values, pred) => { calls.push({ values, pred }); return 1; },
-    delete: async () => assert.fail('Must not delete before updating'),
-    insert: async () => assert.fail('Must not recreate an existing record')
+    createTransaction: async () => ({
+      update: async (values, pred) => { calls.push({ values, pred }); return result(); },
+      // The term lookup finds no timetable, so only the event row is written.
+      query: async () => ({ goToFirstRow: () => false, close: () => {} }),
+      delete: async () => assert.fail('Must not delete before updating'),
+      insert: async () => assert.fail('Must not recreate an existing record'),
+      commit: async () => {},
+      rollback: async () => {}
+    })
   };
   const original = exam('a');
   await db.updateEvent(original);
@@ -445,9 +452,9 @@ test('RDB edit uses a single UPDATE, preserves all columns and refuses missing I
   assert.equal(calls[0].pred.table, 'events');
   assert.equal(calls[0].values.fromTime, original.from);
   assert.equal(calls[0].values.createdAt, original.createdAt);
-  db.store.update = async () => 0;
+  result = async () => 0;
   await assert.rejects(db.updateEvent(original), /no longer exists/);
-  db.store.update = async () => { throw new Error('write failure'); };
+  result = async () => { throw new Error('write failure'); };
   await assert.rejects(db.updateEvent(original), /write failure/);
 });
 

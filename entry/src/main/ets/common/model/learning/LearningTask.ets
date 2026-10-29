@@ -67,7 +67,8 @@ export class LearningTaskRules {
     });
   }
 
-  static validation(task: LearningTask): string {
+  /** Checks that hold for a saved task in any device time zone; reads and restores use only these. */
+  static storedValidation(task: LearningTask): string {
     if (task.id.trim().length === 0) return '待办标识无效';
     if (task.title.trim().length === 0) return '请填写待办名称';
     if (task.title.length > 120 || task.note.length > 4000) return '名称或备注过长';
@@ -77,6 +78,13 @@ export class LearningTaskRules {
       if (!Number.isSafeInteger(time) || time < 0 || time > 8640000000000000) return '日期无效';
     }
     if (!Number.isFinite(LearningTaskRules.deadline(task))) return '日期无效';
+    return '';
+  }
+
+  static validation(task: LearningTask): string {
+    const stored: string = LearningTaskRules.storedValidation(task);
+    if (stored.length > 0) return stored;
+    // An all-day deadline follows the device time zone, so this rule is checked when saving only.
     if (task.remindAt > 0 && task.dueAt > 0 && task.remindAt > LearningTaskRules.deadline(task)) {
       return '提醒时间不能晚于截止时间';
     }

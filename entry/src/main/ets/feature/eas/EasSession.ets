@@ -85,8 +85,9 @@ export class EasSession {
   adoptWebLogin(source: EasSession): void {
     this.webCookies = EasSession.copyMap(source.webCookies);
     this.webBaseUrl = source.webBaseUrl;
-    this.electronicExpToken = source.electronicExpToken;
-    this.sjjxCookies = EasSession.copyMap(source.sjjxCookies);
+    // A renewal whose optional laboratory steps timed out brings no lab credentials; keep the ones still held.
+    if (source.electronicExpToken.length > 0) this.electronicExpToken = source.electronicExpToken;
+    if (source.sjjxCookies.size > 0) this.sjjxCookies = EasSession.copyMap(source.sjjxCookies);
     this.sessionGeneration = source.sessionGeneration;
     this.loginExpired = source.loginExpired;
     this.expiredReason = source.expiredReason;

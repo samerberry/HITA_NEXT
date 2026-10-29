@@ -10,6 +10,10 @@ const KIND_LINE_HEIGHT: number = 22;
 export struct TimetableUpdateDialog {
   controller: CustomDialogController;
   changes: TimetableChangeGroup[] = [];
+  title: string = '教务课表有更新';
+  applyLabel: string = '更新';
+  busyLabel: string = '更新中';
+  dismissLabel: string = '暂不更新';
   onApply: () => Promise<void> = async () => {};
   onDismiss: () => Promise<void> = async () => {};
   @State busy: boolean = false;
@@ -64,7 +68,7 @@ export struct TimetableUpdateDialog {
   panel() {
     Column({ space: HitaDesign.spaceMd }) {
       Column({ space: HitaDesign.space2xs }) {
-        Text('教务课表有更新').fontSize(HitaDesign.title).fontWeight(FontWeight.Medium)
+        Text(this.title).fontSize(HitaDesign.title).fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.hita_text')).width('100%')
         Text('共 ' + this.changes.length.toString() + ' 处变化').fontSize(HitaDesign.caption)
           .fontColor($r('app.color.hita_text_secondary')).width('100%')
@@ -102,11 +106,12 @@ export struct TimetableUpdateDialog {
           .width('100%')
       }
       Row({ space: HitaDesign.gap }) {
-        HitaButton({ label: '暂不更新', variant: HitaButtonVariant.NEUTRAL, buttonHeight: HitaDesign.minTouchTarget,
+        HitaButton({ label: this.dismissLabel, variant: HitaButtonVariant.NEUTRAL, buttonHeight: HitaDesign.minTouchTarget,
           disabled: this.busy, onTap: () => { void this.dismiss(); } })
           .width(0)
           .layoutWeight(1)
-        HitaButton({ label: this.busy ? '更新中' : '更新', variant: HitaButtonVariant.PRIMARY, buttonHeight: HitaDesign.minTouchTarget,
+        HitaButton({ label: this.busy ? this.busyLabel : this.applyLabel, variant: HitaButtonVariant.PRIMARY,
+          buttonHeight: HitaDesign.minTouchTarget,
           disabled: this.busy, onTap: () => { void this.apply(); } })
           .width(0)
           .layoutWeight(1)

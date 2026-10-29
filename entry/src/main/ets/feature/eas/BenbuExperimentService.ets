@@ -11,13 +11,20 @@ export class BenbuExperimentService {
   static readonly EXPERIMENT_BASE: string = EasCampusUrls.SJJX_BASE;
 
   static mergeCookies(target: Map<string, string>, raw: string): void {
-    const parts: string[] = raw.split(/[;\r\n]|,(?=\s*[^\s;,=]+=)/);
-    for (const part of parts) {
-      const equal: number = part.indexOf('=');
-      if (equal < 1) continue;
-      const key: string = part.substring(0, equal).trim();
-      if (/^(path|domain|expires|max-age|samesite|secure|httponly)$/i.test(key)) continue;
-      target.set(key, part.substring(equal + 1).trim());
+    for (const line of raw.split(/\r?\n/)) {
+      // HttpResponse.cookies lists libcurl cookie lines: domain, subdomains, path, secure, expiry, name, value.
+      const fields: string[] = line.split('\t');
+      if (fields.length >= 7) {
+        if (fields[5].trim().length > 0) target.set(fields[5].trim(), fields[6].trim());
+        continue;
+      }
+      for (const part of line.split(/;|,(?=\s*[^\s;,=]+=)/)) {
+        const equal: number = part.indexOf('=');
+        if (equal < 1) continue;
+        const key: string = part.substring(0, equal).trim();
+        if (/^(path|domain|expires|max-age|samesite|secure|httponly)$/i.test(key)) continue;
+        target.set(key, part.substring(equal + 1).trim());
+      }
     }
   }
 

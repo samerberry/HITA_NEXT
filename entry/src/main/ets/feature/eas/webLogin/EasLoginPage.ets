@@ -11,6 +11,7 @@ import { HitaDesign } from '../../../common/theme/HitaDesign';
  */
 import { webview } from '@kit.ArkWeb';
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { logUrl } from './EasWebLoginProbe';
 import { common } from '@kit.AbilityKit';
 import { EasSession } from '../EasSession';
 import { EasSessionStore } from '../EasSessionStore';
@@ -468,8 +469,9 @@ export struct EasLoginPage {
             })
             .onConsole((event) => {
               if (event !== undefined && event !== null && event.message !== undefined && event.message !== null) {
-                hilog.info(DOMAIN, 'HitaWebConsole', '[%{public}s] %{public}s',
-                  event.message.getSourceId ? event.message.getSourceId() : '',
+                // Page scripts can print tickets or tokens, so the console text stays private.
+                hilog.info(DOMAIN, 'HitaWebConsole', '[%{public}s] %{private}s',
+                  logUrl(event.message.getSourceId ? event.message.getSourceId() : ''),
                   event.message.getMessage ? event.message.getMessage() : '');
               }
               return false;

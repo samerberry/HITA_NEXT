@@ -292,6 +292,33 @@ test('merge updates write only the listed classes and roll back as a whole', asy
   } finally { f.sql.close(); }
 });
 
+test('a merge planned before later local edits is rejected without writing anything', async () => {
+  const f = database();
+  try {
+    await seed(f.db);
+    const snapshot = (await f.db.getEventsOfTimetable('a')).filter(item => item.type === EasEventType.CLASS);
+    const updated = Object.assign(event('old-one'), { place: 'B202' });
+    f.sql.exec("UPDATE events SET place = 'Mine' WHERE id = 'old-two'");
+    const before = f.snapshot();
+    await assert.rejects(f.db.applyTimetableMerge('a', [], [], [updated], [], [], snapshot), /changed since the update check/);
+    assert.deepEqual(f.snapshot(), before);
+    const fresh = (await f.db.getEventsOfTimetable('a')).filter(item => item.type === EasEventType.CLASS);
+    await f.db.applyTimetableMerge('a', [], [], [updated], [], [], fresh);
+    assert.equal(f.snapshot()[2].find(row => row.id === 'old-one').place, 'B202');
+  } finally { f.sql.close(); }
+});
+
+test('single event saves extend the term to reach a later exam', async () => {
+  const f = database();
+  try {
+    await f.db.saveTimetable(table());
+    await f.db.saveEvent(event('final', EasEventType.EXAM, 'a', 40 * day));
+    assert.equal(f.snapshot()[0].find(row => row.id === 'a').endTime, start + 42 * day - 1);
+    await f.db.updateEvent(event('final', EasEventType.EXAM, 'a', 50 * day));
+    assert.equal(f.snapshot()[0].find(row => row.id === 'a').endTime, start + 56 * day - 1);
+  } finally { f.sql.close(); }
+});
+
 test('imports record the school base, and deleting or shifting a term keeps its base in step', async () => {
   const f = database();
   try {
@@ -316,12 +343,12 @@ test('imports record the school base, and deleting or shifting a term keeps its 
   } finally { f.sql.close(); }
 });
 
-test('start date changes roll back partial shifts and reject stale editor dates', async () => {
+test('start date changes move classes only, roll back partial shifts and reject stale editor dates', async () => {
   const f = database();
   try {
     await seed(f.db);
     const before = f.snapshot();
-    const old = table();
+    const old = f.sql.prepare("SELECT startTime, endTime FROM timetable WHERE id='a'").get();
     const next = start + 7 * day;
     f.sql.exec("CREATE TRIGGER fail_shift BEFORE UPDATE ON events WHEN OLD.id='old-two' BEGIN SELECT RAISE(ABORT, 'disk full'); END");
     await assert.rejects(f.db.shiftTimetableStart('a', old.startTime, old.endTime, next), /disk full/);
@@ -332,10 +359,11 @@ test('start date changes roll back partial shifts and reject stale editor dates'
     assert.equal(shifted[0].find(row => row.id === 'a').startTime, next);
     for (const row of shifted[2]) {
       const original = before[2].find(item => item.id === row.id);
-      assert.deepEqual({ ...row }, { ...original,
-        fromTime: original.fromTime + (row.timetableId === 'a' ? 7 * day : 0),
-        toTime: original.toTime + (row.timetableId === 'a' ? 7 * day : 0) });
+      const moved = row.timetableId === 'a' && row.type === EasEventType.CLASS ? 7 * day : 0;
+      assert.deepEqual({ ...row }, { ...original, fromTime: original.fromTime + moved, toTime: original.toTime + moved });
     }
+    assert.equal(shifted[2].find(row => row.id === 'exam').fromTime, before[2].find(row => row.id === 'exam').fromTime,
+      'exams keep their school dates');
     await assert.rejects(f.db.shiftTimetableStart('a', old.startTime, old.endTime, next + 7 * day), /reload/);
     assert.deepEqual(f.snapshot(), shifted);
   } finally { f.sql.close(); }

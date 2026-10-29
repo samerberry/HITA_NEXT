@@ -26,7 +26,7 @@ export struct CourseWeekPicker {
     const padding = CompatibleSheetMaterial.isEnabled() ? COURSE_CONTROL_OVERFLOW : 0;
     const columns = this.weekdayMode ? 7 : 5;
     const gap = this.weekdayMode ? 4 : 8;
-    const height = this.weekdayMode ? 38 : 44;
+    const height = this.weekdayMode ? HitaDesign.controlHeight : 44;
     const width = this.gridWidth - padding * 2;
     x -= padding;
     y -= padding;
@@ -77,7 +77,7 @@ export struct CourseWeekPicker {
   @Builder
   cell(week: number) {
     CourseControlHost({
-      barHeight: this.weekdayMode ? 38 : 44,
+      barHeight: this.weekdayMode ? HitaDesign.controlHeight : 44,
       onPressingChanged: (pressing: boolean) => {
         if (pressing) this.activeWeek = week;
         else if (this.activeWeek === week) this.activeWeek = -1;
@@ -154,7 +154,7 @@ export struct CourseWeekPicker {
     .padding(CompatibleSheetMaterial.isEnabled() ? COURSE_CONTROL_OVERFLOW : 0)
     .margin(CompatibleSheetMaterial.isEnabled() ? -COURSE_CONTROL_OVERFLOW : 0)
     // One vertical scroller owns the whole form, including every teaching week.
-    .height((this.weekdayMode ? 38 : Math.ceil((this.weeks.length + 1) / 5) * 52 - 8) +
+    .height((this.weekdayMode ? HitaDesign.controlHeight : Math.ceil((this.weeks.length + 1) / 5) * 52 - 8) +
       (CompatibleSheetMaterial.isEnabled() ? COURSE_CONTROL_OVERFLOW * 2 : 0))
     .scrollBar(BarState.Off)
     .enableScrollInteraction(false)

@@ -23,6 +23,13 @@ const { LearningTask, LearningContext, LearningTaskRules: rules } = load('common
 const now = new Date(2026, 9, 27, 14, 0).getTime();
 const task = values => Object.assign(new LearningTask(), { title: 'Exercises', timetableId: 'term', subjectId: 'math', courseName: 'Math' }, values);
 
+test('a saved all-day reminder stays readable after a time-zone change; only saving enforces the deadline rule', () => {
+  const late = task({ id: 'late', dueAt: new Date(2026, 9, 27, 8).getTime(), allDay: true });
+  late.remindAt = rules.deadline(late) + 3600000;
+  assert.equal(rules.storedValidation(late), '');
+  assert.equal(rules.validation(late), '提醒时间不能晚于截止时间');
+});
+
 test('the task list offers only homework and review tabs and opens on homework', () => {
   const panel = fs.readFileSync(path.join(root, 'feature/learning/LearningTasksPanel.ets'), 'utf8');
   assert.doesNotMatch(panel, /kindTab\('全部'|embedded/);

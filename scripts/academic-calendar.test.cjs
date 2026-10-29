@@ -23,6 +23,8 @@ function load(file, mocks = {}, cache = new Map()) {
   cache.set(file, mod);
   const localRequire = name => {
     if (name in mocks) return mocks[name];
+    // The page opens this dialog only when re-importing; its ArkUI markup is not plain TypeScript.
+    if (name.endsWith('/TimetableUpdateDialog')) return { TimetableUpdateDialog: () => ({}) };
     if (name === '@kit.PerformanceAnalysisKit') return { hilog: { info() {}, warn() {}, error() {} } };
     if (name.startsWith('@kit.')) return {};
     assert.ok(name.startsWith('.'), name);
@@ -203,9 +205,9 @@ test('calendar failures are distinct from authentication expiry', async () => {
     const provider = new EasDataProvider({ request: async () => ({ statusCode, body: html() }) });
     assert.equal(await provider.getStartDate(session, term()), undefined);
   }
-  for (const statusCode of [401, 403]) {
+  for (const [statusCode, error] of [[401, /会话已失效/], [403, /拒绝访问/]]) {
     const provider = new EasDataProvider({ request: async () => ({ statusCode, body: '' }) });
-    await assert.rejects(provider.getStartDate(session, term()), /会话已失效/);
+    await assert.rejects(provider.getStartDate(session, term()), error);
   }
 });
 

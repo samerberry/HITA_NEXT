@@ -118,6 +118,10 @@ struct WebBrowserPage {
                 this.progress = event.newProgress;
               }
             })
+            .onPageBegin(() => {
+              // Going back to a page that loaded clears the error left by the page the user backed out of.
+              this.failed = false;
+            })
             .onErrorReceive((event) => {
               if (event !== undefined && event.request.isMainFrame()) {
                 this.failed = true;

@@ -16,7 +16,9 @@ import { EasCampus, EasSession } from '../../eas/EasSession';
 import { EasSessionStore } from '../../eas/EasSessionStore';
 import { EasDataProvider } from '../../eas/EasDataProvider';
 import { EasUserMessages } from '../../eas/EasUserMessages';
-import { EasImportResult, EasTermStartResult, EasTimetableImporter } from '../../eas/EasTimetableImporter';
+import { EasImportResult, EasReimportConfirm, EasTermStartResult, EasTimetableImporter } from '../../eas/EasTimetableImporter';
+import { TimetableChangeGroup } from '../data/TimetableUpdateDiff';
+import { TimetableUpdateDialog } from './TimetableUpdateDialog';
 import { EasTermItem } from '../../eas/model/EasModels';
 import { EasTimeInDay, EasTimePeriodInDay, EasTimetable } from '../../../common/model/timetable/TimetableModels';
 import { TimetableSelectionStore } from '../data/TimetableSelectionStore';
@@ -92,8 +94,15 @@ export struct ImportTimetablePanel {
     }
   }
 
+  private closeTimer: number = -1;
+  private editedDialog: CustomDialogController | undefined = undefined;
+
   aboutToDisappear(): void {
     this.detailsGeneration++;
+    if (this.closeTimer >= 0) {
+      clearTimeout(this.closeTimer);
+      this.closeTimer = -1;
+    }
   }
 
   private async loadTermDetails(): Promise<void> {
@@ -253,18 +262,24 @@ export struct ImportTimetablePanel {
     this.error = '';
     try {
       const ctx: common.Context = this.getUIContext().getHostContext() as common.Context;
+      const confirm: EasReimportConfirm = {
+        updateEdited: (changes: TimetableChangeGroup[]): Promise<boolean> => this.askUpdateEdited(changes),
+        replaceAll: (reason: string): Promise<boolean> => this.askReplaceAll(reason)
+      };
       const result: EasImportResult = await EasTimetableImporter.importCurrent(ctx,
-        this.selectedTerm() as EasTermItem, this.startTime, this.schedule);
+        this.selectedTerm() as EasTermItem, this.startTime, this.schedule, undefined, confirm);
       if (result.success && result.timetable !== undefined) {
         await TimetableSelectionStore.getInstance().init(ctx);
         await TimetableSelectionStore.getInstance().save(result.timetable.id);
         this.message = result.message;
         this.getUIContext().getPromptAction().showToast({ message: result.message });
         this.onImported();
-        setTimeout(() => {
+        // Cleared when the panel goes away first, so it can never close another page or sheet.
+        this.closeTimer = setTimeout(() => {
+          this.closeTimer = -1;
           this.close();
         }, 500);
-      } else {
+      } else if (!result.cancelled) {
         this.error = result.message.length > 0 ? result.message : '导入课表失败';
       }
     } catch (e) {
@@ -273,6 +288,53 @@ export struct ImportTimetablePanel {
     } finally {
       this.importing = false;
     }
+  }
+
+  /** 列出用户改过、和教务不同的课，问要不要换成教务版本；返回键关闭按保留处理。 */
+  private askUpdateEdited(changes: TimetableChangeGroup[]): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+      let settled: boolean = false;
+      const finish = (value: boolean): void => {
+        if (!settled) {
+          settled = true;
+          resolve(value);
+        }
+      };
+      this.editedDialog = new CustomDialogController({
+        builder: TimetableUpdateDialog({
+          changes: changes,
+          title: '这些课你改过',
+          applyLabel: '改成教务版本',
+          busyLabel: '处理中',
+          dismissLabel: '保留我的修改',
+          onApply: async () => {
+            finish(true);
+          },
+          onDismiss: async () => {
+            finish(false);
+          }
+        }),
+        cancel: () => {
+          finish(false);
+        },
+        customStyle: true,
+        autoCancel: false,
+        alignment: DialogAlignment.Center
+      });
+      this.editedDialog.open();
+    });
+  }
+
+  private askReplaceAll(reason: string): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+      this.getUIContext().showAlertDialog({
+        title: '重新导入',
+        message: reason,
+        primaryButton: { value: '取消', action: () => { resolve(false); } },
+        secondaryButton: { value: '仍要导入', action: () => { resolve(true); } },
+        cancel: () => { resolve(false); }
+      });
+    });
   }
 
   private close(): void {
@@ -342,7 +404,7 @@ export struct ImportTimetablePanel {
         CompatibleSheetMaterial.isEnabled() }) {
         Row() {
           HeaderBackButton({
-            onBack: () => this.close()
+            onBack: () => { if (!this.importing) this.close(); }
           })
             .margin({ right: 12 });
           Text('导入课表')

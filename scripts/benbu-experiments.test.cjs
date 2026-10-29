@@ -33,6 +33,31 @@ function load(file) {
 const { BenbuExperimentParser: parser } = load('feature/eas/data/BenbuExperimentParser.ets');
 const { BenbuExperimentService: service } = load('feature/eas/BenbuExperimentService.ets');
 const { EasApiClient: api } = load('feature/eas/EasApiClient.ets');
+
+test('laboratory cookies are read from libcurl cookie lines as well as Set-Cookie text', () => {
+  const jar = new Map();
+  service.mergeCookies(jar, '#HttpOnly_sjjx-hit-edu-cn.vpn.hit.edu.cn\tFALSE\t/\tFALSE\t0\tJSESSIONID\tlab=1\r\n' +
+    'sjjx-hit-edu-cn.vpn.hit.edu.cn\tFALSE\t/\tFALSE\t0\troute\tr1');
+  assert.deepEqual([...jar], [['JSESSIONID', 'lab=1'], ['route', 'r1']]);
+  service.mergeCookies(jar, 'JSESSIONID=next; Path=/; HttpOnly');
+  assert.equal(jar.get('JSESSIONID'), 'next');
+});
+
+test('a renewal without laboratory credentials keeps the ones the session already holds', () => {
+  const { EasSession } = load('feature/eas/EasSession.ets');
+  const held = new EasSession();
+  held.electronicExpToken = 'token';
+  held.sjjxCookies.set('JSESSIONID', 'lab');
+  const renewal = new EasSession();
+  renewal.webCookies.set('JSESSIONID', 'eas');
+  held.adoptWebLogin(renewal);
+  assert.equal(held.webCookies.get('JSESSIONID'), 'eas');
+  assert.equal(held.electronicExpToken, 'token');
+  assert.equal(held.sjjxCookies.get('JSESSIONID'), 'lab');
+  renewal.electronicExpToken = 'fresh';
+  held.adoptWebLogin(renewal);
+  assert.equal(held.electronicExpToken, 'fresh');
+});
 const { EasSession, EasCampus } = load('feature/eas/EasSession.ets');
 const { EasTermItem, EasCourseItem } = load('feature/eas/model/EasModels.ets');
 const { EasDataProvider } = load('feature/eas/EasDataProvider.ets');

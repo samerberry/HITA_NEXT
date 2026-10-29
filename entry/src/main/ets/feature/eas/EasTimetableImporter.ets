@@ -45,8 +45,28 @@ export class EasTimetableUpdate {
   fingerprint: string = '';
 }
 
+/** 重新导入时要问用户的两件事；不传时按"保留用户修改、不整体重建"处理。 */
+export interface EasReimportConfirm {
+  /** 用户改过、又和教务不同的课，换成教务版本吗？ */
+  updateEdited: (changes: TimetableChangeGroup[]) => Promise<boolean>;
+  /** 分不清用户改过哪些课时，按教务课表重建全部课程吗？ */
+  replaceAll: (reason: string) => Promise<boolean>;
+}
+
+enum EasReimportOutcome {
+  /** 本地还没有课程，按首次导入直接写入。 */
+  FRESH = 'FRESH',
+  MERGED = 'MERGED',
+  EDITS_UPDATED = 'EDITS_UPDATED',
+  REPLACED = 'REPLACED',
+  CANCELLED = 'CANCELLED',
+  NEEDS_CONFIRM = 'NEEDS_CONFIRM'
+}
+
 export class EasImportResult {
   success: boolean = false;
+  /** 用户在确认框里取消了整体重建，不算失败。 */
+  cancelled: boolean = false;
   message: string = '';
   timetable: EasTimetable | undefined = undefined;
   term: EasTermItem | undefined = undefined;
@@ -66,7 +86,8 @@ export class EasTimetableImporter {
    * 会话、解析与本地写库逻辑。
    */
   static async importCurrent(context: common.Context, selectedTerm?: EasTermItem,
-    startTimeMs?: number, scheduleOverride?: EasTimePeriodInDay[], studentType?: string): Promise<EasImportResult> {
+    startTimeMs?: number, scheduleOverride?: EasTimePeriodInDay[], studentType?: string,
+    confirm?: EasReimportConfirm): Promise<EasImportResult> {
     const result: EasImportResult = new EasImportResult();
     try {
       await EasSessionStore.getInstance().init(context);
@@ -141,8 +162,23 @@ export class EasTimetableImporter {
           hilog.warn(DOMAIN, TAG, 'using fallback Shenzhen schedule %{public}s', String(e));
         }
       }
-      const plan: EasImportPlan = await EasTimetableImporter.saveCourses(rdb, session, term, courses, schedule,
+      const plan: EasImportPlan = await EasTimetableImporter.buildImport(rdb, session, term, courses, schedule,
         start.startTime);
+      let outcome: EasReimportOutcome | undefined = undefined;
+      if (plan.replaceCourses) {
+        outcome = await EasTimetableImporter.reimport(rdb, plan, confirm);
+        if (outcome === EasReimportOutcome.CANCELLED) {
+          result.cancelled = true;
+          result.message = '已取消导入';
+          return result;
+        }
+        if (outcome === EasReimportOutcome.NEEDS_CONFIRM) {
+          result.message = '这个学期已经导入过，请在“导入课表”里重新导入';
+          return result;
+        }
+      } else {
+        await EasTimetableImporter.savePlan(rdb, plan);
+      }
       const timetable: EasTimetable = plan.timetable;
       result.timetable = timetable;
       const readback: EasEventItem[] = await rdb.getEventsOfTimetable(timetable.id);
@@ -157,6 +193,13 @@ export class EasTimetableImporter {
       await EasTimetableImporter.rememberRemote(context, timetable.id, plan.events);
       result.success = true;
       result.message = '已导入 ' + readback.length.toString() + ' 个课次';
+      if (outcome === EasReimportOutcome.MERGED) {
+        result.message = '已重新导入，保留了你添加、修改和翘掉的课';
+      } else if (outcome === EasReimportOutcome.EDITS_UPDATED) {
+        result.message = '已重新导入，你改过的课已换成教务版本';
+      } else if (outcome === EasReimportOutcome.REPLACED) {
+        result.message = '已重新导入 ' + readback.length.toString() + ' 个课次';
+      }
       if (start.fromSaved) {
         result.message += '，开学日期沿用本地设置，请核对';
       }
@@ -214,6 +257,10 @@ export class EasTimetableImporter {
       // 教务暂时返回空课表时不提议清空本地课程。
       return undefined;
     }
+    if (provider.importWarnings.length > 0) {
+      // 实验课等补充课表没取全时不比较，免得把没取到的课当成教务取消。
+      return undefined;
+    }
     const plan: EasImportPlan = await EasTimetableImporter.buildImport(rdb, session, term, courses,
       timetable.scheduleStructure, timetable.startTime);
     if (!plan.replaceCourses || plan.timetable.id !== timetable.id) {
@@ -261,8 +308,13 @@ export class EasTimetableImporter {
     const rdb: RdbHelper = RdbHelper.getInstance();
     await rdb.init(context);
     await rdb.applyTimetableMerge(update.timetable.id, update.newSubjects, update.merge.inserts,
-      update.merge.updates, update.merge.deletes, update.merge.base);
+      update.merge.updates, update.merge.deletes, update.merge.base, update.merge.local);
     await EasTimetableImporter.rememberRemote(context, update.timetable.id, update.plan.events);
+  }
+
+  /** 应用时发现课表在检查之后被改过：这份变化清单已作废，应重新检查。 */
+  static isStaleUpdate(error: Error): boolean {
+    return error.message.indexOf(RdbHelper.STALE_MERGE) >= 0;
   }
 
   /** 用户选择暂不更新：同一教务版本不再提醒。 */
@@ -310,13 +362,75 @@ export class EasTimetableImporter {
     return courses;
   }
 
+  /**
+   * 重新导入已有学期：和更新检查一样三方合并，只改用户没动过的课，用户添加和翘掉的课不变；用户改过、
+   * 又和教务不同的课由 confirm 决定是否换成教务版本。分不清用户改动时（没有导入基准，或节次时间变了），
+   * 只有 confirm 同意才按教务课表整体重建。
+   */
+  private static async reimport(rdb: RdbHelper, plan: EasImportPlan,
+    confirm?: EasReimportConfirm): Promise<EasReimportOutcome> {
+    const id: string = plan.timetable.id;
+    const saved: EasTimetable | undefined = await rdb.getTimetableById(id, true);
+    if ((await rdb.getEventsOfTimetable(id)).every((event: EasEventItem): boolean => event.type !== EasEventType.CLASS)) {
+      // 本地没有课程，没有要保留的修改。
+      await EasTimetableImporter.savePlan(rdb, plan);
+      return EasReimportOutcome.FRESH;
+    }
+    const recorded: EasImportBaseEntry[] = await rdb.getImportBase(id);
+    const reason: string = recorded.length === 0 ? '这张课表是旧版本导入的，分不清哪些课你改过。' :
+      saved === undefined || !EasTimetableImporter.sameSchedule(saved.scheduleStructure,
+        plan.timetable.scheduleStructure) ? '节次时间和这张课表不一样。' : '';
+    if (reason.length > 0) {
+      if (confirm === undefined) {
+        return EasReimportOutcome.NEEDS_CONFIRM;
+      }
+      if (!await confirm.replaceAll(reason + '继续会按教务课表重建全部课程，你添加、修改和翘掉的课都会恢复成教务版本。')) {
+        return EasReimportOutcome.CANCELLED;
+      }
+      await EasTimetableImporter.savePlan(rdb, plan);
+      return EasReimportOutcome.REPLACED;
+    }
+    const current: EasTimetable = saved as EasTimetable;
+    if (current.startTime !== plan.timetable.startTime) {
+      // 开学日期改了：先把课程和导入基准一起平移，再在同一时间轴上合并。
+      await rdb.shiftTimetableStart(id, current.startTime, current.endTime, plan.timetable.startTime);
+    }
+    const base: Map<string, string> = TimetableUpdateDiff.baseMap(await rdb.getImportBase(id));
+    const local: EasEventItem[] = await rdb.getEventsOfTimetable(id);
+    const merge: TimetableMergePlan = TimetableUpdateDiff.merge(plan.timetable.startTime, local, base, plan.events);
+    const edits: TimetableMergePlan = TimetableUpdateDiff.userEdits(plan.timetable.startTime, local, base,
+      plan.events);
+    let outcome: EasReimportOutcome = EasReimportOutcome.MERGED;
+    if (edits.updates.length > 0 && confirm !== undefined && await confirm.updateEdited(edits.changes)) {
+      merge.updates = merge.updates.concat(edits.updates);
+      outcome = EasReimportOutcome.EDITS_UPDATED;
+    }
+    const existing: Set<string> = new Set<string>((await rdb.getSubjectsOfTimetable(id))
+      .map((subject: EasTermSubject): string => subject.id));
+    const newSubjects: EasTermSubject[] = plan.subjects.filter((subject: EasTermSubject): boolean =>
+      !existing.has(subject.id) && merge.inserts.some((event: EasEventItem): boolean => event.subjectId === subject.id));
+    await rdb.applyTimetableMerge(id, newSubjects, merge.inserts, merge.updates, merge.deletes, merge.base,
+      merge.local);
+    return outcome;
+  }
+
   private static async saveCourses(rdb: RdbHelper, session: EasSession, term: EasTermItem,
     courses: EasCourseItem[], schedule: EasTimePeriodInDay[], startTimeMs: number): Promise<EasImportPlan> {
     const plan: EasImportPlan = await EasTimetableImporter.buildImport(rdb, session, term, courses, schedule,
       startTimeMs);
+    await EasTimetableImporter.savePlan(rdb, plan);
+    return plan;
+  }
+
+  /** 按教务课表写入；已有课表时替换全部课程。 */
+  private static async savePlan(rdb: RdbHelper, plan: EasImportPlan): Promise<void> {
     await rdb.saveImportedTimetable(plan.timetable, plan.subjects, plan.events, plan.replaceCourses,
       TimetableUpdateDiff.baseOf(plan.events));
-    return plan;
+  }
+
+  private static sameSchedule(a: EasTimePeriodInDay[], b: EasTimePeriodInDay[]): boolean {
+    return a.length === b.length && a.every((period: EasTimePeriodInDay, index: number): boolean =>
+      period.from.compareTo(b[index].from) === 0 && period.to.compareTo(b[index].to) === 0);
   }
 
   private static async buildImport(rdb: RdbHelper, session: EasSession, term: EasTermItem,

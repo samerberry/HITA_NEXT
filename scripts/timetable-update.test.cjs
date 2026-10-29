@@ -27,7 +27,11 @@ function setup() {
       EasDataProvider: class {
         constructor() { this.importWarnings = []; }
         async getAllTerms() { state.termCalls++; return state.terms; }
-        async getTimetableOfTerm() { state.courseCalls++; return state.courses.map(course => Object.assign(new EasCourseItem(), course)); }
+        async getTimetableOfTerm() {
+          state.courseCalls++;
+          this.importWarnings = (state.warnings || []).slice();
+          return state.courses.map(course => Object.assign(new EasCourseItem(), course));
+        }
         async getLegacyCourseAttributes() { return { rows: [], diag: '' }; }
         async getStartDate() { return state.startDate; }
         async getShenzhenScheduleStructure() { return []; }
@@ -82,6 +86,7 @@ function setup() {
       copy.scheduleStructure = timetable.scheduleStructure;
       return copy;
     },
+    getTimetableById: async id => id === timetable.id ? Object.assign(new models.EasTimetable(), timetable) : undefined,
     getSubjectsOfTimetable: async () => state.subjects.slice(),
     getEventsOfTimetable: async () => state.events.map(event => Object.assign(new models.EasEventItem(), event)),
     getImportBase: async () => state.base.slice(),
@@ -192,6 +197,68 @@ test('school additions insert new classes with their new subject, but not a clas
   assert.equal(h.find('离散数学', 1).length, 1, 'the user copy is not duplicated');
   assert.equal(h.find('离散数学', 2).length, 1);
   assert.deepEqual(h.state.subjects.map(subject => subject.name).sort(), ['离散数学', '线性代数']);
+});
+
+test('a check with missing laboratory classes proposes nothing until the school data is complete', async () => {
+  const h = setup();
+  await h.login();
+  h.state.courses = [h.course('高等数学', 2, 3, range(1, 4)), h.course('电路实验', 5, 1, [2, 3])];
+  await h.EasTimetableImporter.importCurrent({});
+  h.state.courses = h.state.courses.slice(0, 1);
+  h.state.warnings = ['未取得电子实验会话，相关实验课可能缺失，请重新登录教务后导入'];
+  assert.equal(await h.EasTimetableImporter.checkForUpdate({}, h.timetable), undefined);
+  assert.equal(h.find('电路实验', 2).length, 1, 'experiments the school did not return are kept');
+  h.state.warnings = [];
+  const update = await h.EasTimetableImporter.checkForUpdate({}, h.timetable);
+  assert.deepEqual(update.changes.map(change => change.kind), [h.TimetableChangeKind.REMOVED],
+    'a complete result still reports a real cancellation');
+});
+
+test('re-importing a term keeps added and skipped classes and asks before replacing edited ones', async () => {
+  const h = setup();
+  await h.login();
+  h.state.courses = [h.course('高等数学', 2, 3, range(1, 4)), h.course('大学物理', 4, 1, range(1, 4), 'A201')];
+  await h.EasTimetableImporter.importCurrent({});
+  const skipped = h.find('高等数学', 1)[0];
+  h.state.events = h.state.events.filter(event => event.id !== skipped.id);
+  h.find('大学物理', 2)[0].place = '我的教室';
+  h.state.events.push(Object.assign(new h.models.EasEventItem(), h.find('高等数学', 2)[0], { id: 'own', name: '自习' }));
+  h.state.courses[0].classroom = 'B202';
+  const asked = [];
+  const keep = {
+    updateEdited: async changes => { asked.push(changes.map(change => h.TimetableUpdateDiff.describe(change))); return false; },
+    replaceAll: async () => assert.fail('a recorded base never needs a full rebuild')
+  };
+  const kept = await h.EasTimetableImporter.importCurrent({}, undefined, undefined, undefined, undefined, keep);
+  assert.equal(kept.success, true, kept.message);
+  assert.equal(h.state.saves.length, 1, 're-import never replaces the whole timetable');
+  assert.deepEqual(asked, [['变更 大学物理 周四 1-2节 第2周 · 地点 我的教室 → A201']]);
+  assert.equal(h.find('高等数学', 1).length, 0, 'a skipped class stays skipped');
+  assert.equal(h.find('高等数学', 3)[0].place, 'B202', 'untouched classes follow the school');
+  assert.equal(h.find('大学物理', 2)[0].place, '我的教室', 'the edit is kept when the user says so');
+  assert.ok(h.state.events.some(event => event.id === 'own'), 'added classes stay');
+  const update = { updateEdited: async () => true, replaceAll: async () => false };
+  await h.EasTimetableImporter.importCurrent({}, undefined, undefined, undefined, undefined, update);
+  assert.equal(h.find('大学物理', 2)[0].place, 'A201', 'the edit follows the school once accepted');
+  assert.ok(h.state.events.some(event => event.id === 'own'));
+});
+
+test('a term without a recorded base is rebuilt only after the user agrees', async () => {
+  const h = setup();
+  await h.login();
+  h.state.courses = [h.course('英语', 3, 5, range(1, 4))];
+  await h.EasTimetableImporter.importCurrent({});
+  h.state.base = [];
+  const answer = value => ({ updateEdited: async () => false, replaceAll: async () => value });
+  const declined = await h.EasTimetableImporter.importCurrent({}, undefined, undefined, undefined, undefined, answer(false));
+  assert.equal(declined.cancelled, true);
+  assert.equal(h.state.saves.length, 1);
+  const unattended = await h.EasTimetableImporter.importCurrent({});
+  assert.equal(unattended.success, false, 'an import without a prompt never rebuilds silently');
+  assert.equal(h.state.saves.length, 1);
+  const agreed = await h.EasTimetableImporter.importCurrent({}, undefined, undefined, undefined, undefined, answer(true));
+  assert.equal(agreed.success, true, agreed.message);
+  assert.equal(h.state.saves.length, 2);
 });
 
 test('timetables imported before this version adopt the current school data silently, then follow later changes', async () => {

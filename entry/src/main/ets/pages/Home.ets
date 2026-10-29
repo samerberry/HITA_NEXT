@@ -52,6 +52,7 @@ import { DOW_FULL, EasTimeTools } from '../common/util/EasTimeTools';
 import { EasCampus, EasSession } from '../feature/eas/EasSession';
 import { EasSessionStore, EAS_SESSION_REVISION_KEY } from '../feature/eas/EasSessionStore';
 import { attachEasSilentRenewal } from '../feature/eas/webLogin/EasSilentLoginWeb';
+import { EasWebLoginState } from '../feature/eas/webLogin/EasWebLoginState';
 import { SheetContent } from '../common/components/SheetContent';
 import { EasApiClient } from '../feature/eas/EasApiClient';
 import { EasDataProvider } from '../feature/eas/EasDataProvider';
@@ -434,12 +435,24 @@ struct Home {
     this.dockHandObserver.stop();
     this.stopClock();
     this.resetDockInteraction();
-    this.closeActiveSheet();
+    // Going to the background hides the page too; keep the sheet so a login can go on after reading an SMS code.
+    if (this.hiddenByRoute()) {
+      this.closeActiveSheet();
+    }
     this.courseDeleteEffects.pause();
     this.finishCourseSheetDismissal();
     this.tabTransitionRunning = false;
     this.getUIContext().setKeyboardAvoidMode(KeyboardAvoidMode.OFFSET);
     this.stopTimetableMarquee();
+  }
+
+  /** True when another page now covers Home, false when the whole app went to the background. */
+  private hiddenByRoute(): boolean {
+    try {
+      return this.getUIContext().getRouter().getState().name !== 'Home';
+    } catch (_) {
+      return true;
+    }
   }
 
   private async onSessionRevisionChanged(): Promise<void> {
@@ -1674,7 +1687,7 @@ struct Home {
    * 打开应用或回到前台时检查当前教务课表在教务端是否有变化。只读取不写库，
    * 有变化时列出并由用户决定是否更新；网络或登录问题静默跳过。
    */
-  private async checkTimetableUpdate(): Promise<void> {
+  private async checkTimetableUpdate(force: boolean = false): Promise<void> {
     if (this.pendingTimetableUpdate !== undefined) {
       this.promptTimetableUpdate();
       return;
@@ -1689,7 +1702,7 @@ struct Home {
     try {
       const ctx: common.Context = this.getUIContext().getHostContext() as common.Context;
       const update: EasTimetableUpdate | undefined = await EasTimetableImporter.checkForUpdate(ctx, timetable,
-        TIMETABLE_UPDATE_INTERVAL_MS);
+        force ? 0 : TIMETABLE_UPDATE_INTERVAL_MS);
       if (update !== undefined) {
         this.pendingTimetableUpdate = update;
         this.promptTimetableUpdate();
@@ -1717,7 +1730,18 @@ struct Home {
       builder: TimetableUpdateDialog({
         changes: update.changes,
         onApply: async () => {
-          await EasTimetableImporter.applyUpdate(ctx, update);
+          try {
+            await EasTimetableImporter.applyUpdate(ctx, update);
+          } catch (error) {
+            if (!EasTimetableImporter.isStaleUpdate(error as Error)) {
+              throw error as Error;
+            }
+            // 检查之后课表又被改过：这份清单作废，按现在的课表重新比较。
+            this.timetableUpdatePrompting = false;
+            this.getUIContext().getPromptAction().showToast({ message: '课表刚有改动，正在重新比较' });
+            void this.checkTimetableUpdate(true);
+            return;
+          }
           this.timetableUpdatePrompting = false;
           this.getUIContext().getPromptAction().showToast({ message: '课表已更新' });
           await this.refreshSummaries();
@@ -1860,6 +1884,12 @@ struct Home {
   }
 
   /** The nearest exam within the next 14 days in the displayed timetable. */
+  /** The nearest exam as a keyed list, so another or an edited exam rebuilds the card instead of keeping the old one. */
+  private upcomingExams(): EasEventItem[] {
+    const exam: EasEventItem | undefined = this.upcomingExam();
+    return exam === undefined ? [] : [exam];
+  }
+
   private upcomingExam(): EasEventItem | undefined {
     let found: EasEventItem | undefined = undefined;
     const limit: number = this.nowTick + 14 * DAY_MS;
@@ -2000,8 +2030,12 @@ struct Home {
     const generation: number = this.sheetRequestGeneration;
     const campus: EasCampus = Home.campusFromCode(this.sessionSheetCampus);
     await EasSessionStore.getInstance().clear(campus);
+    try {
+      // The web sign-in would otherwise log the next person straight into this account.
+      await EasWebLoginState.clear();
+    } catch (_) {}
     if (generation === this.sheetRequestGeneration && this.sessionSheetOpen) {
-      this.sessionSheetInfo = undefined;
+      // Keep the signed-in content while the sheet slides away; reopening loads the fresh state.
       this.closeActiveSheet();
     }
     await this.refreshSummaries();
@@ -2459,6 +2493,8 @@ struct Home {
         this.importTimetableSheetOpen = false;
         this.backupSheetOpen = false;
         this.backupBusy = false;
+        // The exam sheet adds, edits and deletes exams in this timetable; show them once it closes.
+        const examsClosed: boolean = this.academicPanelOpen && this.academicPanelKind === 1;
         this.academicPanelOpen = false;
         this.academicPanelKind = 0;
         this.learningBusy = false;
@@ -2474,6 +2510,9 @@ struct Home {
         this.calendarExportTimetable = undefined;
         this.finishCourseSheetDismissal();
         this.openPendingLearningTask();
+        if (examsClosed) {
+          void this.refreshSummaries(true);
+        }
       }
     }, this.loginSheetOpen || this.sessionSheetOpen || this.courseSheetOpen || this.timetableDisplayOpen ||
       this.calendarExportSheetOpen || this.widgetBackgroundSheetOpen || this.importTimetableSheetOpen ||
@@ -2738,11 +2777,12 @@ struct Home {
           .clip(true)
         }
 
-        if (this.upcomingExam() !== undefined) {
+        ForEach(this.upcomingExams(), (exam: EasEventItem) => {
           ListItem() {
-            this.todayExamCard(this.upcomingExam() as EasEventItem);
+            this.todayExamCard(exam);
           }
-        }
+        }, (exam: EasEventItem) => exam.id + '|' + exam.from.toString() + '|' + exam.to.toString() + '|' + exam.name +
+          '|' + exam.place)
 
         if (!this.hasTimetable) {
           ListItem() {

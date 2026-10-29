@@ -22,7 +22,7 @@ const Status = { SAVED: 'saved', CHECKING: 'checking', CONNECTED: 'connected', E
 
 function harness() {
   const state = {
-    lastReads: 0, reads: 0, toasts: [],
+    lastReads: 0, reads: 0, toasts: [], topPage: 'AssistantPage', webCleared: 0,
     loadLast: async () => 'WEIHAI',
     load: async campus => ({ campus, name: 'Current session' }),
     clear: async () => {},
@@ -36,7 +36,8 @@ function harness() {
   };
   const context = {
     setKeyboardAvoidMode() {},
-    getPromptAction: () => ({ showToast: item => state.toasts.push(item.message) })
+    getPromptAction: () => ({ showToast: item => state.toasts.push(item.message) }),
+    getRouter: () => ({ getState: () => ({ name: state.topPage }) })
   };
   const binding = slice('.bindSheet($$this.activeSheetVisible,', '\n  @Builder\n  compatibleDock()');
   const callback = name => {
@@ -88,13 +89,13 @@ function harness() {
     compilerOptions: { target: ts.ScriptTarget.ES2020 }
   }).outputText;
   const page = new Function('context', 'EasSessionStore', 'EasCampus', 'KeyboardAvoidMode',
-    'TAB_TIMETABLE', 'EasSessionStatus', 'EasDataProvider', 'EasApiClient', 'Status',
+    'TAB_TIMETABLE', 'EasSessionStatus', 'EasDataProvider', 'EasApiClient', 'Status', 'EasWebLoginState',
     compiled + '; return new Home();')(
     context, { getInstance: () => store },
     { WEIHAI: 'WEIHAI', BENBU: 'BENBU', SHENZHEN: 'SHENZHEN' }, { OFFSET: 0 }, 1,
     Status, class {
       async checkSessionStatus(session) { state.checks.push(session); return state.verify(session); }
-    }, class {}, Status);
+    }, class {}, Status, { clear: async () => { state.webCleared++; } });
   return { page, state };
 }
 
@@ -224,6 +225,24 @@ test('late campus selection and login clicks cannot update or reopen a dismissed
   pending.resolve({ campus: 'BENBU', name: 'Late' });
   await selecting;
   assert.equal(page.sessionSheetInfo, undefined);
+});
+
+test('going to the background keeps an open sheet, while a pushed page still closes it', async () => {
+  const { page, state } = harness();
+  await page.openSessionSheet();
+  state.topPage = 'Home';
+  page.onPageHide();
+  assert.equal(page.activeSheetVisible, true, 'reading an SMS code must not end the login');
+  state.topPage = 'AssistantPage';
+  page.onPageHide();
+  assert.equal(page.activeSheetVisible, false);
+});
+
+test('logging out also signs the web views out', async () => {
+  const { page, state } = harness();
+  await page.openSessionSheet();
+  await page.logoutSession();
+  assert.equal(state.webCleared, 1);
 });
 
 test('a late logout does not close a newly opened course detail', async () => {

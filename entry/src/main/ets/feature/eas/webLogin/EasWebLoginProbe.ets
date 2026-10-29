@@ -31,6 +31,11 @@ function cleanedUrl(url: string): string {
   return u;
 }
 
+/** 写日志用：去掉可能带票据或会话号的 ;jsessionid=、查询串和片段，只留地址和路径。 */
+export function logUrl(url: string): string {
+  return url.replace(/;jsessionid=[^?#]*/i, '').replace(/[?#][\s\S]*$/, '');
+}
+
 /** 取 host（小写）；解析失败返回 ''。 */
 export function hostOf(url: string): string {
   const u: string = cleanedUrl(url);

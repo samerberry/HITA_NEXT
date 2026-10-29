@@ -176,7 +176,8 @@ export class EasLegacyTimetableParser {
   private static parseCourseElement(courseName: string, element: string, dow: number, periodHint: number,
     periodInfo: string, metadata: LegacyCourseMetadata): EasCourseItem[] {
     const out: EasCourseItem[] = [];
-    const weekPattern: RegExp = /([^,，\[]*)\[([^\]]+?)\](?:(单|双)周)?(?:\((单|双)\))?([^,，]*)/g;
+    // "[1-16]单周", "[1-16]周(单)" and "[1-16](单)" all carry the odd/even marker.
+    const weekPattern: RegExp = /([^,，\[]*)\[([^\]]+?)\](?:(单|双)?周)?(?:\((单|双)\))?([^,，]*)/g;
     let match: RegExpExecArray | null = weekPattern.exec(element);
     while (match !== null) {
       const teacherRaw: string = match[1] === undefined ? '' : match[1].trim();

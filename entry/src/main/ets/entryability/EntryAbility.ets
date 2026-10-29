@@ -26,8 +26,12 @@ export default class EntryAbility extends UIAbility {
     AppStorage.setOrCreate(NAV_BAR_INSET_KEY, NAV_BAR_INSET_FALLBACK);
     AppStorage.setOrCreate(KEYBOARD_INSET_KEY, KEYBOARD_INSET_FALLBACK);
     AppearanceStore.getInstance().initialize(this.context);
-    this.startup = BackupService.recover(this.context).then(() => {
-      BackupService.clearAbandonedFiles(this.context);
+    this.startup = BackupService.recover(this.context).then((): boolean => true, (error: Error): boolean => {
+      // The journal stays for the next launch to retry; the app still opens instead of a blank window.
+      hilog.error(DOMAIN, TAG, 'Backup recovery failed: %{public}s', String(error));
+      return false;
+    }).then((recovered: boolean) => {
+      if (recovered) BackupService.clearAbandonedFiles(this.context);
       AppearanceStore.getInstance().initialize(this.context);
       NextClassWidgetService.attach(this.context);
       ScheduleSyncService.attach(this.context);

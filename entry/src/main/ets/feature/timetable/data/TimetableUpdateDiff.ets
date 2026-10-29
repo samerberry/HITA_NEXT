@@ -44,6 +44,8 @@ export class TimetableMergePlan {
   /** 合并后作为下次基准的教务版本。 */
   base: EasImportBaseEntry[] = [];
   changes: TimetableChangeGroup[] = [];
+  /** 生成计划时的本地课程；应用前据此确认课表没有被改过。 */
+  local: EasEventItem[] = [];
 }
 
 const WEEKDAYS: string[] = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
@@ -72,6 +74,7 @@ export class TimetableUpdateDiff {
   static merge(startTime: number, local: EasEventItem[], base: Map<string, string> | undefined,
     remote: EasEventItem[]): TimetableMergePlan {
     const plan: TimetableMergePlan = new TimetableMergePlan();
+    plan.local = TimetableUpdateDiff.classes(local);
     const remoteClasses: EasEventItem[] = TimetableUpdateDiff.classes(remote);
     const remoteKeys: Set<string> = new Set<string>();
     for (const event of remoteClasses) {
@@ -141,6 +144,38 @@ export class TimetableUpdateDiff {
       }
     });
     plan.changes = TimetableUpdateDiff.group(startTime, added, removed, detailPairs);
+    return plan;
+  }
+
+  /**
+   * 用户改过、又和教务现版本不同的课，重新导入时问用户要不要换成教务版本。只比较同一课次（名称和
+   * 起止时间相同）的地点、教师和节次；改过时间的课对不上原课次，按用户添加的课保留。
+   */
+  static userEdits(startTime: number, local: EasEventItem[], base: Map<string, string>,
+    remote: EasEventItem[]): TimetableMergePlan {
+    const plan: TimetableMergePlan = new TimetableMergePlan();
+    const remoteByKey: Map<string, EasEventItem> = new Map<string, EasEventItem>();
+    for (const event of TimetableUpdateDiff.classes(remote)) {
+      const key: string = TimetableUpdateDiff.keyOf(event);
+      if (!remoteByKey.has(key)) {
+        remoteByKey.set(key, event);
+      }
+    }
+    const pairs: EasEventItem[][] = [];
+    for (const event of TimetableUpdateDiff.classes(local)) {
+      const key: string = TimetableUpdateDiff.keyOf(event);
+      const baseSignature: string | undefined = base.get(key);
+      const remoteEvent: EasEventItem | undefined = remoteByKey.get(key);
+      const signature: string = TimetableUpdateDiff.signatureOf(event);
+      if (baseSignature === undefined || remoteEvent === undefined || signature === baseSignature ||
+        signature === TimetableUpdateDiff.signatureOf(remoteEvent)) {
+        continue;
+      }
+      const updated: EasEventItem = TimetableUpdateDiff.withDetails(event, remoteEvent);
+      plan.updates.push(updated);
+      pairs.push([event, updated]);
+    }
+    plan.changes = TimetableUpdateDiff.group(startTime, [], [], pairs);
     return plan;
   }
 

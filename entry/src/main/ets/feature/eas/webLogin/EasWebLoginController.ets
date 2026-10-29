@@ -36,6 +36,7 @@ import {
   isShenzhenProxyJwPage,
   isSuccessPageFor,
   isTrustPortalPage,
+  logUrl,
   parseCookiesHeader,
   pathOf,
   reauthenticationUrl
@@ -217,7 +218,7 @@ export class EasWebLoginController {
     if (this.finished) {
       return;
     }
-    hilog.info(DOMAIN, TAG, 'notifyPageBegin: %{public}s', url);
+    hilog.info(DOMAIN, TAG, 'notifyPageBegin: %{public}s', logUrl(url));
     this.lastUrl = url;
     // 实验系统是主教务验证成功后的可选补充，不再要求用户完成第二次认证。
     if ((this.navigatingToSjjx || this.navigatingToEelab) &&
@@ -248,7 +249,7 @@ export class EasWebLoginController {
     if (this.finished || this.cfg === undefined) {
       return;
     }
-    hilog.info(DOMAIN, TAG, 'notifyPageEnd: %{public}s', url);
+    hilog.info(DOMAIN, TAG, 'notifyPageEnd: %{public}s', logUrl(url));
     this.lastUrl = url;
     const generation: number = this.navigationGeneration;
     const loginGeneration: number = this.loginGeneration;
@@ -307,7 +308,7 @@ export class EasWebLoginController {
           EasCampusUrls.SHENZHEN_PROXY_BASE);
         if (redirectCas.length > 0) {
           this.shenzhenReauthenticationStarted = true;
-          hilog.info(DOMAIN, TAG, 'Redirecting expired Shenzhen session to CAS: %{public}s', redirectCas);
+          hilog.info(DOMAIN, TAG, 'Redirecting expired Shenzhen session to CAS: %{public}s', logUrl(redirectCas));
           wc.loadUrl(redirectCas);
           return;
         }
@@ -352,7 +353,7 @@ export class EasWebLoginController {
     }
     if (isSuccessPageFor(url, cookies, this.cfg.campus, this.cfg.studentType) &&
       hasRequiredCookiesFor(cookies, url, this.cfg.campus, this.cfg.studentType)) {
-      hilog.info(DOMAIN, TAG, 'Success page detected: %{public}s', url);
+      hilog.info(DOMAIN, TAG, 'Success page detected: %{public}s', logUrl(url));
       this.stopCookiePolling();
       this.handleSuccessPage(url, cookies);
       return;
@@ -386,6 +387,11 @@ export class EasWebLoginController {
 
   notifyProgress(percent: number): void {
     this.setProgress(percent);
+  }
+
+  /** 主教务已验证，正在补取可选的实验系统会话；这时遇到登录页或加载失败只结束补取，不算登录失败。 */
+  inOptionalSteps(): boolean {
+    return !this.finished && (this.navigatingToSjjx || this.navigatingToEelab);
   }
 
   notifyLoadError(message: string, isMainFrame: boolean = false): boolean {
@@ -487,7 +493,12 @@ export class EasWebLoginController {
           return;
         }
         try {
-          const res: Record<string, Object> = JSON.parse(raw) as Record<string, Object>;
+          let parsed: Object = JSON.parse(raw) as Object;
+          if (typeof parsed === 'string') {
+            // runJavaScript can hand back the script's JSON text still quoted as a string.
+            parsed = JSON.parse(parsed as string) as Object;
+          }
+          const res: Record<string, Object> = parsed as Record<string, Object>;
           if (res['clicked'] === true) {
             const action: string = String(res['action']);
             if (action === 'unified-login') {
@@ -654,7 +665,7 @@ export class EasWebLoginController {
     if (this.cookieRetryCount === 0 || this.cookieRetryCount % 5 === 0) {
       hilog.info(DOMAIN, TAG, 'Cookie probe retry=%{public}d keys=%{public}s vpn=%{public}s jsession=%{public}s url=%{public}s',
         this.cookieRetryCount, EasWebLoginController.cookieKeys(cookies),
-        String(hasWeihaiVpnTicket(cookies)), String(!isBlank(cookies.get('JSESSIONID'))), url);
+        String(hasWeihaiVpnTicket(cookies)), String(!isBlank(cookies.get('JSESSIONID'))), logUrl(url));
     }
 
     if (this.canExchangeWeihaiCookies(url, cookies)) {

@@ -7,7 +7,7 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { EasCampus, EasSession } from './EasSession';
 import { EasApiClient, EasApiClientOptions, EasApiResponse, EasHttpMethod } from './EasApiClient';
-import { EasSessionStatus, isExpiredEasResponse } from './EasSessionStatus';
+import { EasSessionStatus, expiredEvidence, isExpiredEasResponse } from './EasSessionStatus';
 import { EasCourseItem, EasCourseScoreItem, EasExamItem, EasTermItem } from './model/EasModels';
 import { EasTimePeriodInDay } from '../../common/model/timetable/TimetableModels';
 import { easWebLoginConfigFor, EasCampusConfig, EasCampusUrls } from './webLogin/EasWebLoginConfig';
@@ -214,10 +214,7 @@ export class EasDataProvider {
       fields.set('xnxq', term.getCode());
       resp = await this.postForm(session, path, fields, 20000);
     }
-    if (resp.statusCode === 401 || resp.statusCode === 403 || isExpiredEasResponse(resp) ||
-      EasDataProvider.isLoginResponse(resp.body)) {
-      throw new Error('教务会话已失效，请重新登录');
-    }
+    EasDataProvider.assertSignedIn(resp, '教务会话已失效，请重新登录');
     const date: number | undefined = !EasDataProvider.isHttpOk(resp) ? undefined :
       session.campus === EasCampus.SHENZHEN ? EasAcademicCalendar.parseShenzhenJson(resp.body, term) :
         EasAcademicCalendar.parseLegacyHtml(resp.body, term);
@@ -425,10 +422,7 @@ export class EasDataProvider {
       const resp: EasApiResponse = await this.api.request(session, cfg, paths[i], opts);
       hilog.info(DOMAIN, TAG, 'shenzhen terms path=%{public}s status=%{public}d len=%{public}d',
         paths[i], resp.statusCode, resp.body.length);
-      if (resp.statusCode === 401 || resp.statusCode === 403 || isExpiredEasResponse(resp) ||
-        EasDataProvider.isLoginResponse(resp.body)) {
-        throw new Error('深圳教务会话已失效，请重新登录');
-      }
+      EasDataProvider.assertSignedIn(resp, '深圳教务会话已失效，请重新登录');
       if (EasDataProvider.isHttpOk(resp)) {
         terms = parseShenzhenWebTerms(resp.body);
       }
@@ -477,10 +471,7 @@ export class EasDataProvider {
         session, EasDataProvider.shenzhenSelectionBody(session, term), 30000);
       const subjectResp: EasApiResponse = await this.api.request(session, cfg,
         EasShenzhenEndpoints.selectedSubjectsPath, subjectOpts);
-      if (subjectResp.statusCode === 401 || subjectResp.statusCode === 403 || isExpiredEasResponse(subjectResp) ||
-        EasDataProvider.isLoginResponse(subjectResp.body)) {
-        throw new Error('深圳教务会话已失效，请重新登录');
-      }
+      EasDataProvider.assertSignedIn(subjectResp, '深圳教务会话已失效，请重新登录');
       if (EasDataProvider.isHttpOk(subjectResp)) {
         subjects = parseShenzhenWebSelectedSubjects(subjectResp.body);
       }
@@ -497,10 +488,7 @@ export class EasDataProvider {
       EasShenzhenEndpoints.timetablePath, timetableOpts);
     hilog.info(DOMAIN, TAG, 'shenzhen timetable term=%{public}s status=%{public}d len=%{public}d',
       term.getCode(), timetableResp.statusCode, timetableResp.body.length);
-    if (timetableResp.statusCode === 401 || timetableResp.statusCode === 403 || isExpiredEasResponse(timetableResp) ||
-      EasDataProvider.isLoginResponse(timetableResp.body)) {
-      throw new Error('深圳教务会话已失效，请重新登录');
-    }
+    EasDataProvider.assertSignedIn(timetableResp, '深圳教务会话已失效，请重新登录');
     if (!EasDataProvider.isHttpOk(timetableResp)) {
       throw new Error('深圳课表请求失败 HTTP ' + timetableResp.statusCode.toString());
     }
@@ -721,10 +709,7 @@ export class EasDataProvider {
     opts.extraHeaders.set('X-Requested-With', 'XMLHttpRequest');
     const resp: EasApiResponse = await this.api.request(session, cfg,
       EasShenzhenEndpoints.scoresPath, opts);
-    if (resp.statusCode === 401 || resp.statusCode === 403 || isExpiredEasResponse(resp) ||
-      EasDataProvider.isLoginResponse(resp.body)) {
-      throw new Error('深圳教务会话已失效，请重新登录');
-    }
+    EasDataProvider.assertSignedIn(resp, '深圳教务会话已失效，请重新登录');
     if (resp.statusCode === 0) {
       throw new Error('成绩请求网络失败');
     }
@@ -796,15 +781,26 @@ export class EasDataProvider {
     }
   }
 
+  /** A plain 403 means the request was refused; only sign-in evidence is reported as an expired login. */
+  static readonly ACCESS_DENIED: string = '教务系统拒绝访问';
+
+  private static assertSignedIn(resp: EasApiResponse, expired: string): void {
+    if (resp.statusCode === 401 || isExpiredEasResponse(resp) || EasDataProvider.isLoginResponse(resp.body)) {
+      throw new Error(expired);
+    }
+    if (resp.statusCode === 403) {
+      throw new Error(EasDataProvider.ACCESS_DENIED);
+    }
+  }
+
   private static assertExamResponse(response: EasApiResponse): void {
-    const body: string = response.body.toLowerCase();
-    if (response.statusCode === 401 || response.statusCode === 403 ||
-      response.statusCode === 302 || response.statusCode === 303 ||
-      EasDataProvider.isLoginResponse(response.body) ||
-      /<input\b[^>]*type\s*=\s*["']?password\b/.test(body) ||
-      /请(?:先|重新)登录|登录(?:已)?(?:失效|过期)|会话(?:已)?(?:失效|过期|超时)/.test(body) ||
-      /(?:window|top|parent)(?:\.location)(?:\.href)?\s*=\s*["'][^"']*(?:logincas|\/cas\/login|\/login)/.test(body)) {
+    // Same evidence as EasApiClient: a page that shows exam content is not a sign-in page, even with VPN scripts.
+    if (response.statusCode === 401 || response.statusCode === 302 || response.statusCode === 303 ||
+      expiredEvidence(response).length > 0) {
       throw new Error('教务会话已失效，请重新登录');
+    }
+    if (response.statusCode === 403) {
+      throw new Error(EasDataProvider.ACCESS_DENIED);
     }
     if (response.statusCode === 0) {
       throw new Error('考试请求网络失败');

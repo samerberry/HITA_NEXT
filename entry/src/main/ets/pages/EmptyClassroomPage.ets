@@ -396,10 +396,9 @@ export struct EmptyClassroomPage {
       .width('100%').height('100%')
       .backgroundColor(this.presentedAsSheet ? CompatibleSheetMaterial.bodyColor($r('app.color.hita_page')) :
         $r('app.color.hita_page'))
-      .bindSheet(this.sheetVisible, this.classroomSheet(), {
+      .bindSheet($$this.sheetVisible, this.classroomSheet(), {
         height: '80%', dragBar: true, showClose: false, preferType: SheetType.BOTTOM,
-        backgroundColor: $r('app.color.hita_surface'), maskColor: $r('app.color.hita_sheet_mask'),
-        onDisappear: () => { this.sheetVisible = false; }
+        backgroundColor: $r('app.color.hita_surface'), maskColor: $r('app.color.hita_sheet_mask')
       })
       .attributeModifier(new CompatibleLightModifier(24, this.presentedAsSheet &&
         CompatibleSheetMaterial.isEnabled(), true))

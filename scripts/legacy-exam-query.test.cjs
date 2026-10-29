@@ -178,7 +178,7 @@ test('three valid empty tables succeed, while three failures produce an error', 
 });
 
 test('authentication failures abort immediately even if other exam periods have already loaded', async () => {
-  for (const expired of [response('', 401), response('', 403), response('', 302),
+  for (const expired of [response('', 401), response('', 302),
     response("<form action='/login'><input type='password' name='password'></form>"),
     response('<script>top.location.href="/loginCAS";</script>'), response('会话已过期，请重新登录')]) {
     let count = 0;
@@ -186,6 +186,12 @@ test('authentication failures abort immediately even if other exam periods have 
     await assert.rejects(provider.getExamResult(session(Campus.BENBU), term()), /会话已失效/);
     assert.equal(count, 2);
   }
+  // A plain 403 is a refusal, not a sign-in page: that period is reported as failed and the others still load.
+  let count = 0;
+  const refused = new Provider({ request: async () => ++count === 1 ? response(html()) : response('', 403) });
+  const partial = await refused.getExamResult(session(Campus.BENBU), term());
+  assert.equal(partial.items.length, 1, 'the period that loaded keeps its exam');
+  assert.ok(partial.failedTypes.length > 0);
 });
 
 test('ordinary menu links to loginCAS do not make a valid exam table look expired', async () => {

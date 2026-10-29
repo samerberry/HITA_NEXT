@@ -69,6 +69,8 @@ const CREATE_LEARNING_TASK: string = 'CREATE TABLE IF NOT EXISTS learning_task (
   'createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL)';
 
 export class RdbHelper {
+  /** applyTimetableMerge found the timetable changed after the plan was built. */
+  static readonly STALE_MERGE: string = 'Timetable changed since the update check';
   private static instance: RdbHelper | undefined = undefined;
   private store: relationalStore.RdbStore | undefined = undefined;
   private initializing: Promise<void> | undefined = undefined;
@@ -444,7 +446,8 @@ export class RdbHelper {
    * 只动合并结果点名的课次；用户翘过、改过、添加的课，考试等其他日程和已有科目都不动。
    */
   async applyTimetableMerge(timetableId: string, newSubjects: EasTermSubject[], inserts: EasEventItem[],
-    updates: EasEventItem[], deletes: EasEventItem[], base: EasImportBaseEntry[]): Promise<void> {
+    updates: EasEventItem[], deletes: EasEventItem[], base: EasImportBaseEntry[],
+    expectedLocal?: EasEventItem[]): Promise<void> {
     if (newSubjects.some((subject: EasTermSubject): boolean => subject.timetableId !== timetableId) ||
       inserts.concat(updates).some((event: EasEventItem): boolean => event.timetableId !== timetableId ||
         event.type !== EasEventType.CLASS || !Number.isFinite(event.from) || !Number.isFinite(event.to) ||
@@ -459,6 +462,20 @@ export class RdbHelper {
         if (!table.goToFirstRow()) throw new Error('Timetable no longer exists');
         currentEnd = table.getLong(table.getColumnIndex('endTime'));
       } finally { table.close(); }
+      if (expectedLocal !== undefined) {
+        // 计划按检查时的本地课程生成；之后改过、删过或重新导入过，就整份作废，不按旧快照覆盖。
+        const current: EasEventItem[] = RdbHelper.readRows(await transaction.query(
+          new relationalStore.RdbPredicates('events').equalTo('timetableId', timetableId)
+            .equalTo('type', EasEventType.CLASS)), RdbHelper.eventMapper, true);
+        const expected: Map<string, EasEventItem> = new Map<string, EasEventItem>();
+        for (const item of expectedLocal) expected.set(item.id, item);
+        if (current.length !== expected.size || current.some((item: EasEventItem): boolean => {
+          const before: EasEventItem | undefined = expected.get(item.id);
+          return before === undefined || RdbHelper.occurrenceChanged(before, item);
+        })) {
+          throw new Error(RdbHelper.STALE_MERGE);
+        }
+      }
       for (const subject of newSubjects) {
         if (await transaction.insert('subject', RdbHelper.subjectValues(subject)) < 0) {
           throw new Error('Subject insert failed');
@@ -507,7 +524,7 @@ export class RdbHelper {
     }
   }
 
-  /** Move the term and every occurrence in one transaction; reject an outdated editor. */
+  /** Move the term and its classes in one transaction; exams and other dated events keep their dates. */
   async shiftTimetableStart(id: string, previousStart: number, previousEnd: number, nextStart: number): Promise<void> {
     if (id.length === 0 || !Number.isFinite(previousStart) || !Number.isFinite(previousEnd) ||
       !Number.isFinite(nextStart) || nextStart <= 0 || previousEnd < previousStart) {
@@ -521,10 +538,22 @@ export class RdbHelper {
           .equalTo('startTime', previousStart).equalTo('endTime', previousEnd));
       if (changed !== 1) throw new Error('Timetable changed; reload before editing');
       await transaction.execute(
-        'UPDATE events SET fromTime = fromTime + ?, toTime = toTime + ? WHERE timetableId = ?', [delta, delta, id]);
+        'UPDATE events SET fromTime = fromTime + ?, toTime = toTime + ? WHERE timetableId = ? AND type = ?',
+        [delta, delta, id, EasEventType.CLASS.toString()]);
       // 教务基准随课次一起平移，否则下次检查会把整学期误当作教务端变化。
       await transaction.execute(
         'UPDATE import_base SET fromTime = fromTime + ?, toTime = toTime + ? WHERE timetableId = ?', [delta, delta, id]);
+      // Exams stay on their dates, so the term must still reach the latest of them.
+      const last: relationalStore.ResultSet = await transaction.query(
+        new relationalStore.RdbPredicates('events').equalTo('timetableId', id).orderByDesc('toTime').limitAs(1), ['toTime']);
+      let lastEnd: number = 0;
+      try {
+        if (last.goToFirstRow()) lastEnd = last.getLong(last.getColumnIndex('toTime'));
+      } finally { last.close(); }
+      if (lastEnd > nextEnd) {
+        await transaction.update({ endTime: CourseDateSelection.weekEnd(lastEnd) },
+          new relationalStore.RdbPredicates('timetable').equalTo('id', id));
+      }
     });
   }
 
@@ -679,7 +708,32 @@ export class RdbHelper {
   // ------------------------------------------------------------------
 
   async saveEvent(e: EasEventItem): Promise<void> {
-    await this.replaceRow('events', RdbHelper.eventValues(e), 'id', e.id);
+    await this.writeTransaction(async (transaction: relationalStore.Transaction): Promise<void> => {
+      await RdbHelper.upsertRow(transaction, 'events', RdbHelper.eventValues(e), 'id', e.id);
+      await RdbHelper.coverEvent(transaction, e);
+    });
+  }
+
+  /** Extend the term to the week of an event saved after it, so the week grid can still reach the event. */
+  private static async coverEvent(transaction: relationalStore.Transaction, event: EasEventItem): Promise<void> {
+    const table: relationalStore.ResultSet = await transaction.query(
+      new relationalStore.RdbPredicates('timetable').equalTo('id', event.timetableId), ['endTime']);
+    let endTime: number = -1;
+    try {
+      if (table.goToFirstRow()) endTime = table.getLong(table.getColumnIndex('endTime'));
+    } finally { table.close(); }
+    if (endTime >= 0 && event.to > endTime) {
+      await transaction.update({ endTime: CourseDateSelection.weekEnd(event.to) },
+        new relationalStore.RdbPredicates('timetable').equalTo('id', event.timetableId));
+    }
+  }
+
+  /** Fields that a user edit or a school update can change on one occurrence. */
+  private static occurrenceChanged(before: EasEventItem, current: EasEventItem): boolean {
+    return current.type !== before.type || current.subjectId !== before.subjectId ||
+      current.from !== before.from || current.to !== before.to || current.name !== before.name ||
+      current.place !== before.place || current.teacher !== before.teacher || current.color !== before.color ||
+      current.fromNumber !== before.fromNumber || current.lastNumber !== before.lastNumber;
   }
 
   /** Save all selected course occurrences together; failures leave no partial course behind. */
@@ -755,10 +809,7 @@ export class RdbHelper {
         const rows: relationalStore.ResultSet = await transaction.query(
           new relationalStore.RdbPredicates('events').equalTo('id', item.id).equalTo('timetableId', timetableId));
         const current: EasEventItem | undefined = RdbHelper.firstRow(rows, RdbHelper.eventMapper);
-        if (current === undefined || current.type !== item.type || current.subjectId !== item.subjectId ||
-          current.from !== item.from || current.to !== item.to || current.name !== item.name ||
-          current.place !== item.place || current.teacher !== item.teacher || current.color !== item.color ||
-          current.fromNumber !== item.fromNumber || current.lastNumber !== item.lastNumber) {
+        if (current === undefined || RdbHelper.occurrenceChanged(item, current)) {
           throw new Error('Course changed; refresh before editing');
         }
       }
@@ -795,12 +846,14 @@ export class RdbHelper {
   /** Edit in place: failed writes must not remove or recreate an existing event. */
   async updateEvent(e: EasEventItem): Promise<void> {
     try {
-      const count: number = await this.s().update(RdbHelper.eventValues(e),
-        new relationalStore.RdbPredicates('events').equalTo('id', e.id));
-      if (count !== 1) {
-        throw new Error('Event no longer exists');
-      }
-      ScheduleChangeSignal.notify();
+      await this.writeTransaction(async (transaction: relationalStore.Transaction): Promise<void> => {
+        const count: number = await transaction.update(RdbHelper.eventValues(e),
+          new relationalStore.RdbPredicates('events').equalTo('id', e.id));
+        if (count !== 1) {
+          throw new Error('Event no longer exists');
+        }
+        await RdbHelper.coverEvent(transaction, e);
+      });
     } catch (e) {
       hilog.error(DOMAIN, TAG, 'update event failed %{public}s', String(e));
       throw new Error(String(e));
@@ -1069,7 +1122,7 @@ export class RdbHelper {
     task.notifiedAt = col('notifiedAt').num();
     task.createdAt = col('createdAt').num();
     task.updatedAt = col('updatedAt').num();
-    if (LearningTaskRules.validation(task).length > 0) throw new Error('Invalid learning task');
+    if (LearningTaskRules.storedValidation(task).length > 0) throw new Error('Invalid learning task');
     return task;
   }
 
@@ -1119,7 +1172,7 @@ export class RdbHelper {
         await RdbHelper.replaceImportBase(tx, item.timetable.id, item.importBase);
       }
       for (const task of tasks) {
-        if (LearningTaskRules.validation(task).length > 0 ||
+        if (LearningTaskRules.storedValidation(task).length > 0 ||
           await tx.insert('learning_task', RdbHelper.learningTaskValues(task)) < 0) throw new Error('Restore failed');
       }
       if (await tx.insert('backup_restore_receipt', { 'id': receipt }) < 0) throw new Error('Restore failed');

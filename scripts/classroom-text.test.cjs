@@ -96,6 +96,14 @@ test('actual room names survive whitespace cleanup and blank separator lines', (
   assert.equal(parser.parseScheduleHtml(schedule('A&amp;B-101'))[0].classroom, 'A&B-101');
 });
 
+test('an odd or even marker after the week word keeps the course on those weeks only', () => {
+  const body = '<table class="addlist_01"><tr><th>Period</th><th>Time</th><th>Mon</th></tr>' +
+    `<tr><td>AM</td><td>1-2</td><td>${name}<br>${teacher}[1-6]周(单) A101</td></tr></table>`;
+  const [course] = parser.parseScheduleHtml(body);
+  assert.deepEqual(course.weekNumbers, [1, 3, 5]);
+  assert.equal(course.classroom, 'A101');
+});
+
 test('placeholder classrooms do not prevent shared-room fallback within a course', () => {
   const courses = parser.parseScheduleHtml(schedule(`&amp;nbsp;,[3-4]${week}A-101`));
   assert.equal(courses.length, 2);

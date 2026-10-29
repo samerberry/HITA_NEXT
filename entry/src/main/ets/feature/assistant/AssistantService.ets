@@ -225,6 +225,29 @@ export class AssistantService {
   }
 
   /** 解析问题中的具体某一天，返回当天 0 点时间戳。 */
+  /**
+   * A month/day without a year: the year that puts it inside the term, else the one nearest today.
+   * A date that does not exist, such as 2月30日, is not rolled over into the next month.
+   */
+  private static dateOfMonthDay(timetable: EasTimetable, month: number, day: number, now: number): number | undefined {
+    const year: number = new Date(now).getFullYear();
+    let best: number | undefined = undefined;
+    for (const candidate of [year - 1, year, year + 1]) {
+      const date: Date = new Date(candidate, month - 1, day);
+      if (date.getMonth() !== month - 1 || date.getDate() !== day) {
+        continue;
+      }
+      const time: number = date.getTime();
+      if (time >= EasTimetable.mondayMsOf(timetable.startTime) && time <= timetable.endTime) {
+        return time;
+      }
+      if (best === undefined || Math.abs(time - now) < Math.abs(best - now)) {
+        best = time;
+      }
+    }
+    return best;
+  }
+
   private static resolveDay(timetable: EasTimetable, text: string, now: number): number | undefined {
     const today: number = AssistantService.dayStart(now);
     const termWeekDay: RegExpExecArray | null =
@@ -236,7 +259,8 @@ export class AssistantService {
         return EasTimetable.mondayMsOf(timetable.startTime) + (week - 1) * WEEK_MILLIS + (dow - 1) * DAY_MILLIS;
       }
     }
-    const weekDay: RegExpExecArray | null = /(下下|下个?|上个?|这个?|本)?(?:周|星期|礼拜)([一二三四五六日天1-7])/.exec(text);
+    const weekDay: RegExpExecArray | null =
+      /(下下|下[个一]?|上[个一]?|这[个一]?|本)?(?:周|星期|礼拜)(?:的?(?:周|星期|礼拜))?([一二三四五六日天1-7])/.exec(text);
     if (weekDay !== null) {
       const dow: number = AssistantService.dowOf(weekDay[2]);
       const prefix: string = weekDay[1] === undefined ? '' : weekDay[1];
@@ -254,7 +278,7 @@ export class AssistantService {
     }
     const monthDay: RegExpExecArray | null = /(\d{1,2})月(\d{1,2})[日号]?/.exec(text);
     if (monthDay !== null) {
-      return new Date(new Date(now).getFullYear(), Number(monthDay[1]) - 1, Number(monthDay[2]), 0, 0, 0, 0).getTime();
+      return AssistantService.dateOfMonthDay(timetable, Number(monthDay[1]), Number(monthDay[2]), now);
     }
     const relative: string[] = ['大后天', '后天', '明天', '明日', '今天', '今日', '今晚', '昨天', '前天'];
     const offsets: number[] = [3, 2, 1, 1, 0, 0, 0, -1, -2];
@@ -277,10 +301,10 @@ export class AssistantService {
     if (/下下周/.test(text)) {
       return current + 2;
     }
-    if (/下个?周|下个?星期|下个?礼拜/.test(text)) {
+    if (/下[个一]?(?:周|星期|礼拜)/.test(text)) {
       return current + 1;
     }
-    if (/上个?周|上个?星期|上个?礼拜/.test(text)) {
+    if (/上[个一]?(?:周|星期|礼拜)/.test(text)) {
       return current - 1;
     }
     if (/本周|这周|这个?星期|这个?礼拜|周课表|一周/.test(text)) {
@@ -566,7 +590,10 @@ export class AssistantService {
     payload.messages.push(new LlmMessage('system', AssistantService.systemPrompt(snapshot, Date.now())));
     const recent: AssistantMessage[] = history.slice(Math.max(0, history.length - 12));
     for (let i: number = 0; i < recent.length; i++) {
-      if (recent[i].id !== 'welcome') {
+      // Timetable questions answered on the device stay there: skip each local answer and the question before it.
+      const local: boolean = recent[i].source === LOCAL_SOURCE ||
+        (i + 1 < recent.length && recent[i + 1].source === LOCAL_SOURCE);
+      if (recent[i].id !== 'welcome' && !local) {
         payload.messages.push(new LlmMessage(recent[i].role.toString(), recent[i].content));
       }
     }

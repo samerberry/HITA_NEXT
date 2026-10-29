@@ -219,9 +219,13 @@ export class EmptyClassroomService {
       session.campus === EasCampus.SHENZHEN ? '/cdkb/querycdzy' : '/kjscx/queryKjs'));
     const response: EasApiResponse = await this.api.request(session,
       easWebLoginConfigFor(session.campus, session.getStudentType()), path, options);
-    if (response.statusCode === 401 || response.statusCode === 403 || response.statusCode === 302 ||
+    if (response.statusCode === 401 || response.statusCode === 302 ||
       response.statusCode === 303 || EmptyClassroomService.isLoginResponse(response.body)) {
       throw new ClassroomQueryError('AUTH', '教务登录已过期，请重新登录后重试');
+    }
+    if (response.statusCode === 403) {
+      // Refused, not signed out: the session stays as it is.
+      throw new ClassroomQueryError('HTTP', '教务系统拒绝了访问，请稍后重试，必要时重新登录');
     }
     if (response.statusCode === 0) {
       throw new ClassroomQueryError('NETWORK', '无法连接教务系统，请检查网络后重试');

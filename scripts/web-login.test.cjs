@@ -390,7 +390,9 @@ test('the active EAS host takes precedence over stale cookies from another probe
 
 test('Weihai reauthentication and unrelated sites cannot be success pages even with old cookies', () => {
   const { load, urls } = setup();
-  const { isWeihaiAuthenticatedPage } = load('feature/eas/webLogin/EasWebLoginProbe.ets');
+  const { isWeihaiAuthenticatedPage, logUrl } = load('feature/eas/webLogin/EasWebLoginProbe.ets');
+  assert.equal(logUrl('http://jwts-hit-edu-cn.vpn.hit.edu.cn:1080/loginCAS;jsessionid=abc?ticket=ST-1#top'),
+    'http://jwts-hit-edu-cn.vpn.hit.edu.cn:1080/loginCAS', 'logs never carry tickets or session ids');
   const cookies = new Map([['wengine_vpn_ticket_test', 'ticket'], ['JSESSIONID', 'session']]);
   for (const url of [urls.WEIHAI_JWTS, urls.WEIHAI_EAS_PREFIX + '/reAuth',
     'https://other.example/index', 'https://webvpn.hitwh.edu.cn/authserver/reAuthCheck/index']) {

@@ -114,7 +114,7 @@ export class BackupModel {
         BackupModel.identity(task.id, taskIds);
         BackupModel.strings(task, ['kind', 'title', 'note', 'timetableId', 'subjectId', 'courseName', 'courseCode', 'examId', 'examName']);
         BackupModel.bool(task.allDay);
-        if (LearningTaskRules.validation(task).length > 0) throw new Error();
+        if (LearningTaskRules.storedValidation(task).length > 0) throw new Error();
         // Removed courses/exams may leave intentional name snapshots; existing references must still agree.
         for (const item of value.timetables) {
           if (item.subjects.some(subject => subject.id === task.subjectId) && item.timetable.id !== task.timetableId) throw new Error();
