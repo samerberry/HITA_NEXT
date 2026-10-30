@@ -2,7 +2,7 @@
  * TimetableWeekDraw.ets — 课表周视图绘制模块（Canvas 纯函数，状态由宿主页面持有）。
  *
  * 周视图时间轴与课程布局参考 HITA Android：
- *  - 7 等分列；时间轴默认 08:00–23:00，学期内有更早或更晚的日程时扩展到整点，网格每小时一格；
+ *  - 7 等分列；时间轴默认 08:00–23:00，当前查看周有更早或更晚的日程时扩展到整点，网格每小时一格；
  *  - 事件块按真实时刻分钟定位：yTop = minutesFromAxisStart/60 * hourH，
  *    高 = durationMinutes/60 * hourH；x=(dow-1)*colW（dow 周一=1）；
  *    fromNumber/lastNumber 只作数据字段，不参与布局（源如此）；
@@ -155,7 +155,7 @@ export function timetableEventSpan(timetable: EasTimetable, event: EasEventItem,
   return new TimetableEventSpan(from, to);
 }
 
-/** Whole hours shown by the week grid: 08:00–23:00, widened so early or late events of the term stay visible. */
+/** Whole hours shown by the week grid: 08:00–23:00, widened for the supplied week's events. */
 export class TimetableAxis {
   startHour: number = AXIS_START_HOUR;
   endHour: number = AXIS_END_HOUR;
@@ -168,7 +168,7 @@ export class TimetableAxis {
     return this.startHour === other.startHour && this.endHour === other.endHour;
   }
 
-  /** Uses every event of the term, so the grid stays the same while switching weeks. */
+  /** Call with the visible week's events; each call starts from the default range. */
   static forEvents(timetable: EasTimetable, events: EasEventItem[]): TimetableAxis {
     const axis: TimetableAxis = new TimetableAxis();
     for (let i = 0; i < events.length; i++) {

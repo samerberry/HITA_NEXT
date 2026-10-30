@@ -12,6 +12,14 @@
     "deliveryWithInstall": true,
     "installationFree": false,
     "pages": "$profile:main_pages",
+    "skillProfiles": [
+      {
+        "name": "hita-campus",
+        "abilityName": "EntryAbility",
+        "srcEntries": ["../../skills/hita-campus/scripts/CampusSkill.ets"],
+        "version": "1.0.0"
+      }
+    ],
     "metadata": [
       {
         "name": "ohos.arkui.UIMaterial.state",

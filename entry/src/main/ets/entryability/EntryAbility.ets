@@ -19,6 +19,9 @@ const DOMAIN: number = 0x0000;
 const TAG: string = 'HitaNEXT';
 
 export default class EntryAbility extends UIAbility {
+  private campusOperation: string = '';
+  private campusOpening: boolean = false;
+  private contentReady: boolean = false;
   private startup: Promise<void> = Promise.resolve();
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     hilog.info(DOMAIN, TAG, 'Ability onCreate');
@@ -42,6 +45,7 @@ export default class EntryAbility extends UIAbility {
 
   onNewWant(want: Want): void {
     this.captureReminderWant(want);
+    if (this.campusOperation.length > 0 && this.contentReady) void this.openCampusConfirmation();
     if (typeof want.parameters?.['hitaReminderEventId'] === 'string' ||
       typeof want.parameters?.['hitaLearningTaskId'] === 'string') {
       void window.getLastWindow(this.context).then((mainWindow: window.Window): void => {
@@ -52,6 +56,12 @@ export default class EntryAbility extends UIAbility {
   }
 
   private captureReminderWant(want: Want): void {
+    const operation = want.parameters?.['hitaCampusOperation'];
+    if (typeof operation === 'string' && /^[a-z0-9-]{1,100}$/.test(operation)) {
+      this.campusOperation = operation;
+      AppStorage.setOrCreate('hita_campus_operation', operation);
+      AppStorage.setOrCreate('hita_campus_operation_waiting', '');
+    }
     const id = want.parameters?.['hitaReminderEventId'];
     if (typeof id === 'string' && id.length > 0) {
       AppStorage.setOrCreate('hita_reminder_open_event', id);
@@ -65,6 +75,24 @@ export default class EntryAbility extends UIAbility {
     hilog.info(DOMAIN, TAG, 'Ability onDestroy');
   }
 
+  private async openCampusConfirmation(): Promise<void> {
+    if (this.campusOpening) return;
+    this.campusOpening = true;
+    const operation = this.campusOperation;
+    this.campusOperation = '';
+    try {
+      const mainWindow = await window.getLastWindow(this.context);
+      const router = mainWindow.getUIContext().getRouter();
+      if (!router.getState().name.endsWith('CampusSkillConfirmPage')) {
+        await router.pushUrl({ url: 'pages/CampusSkillConfirmPage' });
+      }
+    } catch (_) { if (this.campusOperation.length === 0) this.campusOperation = operation; }
+    finally {
+      this.campusOpening = false;
+      if (this.campusOperation.length > 0 && this.campusOperation !== operation) void this.openCampusConfirmation();
+    }
+  }
+
   async onWindowStageCreate(windowStage: window.WindowStage): Promise<void> {
     await this.startup;
     this.configureSystemBars(windowStage);
@@ -76,6 +104,8 @@ export default class EntryAbility extends UIAbility {
       }
       hilog.info(DOMAIN, TAG, 'Succeeded in loading content.');
       AppearanceStore.getInstance().onContentReady();
+      this.contentReady = true;
+      if (this.campusOperation.length > 0) void this.openCampusConfirmation();
     });
   }
 
@@ -144,11 +174,19 @@ export default class EntryAbility extends UIAbility {
   }
 
   onWindowStageDestroy(): void {
+    this.contentReady = false;
     AppearanceStore.getInstance().detachWindow();
     hilog.info(DOMAIN, TAG, 'Ability onWindowStageDestroy');
   }
 
   async onForeground(): Promise<void> {
+    const pending = AppStorage.get<string>('hita_campus_operation_waiting');
+    if (pending !== undefined && pending.length > 0) {
+      this.campusOperation = pending;
+      AppStorage.setOrCreate('hita_campus_operation', pending);
+      AppStorage.setOrCreate('hita_campus_operation_waiting', '');
+      if (this.contentReady) void this.openCampusConfirmation();
+    }
     await this.startup;
     AppStorage.setOrCreate('hita_app_foreground', true);
     hilog.info(DOMAIN, TAG, 'Ability onForeground');

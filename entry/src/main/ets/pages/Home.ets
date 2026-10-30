@@ -861,7 +861,7 @@ struct Home {
     const weekEvents: EasEventItem[] = eventsOfWeek(this.currentTimetable,
       this.timetableEvents, this.timetableWeek);
     const current: number = this.currentTimetable.getWeekNumber(this.nowTick);
-    const axis: TimetableAxis = TimetableAxis.forEvents(this.currentTimetable, this.timetableEvents);
+    const axis: TimetableAxis = TimetableAxis.forEvents(this.currentTimetable, weekEvents);
     if (!axis.same(this.timetableAxis)) {
       this.timetableAxis = axis;
     }

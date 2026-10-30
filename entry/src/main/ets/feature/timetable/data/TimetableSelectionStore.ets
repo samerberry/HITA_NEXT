@@ -41,14 +41,16 @@ export class TimetableSelectionStore {
     }
   }
 
-  async load(): Promise<string> {
+  async load(strict: boolean = false): Promise<string> {
     if (this.store === undefined) {
+      if (strict) throw new Error('无法读取当前课表设置，请打开 HITA 检查后重试');
       return '';
     }
     try {
       const raw: preferences.ValueType = await this.store.get(ACTIVE_TIMETABLE_KEY, '');
       return raw === undefined || raw === null ? '' : String(raw);
     } catch (e) {
+      if (strict) throw new Error('无法读取当前课表设置，请打开 HITA 检查后重试');
       return '';
     }
   }

@@ -558,11 +558,11 @@ export class RdbHelper {
   }
 
   /** 按 -startTime 排序的全量课表。 */
-  async getTimetables(): Promise<EasTimetable[]> {
+  async getTimetables(strict: boolean = false): Promise<EasTimetable[]> {
     const pred: relationalStore.RdbPredicates = new relationalStore.RdbPredicates('timetable');
     pred.orderByDesc('startTime');
-    const rs: relationalStore.ResultSet | null = await this.qry(pred);
-    return RdbHelper.readRows(rs, RdbHelper.timetableMapper);
+    const rs: relationalStore.ResultSet | null = await (strict ? this.s().query(pred) : this.qry(pred));
+    return RdbHelper.readRows(rs, RdbHelper.timetableMapper, strict);
   }
 
   async getTimetableById(id: string, strict: boolean = false): Promise<EasTimetable | undefined> {
@@ -706,6 +706,31 @@ export class RdbHelper {
   // ------------------------------------------------------------------
   // events
   // ------------------------------------------------------------------
+
+  /** Skill confirmation: compare and write inside one transaction; never resurrect a deleted course. */
+  async commitSkillEvent(event: EasEventItem, before: string): Promise<void> {
+    await this.writeTransaction(async (transaction: relationalStore.Transaction): Promise<void> => {
+      const current = RdbHelper.firstRow(await transaction.query(
+        new relationalStore.RdbPredicates('events').equalTo('id', event.id)), RdbHelper.eventMapper, true);
+      if (current !== undefined && current.name === event.name && current.from === event.from &&
+        current.to === event.to && current.place === event.place && current.type === event.type &&
+        current.timetableId === event.timetableId && current.subjectId === event.subjectId) return;
+      if (before.length > 0 && (current === undefined || JSON.stringify(current) !== before)) {
+        throw new Error('课程已被修改或删除，请重新查询后操作');
+      }
+      if (before.length === 0 && current !== undefined) throw new Error('日程编号已存在');
+      const table = await transaction.query(new relationalStore.RdbPredicates('timetable').equalTo('id', event.timetableId));
+      try {
+        if (event.timetableId.length > 0) {
+          if (!table.goToFirstRow()) throw new Error('目标课表已删除');
+          if (event.from < table.getLong(table.getColumnIndex('startTime'))) throw new Error('日期早于目标课表的开学日期');
+        }
+      }
+      finally { table.close(); }
+      await RdbHelper.upsertRow(transaction, 'events', RdbHelper.eventValues(event), 'id', event.id);
+      await RdbHelper.coverEvent(transaction, event);
+    });
+  }
 
   async saveEvent(e: EasEventItem): Promise<void> {
     await this.writeTransaction(async (transaction: relationalStore.Transaction): Promise<void> => {
@@ -925,10 +950,10 @@ export class RdbHelper {
   }
 
   /** 单条事件读取。 */
-  async getEventById(id: string): Promise<EasEventItem | undefined> {
+  async getEventById(id: string, strict: boolean = false): Promise<EasEventItem | undefined> {
     const pred: relationalStore.RdbPredicates = new relationalStore.RdbPredicates('events');
     pred.equalTo('id', id);
-    return RdbHelper.firstRow(await this.qry(pred), RdbHelper.eventMapper);
+    return RdbHelper.firstRow(await this.qry(pred), RdbHelper.eventMapper, strict);
   }
 
   /** 删除单条事件。 */

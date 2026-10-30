@@ -18,8 +18,8 @@ export class TimetableResolver {
     return timetable.code.startsWith('LOCAL:');
   }
 
-  static async getReal(rdb: RdbHelper): Promise<EasTimetable | undefined> {
-    const all: EasTimetable[] = await rdb.getTimetables();
+  static async getReal(rdb: RdbHelper, strict: boolean = false): Promise<EasTimetable | undefined> {
+    const all: EasTimetable[] = await rdb.getTimetables(strict);
     for (let i: number = 0; i < all.length; i++) {
       if (TimetableResolver.isReal(all[i])) {
         return all[i];
@@ -28,12 +28,12 @@ export class TimetableResolver {
     return undefined;
   }
 
-  static async getForDisplay(rdb: RdbHelper): Promise<EasTimetable | undefined> {
-    const real: EasTimetable | undefined = await TimetableResolver.getReal(rdb);
+  static async getForDisplay(rdb: RdbHelper, strict: boolean = false): Promise<EasTimetable | undefined> {
+    const real: EasTimetable | undefined = await TimetableResolver.getReal(rdb, strict);
     if (real !== undefined) {
       return real;
     }
-    const all: EasTimetable[] = await rdb.getTimetables();
+    const all: EasTimetable[] = await rdb.getTimetables(strict);
     for (let i: number = 0; i < all.length; i++) {
       if (TimetableResolver.isLocal(all[i])) {
         return all[i];
