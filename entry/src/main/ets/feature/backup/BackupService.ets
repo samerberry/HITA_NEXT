@@ -3,6 +3,7 @@ import { preferences } from '@kit.ArkData';
 import { fileIo, picker } from '@kit.CoreFileKit';
 import { RdbHelper } from '../../common/db/RdbHelper';
 import { newId } from '../../common/model/timetable/TimetableModels';
+import { EasTimeTools } from '../../common/util/EasTimeTools';
 import { AppearanceStore } from '../../common/theme/AppearanceStore';
 import { TimetableBackgroundStore } from '../timetable/data/TimetableBackgroundStore';
 import { TimetableDisplayOptions } from '../timetable/data/TimetableDisplayOptions';
@@ -68,7 +69,7 @@ export class BackupService {
       await BackupArchive.create(path, manifest, sources, progress);
       progress('请选择保存位置');
       const options = new picker.DocumentSaveOptions();
-      options.newFileNames = ['HITA-NEXT-' + new Date().toISOString().slice(0, 10) + '.hita-backup'];
+      options.newFileNames = [BackupService.fileName(new Date())];
       options.fileSuffixChoices = ['HITA NEXT 备份|.hita-backup'];
       const uris = await new picker.DocumentViewPicker(context).save(options);
       if (uris.length === 0) return false;
@@ -81,6 +82,11 @@ export class BackupService {
       BackupService.unlink(path);
       BackupService.busy = false;
     }
+  }
+
+  /** Local calendar date, so a backup made after midnight is not named after the previous day. */
+  static fileName(now: Date): string {
+    return 'HITA-NEXT-' + EasTimeTools.printDate(now.getTime()) + '.hita-backup';
   }
 
   static async pick(context: common.UIAbilityContext, progress: (message: string) => void): Promise<PreparedBackup | undefined> {

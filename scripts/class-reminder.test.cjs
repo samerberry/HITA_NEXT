@@ -113,3 +113,31 @@ test('upgrading preserves notification history from previous releases', async ()
   await store.markNotified(event.id + ':' + event.from);
   assert.equal(await scheduler.dispatchDue({}, [event]), 0);
 });
+
+test('a cold start reads calendar coverage before sending its own reminder', async () => {
+  values.clear(); published.length = 0;
+  await store.init({}); await store.saveEnabled(true);
+  const { CalendarSyncStore } = load('feature/timetable/data/CalendarSyncStore.ets');
+  const event = Object.assign(new EasEventItem(), { id: 'synced', type: EasEventType.CLASS,
+    timetableId: 'term', from: Date.now() + 5 * 60000, to: Date.now() + 60 * 60000 });
+  values.set('timetables', JSON.stringify(['term']));
+  values.set('coverage:term', JSON.stringify([CalendarSyncStore.coverageKey(event.id, event.from, 15)]));
+  const previous = CalendarSyncStore.getInstance();
+  CalendarSyncStore.instance = new CalendarSyncStore();
+  try {
+    assert.equal(await scheduler.dispatchDue({}, [event]), 0);
+    assert.equal(published.length, 0);
+  } finally { CalendarSyncStore.instance = previous; }
+});
+
+test('notification history forgets classes that started days ago', async () => {
+  values.clear(); await store.init({});
+  const old = Date.now() - 3 * 86400000, recent = Date.now() - 3600000, next = Date.now() + 600000;
+  await store.markNotified('0:old:' + old);
+  await store.markNotified('legacy:' + old);
+  await store.markNotified('0:recent:' + recent);
+  await store.markNotified('0:next:' + next);
+  assert.deepEqual(values.get('class_reminder_notified').split('|'), ['0:recent:' + recent, '0:next:' + next]);
+  assert.equal(await store.hasNotified('0:next:' + next), true);
+  assert.equal(await store.hasNotified('0:old:' + old), false);
+});

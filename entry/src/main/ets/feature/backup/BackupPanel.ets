@@ -3,7 +3,7 @@ import { common } from '@kit.AbilityKit';
 import { HeaderBackButton } from '../../common/components/HeaderBackButton';
 import { ImmersiveHeader } from '../../common/components/ImmersiveHeader';
 import { CompatibleSheetMaterial } from '../../common/theme/CompatibleSheetMaterial';
-import { CompatibleMaterialModifier } from '../../common/theme/CompatibleMaterialModifier';
+import { HitaButton, HitaButtonVariant } from '../../common/components/HitaButton';
 import { STATUS_BAR_INSET_FALLBACK, NAV_BAR_INSET_FALLBACK } from '../../common/theme/StatusBarInset';
 import { BackupService } from './BackupService';
 import { PreparedBackup } from './BackupArchive';
@@ -126,20 +126,16 @@ export struct BackupPanel {
                   .fontColor($r('app.color.hita_text_secondary_566276'))
               }.alignItems(HorizontalAlign.Start).layoutWeight(1)
             }.width('100%')
-            Button('创建备份').width('100%').height(44)
-              .backgroundColor($r('app.color.hita_selected')).fontColor($r('app.color.hita_primary'))
-              .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_selected')))
-              .enabled(!this.busy).onClick(() => { void this.createBackup(); })
+            HitaButton({ label: '创建备份', variant: HitaButtonVariant.SECONDARY, buttonHeight: HitaDesign.minTouchTarget,
+              disabled: this.busy, onTap: () => { void this.createBackup(); } })
           }.width('100%').padding(20).backgroundColor(this.presentedAsSheet ? CompatibleSheetMaterial.cardColor($r('app.color.hita_surface')) :
             $r('app.color.hita_surface')).borderRadius(HitaDesign.cardRadius)
 
           Column({ space: HitaDesign.spaceSm }) {
             Text('从备份恢复').fontSize(HitaDesign.section).fontWeight(FontWeight.Medium)
               .fontColor($r('app.color.hita_text_1a1a1a')).alignSelf(ItemAlign.Start)
-            Button('选择备份文件').width('100%').height(44)
-              .backgroundColor($r('app.color.hita_selected')).fontColor($r('app.color.hita_primary'))
-              .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_selected')))
-              .enabled(!this.busy).onClick(() => { void this.chooseBackup(); })
+            HitaButton({ label: '选择备份文件', variant: HitaButtonVariant.SECONDARY, buttonHeight: HitaDesign.minTouchTarget,
+              disabled: this.busy, onTap: () => { void this.chooseBackup(); } })
             if (this.prepared !== undefined) {
               Column({ space: 8 }) {
                 Text(new Date(this.prepared.manifest.createdAt).toLocaleString()).fontSize(HitaDesign.caption)
@@ -148,10 +144,8 @@ export struct BackupPanel {
                   .fontColor($r('app.color.hita_text_1a1a1a'))
                 Text(this.mediaSummary()).fontSize(HitaDesign.caption).fontColor($r('app.color.hita_text_secondary_566276'))
               }.width('100%').alignItems(HorizontalAlign.Start).padding({ top: 4, bottom: 4 })
-              Button('恢复此备份').width('100%').height(44)
-                .backgroundColor($r('app.color.hita_primary')).fontColor(Color.White)
-                .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_primary'), true))
-                .enabled(!this.busy).onClick(() => this.confirmRestore())
+              HitaButton({ label: '恢复此备份', variant: HitaButtonVariant.PRIMARY, buttonHeight: HitaDesign.minTouchTarget,
+                disabled: this.busy, onTap: () => this.confirmRestore() })
             }
           }.width('100%').padding(20).backgroundColor(this.presentedAsSheet ? CompatibleSheetMaterial.cardColor($r('app.color.hita_surface')) :
             $r('app.color.hita_surface')).borderRadius(HitaDesign.cardRadius)

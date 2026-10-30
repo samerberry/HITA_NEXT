@@ -330,3 +330,14 @@ test('backup v1 remains compatible; v2 remaps task associations and rejects inva
     }
   } finally { h.close(); }
 });
+
+test('backup files are named after the local date, not the UTC one', () => {
+  const h = harness();
+  try {
+    const { BackupService } = h.load('feature/backup/BackupService.ets');
+    assert.equal(BackupService.fileName(new Date(2026, 9, 31, 0, 30)), 'HITA-NEXT-2026-10-31.hita-backup');
+    assert.equal(BackupService.fileName(new Date(2027, 0, 5, 23, 59)), 'HITA-NEXT-2027-01-05.hita-backup');
+    const source = fs.readFileSync(path.resolve(__dirname, '../entry/src/main/ets/feature/backup/BackupService.ets'), 'utf8');
+    assert.doesNotMatch(source, /toISOString/);
+  } finally { h.close(); }
+});

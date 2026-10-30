@@ -798,10 +798,12 @@ export class RdbHelper {
       new Set(after.map((item: EasEventItem): string => item.id)).size !== after.length) throw new Error('Duplicate occurrence');
     await this.writeTransaction(async (transaction: relationalStore.Transaction): Promise<void> => {
       const tables: relationalStore.ResultSet = await transaction.query(
-        new relationalStore.RdbPredicates('timetable').equalTo('id', timetableId), ['endTime']);
+        new relationalStore.RdbPredicates('timetable').equalTo('id', timetableId), ['startTime', 'endTime']);
+      let termStart: number = 0;
       let endTime: number = 0;
       try {
         if (!tables.goToFirstRow()) throw new Error('Timetable no longer exists');
+        termStart = EasTimetable.mondayMsOf(tables.getLong(tables.getColumnIndex('startTime')));
         endTime = tables.getLong(tables.getColumnIndex('endTime'));
       } finally { tables.close(); }
       // Check the complete snapshot before any write, including undo. Reject concurrent edits.
@@ -821,6 +823,9 @@ export class RdbHelper {
       }
       for (const item of after) {
         if (item.to <= item.from) throw new Error('Invalid course time');
+        // Week views start at the first teaching week, so an earlier occurrence would vanish.
+        if (item.from < termStart && !before.some((previous: EasEventItem): boolean =>
+          previous.id === item.id && previous.from === item.from)) throw new Error('Course predates timetable');
         const existing: boolean = before.some((previous: EasEventItem): boolean => previous.id === item.id);
         if (existing) {
           const values: relationalStore.ValuesBucket = RdbHelper.eventValues(item);

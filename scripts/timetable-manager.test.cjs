@@ -175,3 +175,15 @@ test('More shortcuts bind changing count and recent name by reference instead of
   assert.match(builder, /\.onClick\(options\.action\)/);
   assert.doesNotMatch(builder, /const .* = options\.subtitle/);
 });
+
+test('ICS export asks where to save instead of writing an unreachable sandbox file', () => {
+  const exporter = between('  /** Export the selected/current', '  private showExportMenu()');
+  assert.match(exporter, /new picker\.DocumentViewPicker\(ctx\)\.save\(options\)/);
+  assert.match(exporter, /if \(uris\.length === 0\) \{\s*return;\s*\}/);
+  assert.doesNotMatch(exporter, /filesDir|已导出 ICS（/);
+  const name = between('  static exportFileName(', '  private showExportMenu()');
+  const Page = new Function(ts.transpileModule('class Page {' + name + '}; return Page;', {
+    compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText)();
+  assert.equal(Page.exportFileName('2026秋季/第一学期'), '2026秋季 第一学期.ics');
+  assert.equal(Page.exportFileName('  '), 'HITA 课表.ics');
+});

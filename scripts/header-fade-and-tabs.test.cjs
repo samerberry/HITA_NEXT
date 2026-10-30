@@ -232,7 +232,7 @@ test('score results scroll beneath the header and clear its fade when refreshing
 test('timetable today column is a single tint that stops at the date header', () => {
   const home = read('pages/Home.ets');
   const tab = home.slice(home.indexOf('  tabTimetable()'), home.indexOf('  tabMine()'));
-  assert.match(home, /this\.timetableBackdrop, this\.hasTimetableBackground\(\), false\);/);
+  assert.match(home, /this\.timetableBackdrop, this\.hasTimetableBackground\(\), false, axis\);/);
   assert.match(tab, /x: TIMETABLE_GUTTER_WIDTH \+ this\.timetableTodayColumn\(\) \* this\.timetableTodayColumnWidth\(\),\s*y: this\.timetableChromeH\s*\}/);
   assert.match(tab, /\.backgroundColor\(this\.timetableBackdrop\.todayHeader\)[\s\S]*?Scroll\(this\.timetableScroller\)/);
   assert.match(home, /Math\.max\(0, gridBottom - this\.timetableScrollY\)/);

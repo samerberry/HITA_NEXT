@@ -160,7 +160,7 @@ test('flat content cards stay distinct from the light page while keeping the dar
 // Repository-wide counts after every page and sheet moved onto the scale (first audit: 186, 43, 123, 183). What is
 // left sits in the exempt Canvas, Dock and desktop-card drawing code. New code must not raise them; lower a number when
 // a change removes loose values. Raising one to let new code pass defeats the check.
-const BASELINE = { offGridSpacing: 11, literalFontSizes: 21, literalRadii: 14, hexColors: 158 };
+const BASELINE = { offGridSpacing: 11, literalFontSizes: 20, literalRadii: 14, hexColors: 158 };
 
 // Drawing code whose sizes follow the canvas, the dock painter or the desktop card rather than the page scale.
 const DRAWING_EXEMPT = ['common/components/DockRail.ets', 'common/components/FrostedDock.ets',

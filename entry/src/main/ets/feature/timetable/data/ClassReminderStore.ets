@@ -9,6 +9,8 @@ const LEAD_MINUTES_KEY: string = 'class_reminder_lead_minutes';
 const NOTIFIED_KEY: string = 'class_reminder_notified';
 const PLANS_KEY: string = 'class_reminder_plans';
 const SIGNATURE_KEY: string = 'class_reminder_signature';
+/** Reminders are checked only for classes that have not started; older history is no longer read. */
+const NOTIFIED_RETENTION_MS: number = 2 * 24 * 60 * 60 * 1000;
 
 export class ClassReminderPlan {
   type: string = 'CLASS';
@@ -118,12 +120,20 @@ export class ClassReminderStore {
   }
 
   async markNotified(key: string): Promise<void> {
-    const keys: string[] = await this.loadNotified();
+    const cutoff: number = Date.now() - NOTIFIED_RETENTION_MS;
+    const keys: string[] = (await this.loadNotified()).filter((item: string): boolean =>
+      ClassReminderStore.notifiedStart(item) >= cutoff);
     if (keys.indexOf(key) >= 0) {
       return;
     }
     keys.push(key);
     await this.saveNotified(keys);
+  }
+
+  /** Every key ends with the class start time; keys without one are dropped. */
+  private static notifiedStart(key: string): number {
+    const value: number = Number(key.substring(key.lastIndexOf(':') + 1));
+    return Number.isFinite(value) ? value : 0;
   }
 
   async clearNotified(): Promise<void> {

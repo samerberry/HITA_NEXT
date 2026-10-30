@@ -306,6 +306,7 @@ export class NewsService {
                   current.url = value.startsWith('/blog/') ? 'https://hoa.moe' + value : value;
                   break;
                 case 'pubDate':
+                  // pubDate holds a date at 00:00 GMT; its UTC date is the post's date in every time zone.
                   const timestamp: number = Date.parse(value);
                   current.date = Number.isFinite(timestamp) ? new Date(timestamp).toISOString().substring(0, 10) : '';
                   break;

@@ -36,7 +36,7 @@ test('timetable photo picker copies a gallery image and covers the page without 
   assert.match(home, /TimetableDisplaySettings\([\s\S]*onTextColorSave:[\s\S]*this\.setTimetableTextColor\(color\)/);
   const display = read('feature/timetable/views/TimetableDisplaySettings.ets');
   assert.match(display, /CourseColorEditor\([\s\S]*textMode: this\.editing === 'text',[\s\S]*TimetableTheme\.PALETTE/);
-  assert.match(home, /drawTimetableWeek\([\s\S]*hourHeight, 0, false, false, this\.timetableInk\('time'\), this\.darkMode, cardLayer, this\.timetableDisplay,\s*this\.timetableBackdrop, this\.hasTimetableBackground\(\), false\)/);
+  assert.match(home, /drawTimetableWeek\([\s\S]*hourHeight, 0, false, false, this\.timetableInk\('time'\), this\.darkMode, cardLayer, this\.timetableDisplay,\s*this\.timetableBackdrop, this\.hasTimetableBackground\(\), false, axis\)/);
   assert.match(tab, /Image\(this\.timetableBgUri\)[\s\S]*backgroundColor\(Color\.Black\)[\s\S]*opacity\(this\.timetableMaskDepth \/ 100\)/);
   assert.match(tab, /\.backgroundColor\(COLOR_SURFACE\)/,
     'heading and grid share one theme resource instead of independently painted backgrounds');

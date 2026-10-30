@@ -9,6 +9,7 @@ import { CompatiblePickerMaterial } from '../../common/theme/CompatiblePickerMat
 import { CompatibleSheetMaterial } from '../../common/theme/CompatibleSheetMaterial';
 import { ImmersiveHeader } from '../../common/components/ImmersiveHeader';
 import { HeaderBackButton } from '../../common/components/HeaderBackButton';
+import { HitaButton, HitaButtonVariant } from '../../common/components/HitaButton';
 import { ClassReminderScheduler } from '../timetable/data/ClassReminderScheduler';
 import { LearningTaskReminders } from './LearningTaskReminders';
 
@@ -240,14 +241,15 @@ export struct LearningTaskEditor {
             }
             Row({ space: 12 }) {
               if (this.draft.kind === LearningTaskKind.HOMEWORK) {
-                Button('下次课前').fontSize(HitaDesign.caption).height(36).backgroundColor($r('app.color.hita_selected'))
-                  .fontColor($r('app.color.hita_primary')).onClick(() => this.nextClassDeadline())
+                HitaButton({ label: '下次课前', variant: HitaButtonVariant.SECONDARY,
+                  buttonHeight: HitaDesign.compactControlHeight, fitContent: true, disabled: this.saving,
+                  onTap: () => this.nextClassDeadline() })
               }
               if (this.draft.dueAt > 0) {
-                Button('清除日期').fontSize(HitaDesign.caption).height(36).backgroundColor(Color.Transparent)
-                  .fontColor($r('app.color.hita_text_secondary')).onClick(() => {
+                HitaButton({ label: '清除日期', variant: HitaButtonVariant.NEUTRAL,
+                  buttonHeight: HitaDesign.compactControlHeight, fitContent: true, disabled: this.saving, onTap: () => {
                     const next = LearningTaskRules.copy(this.draft); next.dueAt = 0; next.allDay = false; this.update(next);
-                  })
+                  } })
               }
             }.width('100%').padding({ left: 12, right: 12, bottom: 12 }).enabled(!this.saving)
           }.width('100%').borderRadius(HitaDesign.cardRadius).backgroundColor(CompatibleSheetMaterial.cardColor($r('app.color.hita_surface')))
@@ -267,9 +269,8 @@ export struct LearningTaskEditor {
             Text(this.error).fontSize(HitaDesign.caption).fontColor($r('app.color.hita_error')).width('100%')
           }
           if (!this.isNew) {
-            Button('删除待办').height(44).fontSize(HitaDesign.body).width('100%')
-              .backgroundColor($r('app.color.hita_error_surface')).fontColor($r('app.color.hita_error'))
-              .enabled(!this.saving).onClick(() => this.onDelete())
+            HitaButton({ label: '删除待办', variant: HitaButtonVariant.DANGER, buttonHeight: HitaDesign.minTouchTarget,
+              disabled: this.saving, onTap: () => this.onDelete() })
           }
         }.width('100%').padding({ left: 16, right: 16, top: 12, bottom: this.navBarInset + 24 })
       }.width('100%').layoutWeight(1).scrollBar(BarState.Off).align(Alignment.Top)

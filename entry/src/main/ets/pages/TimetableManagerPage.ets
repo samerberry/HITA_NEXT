@@ -12,7 +12,7 @@ import { HeaderFadeMask } from '../common/components/HeaderFadeMask';
 import { HeaderFade } from '../common/theme/HeaderFade';
 import { STATUS_BAR_INSET_FALLBACK } from '../common/theme/StatusBarInset';
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { fileIo } from '@kit.CoreFileKit';
+import { fileIo, picker } from '@kit.CoreFileKit';
 import { RdbHelper } from '../common/db/RdbHelper';
 import { EasTimetable } from '../common/model/timetable/TimetableModels';
 import { HitaColors } from '../common/theme/HitaColors';
@@ -163,7 +163,7 @@ struct TimetableManagerPage {
     }
   }
 
-  /** Export the selected/current timetable into the app sandbox as an ICS file. */
+  /** Export the selected/current timetable as an ICS file saved where the user picks. */
   private async exportTimetable(timetable: EasTimetable): Promise<void> {
     if (this.exporting) {
       return;
@@ -177,22 +177,31 @@ struct TimetableManagerPage {
       }
       const ics: string = IcsExporter.fromEvents(events, timetable.name);
       const ctx: common.UIAbilityContext = this.getUIContext().getHostContext() as common.UIAbilityContext;
-      const path: string = ctx.filesDir + '/hita-' + timetable.id + '.ics';
-      const file = fileIo.openSync(path,
-        fileIo.OpenMode.READ_WRITE | fileIo.OpenMode.CREATE | fileIo.OpenMode.TRUNC);
-      try {
-        fileIo.writeSync(file.fd, ics);
-      } finally {
-        fileIo.closeSync(file);
+      const options: picker.DocumentSaveOptions = new picker.DocumentSaveOptions();
+      options.newFileNames = [TimetableManagerPage.exportFileName(timetable.name)];
+      options.fileSuffixChoices = ['日历文件(.ics)|.ics'];
+      const uris: string[] = await new picker.DocumentViewPicker(ctx).save(options);
+      if (uris.length === 0) {
+        return;
       }
-      this.getUIContext().getPromptAction().showToast({
-        message: '已导出 ICS（' + ics.length.toString() + 'B）'
-      });
+      const file = await fileIo.open(uris[0], fileIo.OpenMode.WRITE_ONLY | fileIo.OpenMode.TRUNC);
+      try {
+        await fileIo.write(file.fd, ics);
+        await fileIo.fsync(file.fd);
+      } finally {
+        await fileIo.close(file);
+      }
+      this.getUIContext().getPromptAction().showToast({ message: '已导出课表日历文件' });
     } catch (e) {
       this.getUIContext().getPromptAction().showToast({ message: '导出 ICS 失败' });
     } finally {
       this.exporting = false;
     }
+  }
+
+  static exportFileName(name: string): string {
+    const clean: string = name.replace(/[\\/:*?"<>|\r\n]+/g, ' ').trim();
+    return (clean.length > 0 ? clean : 'HITA 课表') + '.ics';
   }
 
   private showExportMenu(): void {

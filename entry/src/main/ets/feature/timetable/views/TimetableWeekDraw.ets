@@ -2,13 +2,13 @@
  * TimetableWeekDraw.ets — 课表周视图绘制模块（Canvas 纯函数，状态由宿主页面持有）。
  *
  * 周视图时间轴与课程布局参考 HITA Android：
- *  - 7 等分列；时间轴 08:00–23:00，网格每小时一格；
+ *  - 7 等分列；时间轴默认 08:00–23:00，学期内有更早或更晚的日程时扩展到整点，网格每小时一格；
  *  - 事件块按真实时刻分钟定位：yTop = minutesFromAxisStart/60 * hourH，
  *    高 = durationMinutes/60 * hourH；x=(dow-1)*colW（dow 周一=1）；
  *    fromNumber/lastNumber 只作数据字段，不参与布局（源如此）；
  *  - 今日高亮 = 本周页对今日列整列叠加 ~#10000000 遮罩；
  *  - 源码 NowLine 实为死代码（未实例化），故不绘制；
- *  - 左侧标签画 08:00..23:00 整点；
+ *  - 左侧标签画时间轴内的整点；
  *  - 周切换由宿主页面按安卓 ViewPager 手势逻辑处理：跟手平移、阈值切换与回弹动画。
  */
 import {
@@ -153,6 +153,40 @@ export function timetableEventSpan(timetable: EasTimetable, event: EasEventItem,
     }
   }
   return new TimetableEventSpan(from, to);
+}
+
+/** Whole hours shown by the week grid: 08:00–23:00, widened so early or late events of the term stay visible. */
+export class TimetableAxis {
+  startHour: number = AXIS_START_HOUR;
+  endHour: number = AXIS_END_HOUR;
+
+  hours(): number {
+    return this.endHour - this.startHour;
+  }
+
+  same(other: TimetableAxis): boolean {
+    return this.startHour === other.startHour && this.endHour === other.endHour;
+  }
+
+  /** Uses every event of the term, so the grid stays the same while switching weeks. */
+  static forEvents(timetable: EasTimetable, events: EasEventItem[]): TimetableAxis {
+    const axis: TimetableAxis = new TimetableAxis();
+    for (let i = 0; i < events.length; i++) {
+      const week: number = timetable.getWeekNumber(events[i].from);
+      const span: TimetableEventSpan | undefined = week > 0 ?
+        timetableEventSpan(timetable, events[i], week) : undefined;
+      if (span === undefined) {
+        continue;
+      }
+      const day: Date = new Date(span.from);
+      day.setHours(0, 0, 0, 0);
+      const fromHour: number = (span.from - day.getTime()) / 3600000;
+      const toHour: number = (span.to - day.getTime()) / 3600000;
+      axis.startHour = Math.min(axis.startHour, Math.max(0, Math.floor(fromHour)));
+      axis.endHour = Math.max(axis.endHour, Math.min(24, Math.ceil(toHour)));
+    }
+    return axis;
+  }
 }
 
 export class TimetablePlaceLabel {
@@ -431,7 +465,8 @@ export function drawTimetableWeek(ctx: CanvasRenderingContext2D, w: number, h: n
   cardLayer: TimetableCardLayer | undefined = undefined,
   display: TimetableDisplayOptions = new TimetableDisplayOptions(),
   backdrop: TimetableBackdropColors | undefined = undefined,
-  hasWallpaper: boolean = false, drawTodayMask: boolean = true): TimetablePlaceLabel[] {
+  hasWallpaper: boolean = false, drawTodayMask: boolean = true,
+  axis: TimetableAxis = new TimetableAxis()): TimetablePlaceLabel[] {
   const surface: TimetableSurfaceColors = new TimetableSurfaceColors(darkMode);
   const scrollingPlaces: TimetablePlaceLabel[] = [];
   if (cardLayer !== undefined) {
@@ -452,9 +487,9 @@ export function drawTimetableWeek(ctx: CanvasRenderingContext2D, w: number, h: n
   const gridLeft: number = gutterW;
   const gridTop: number = drawHeader ? headerH + 2 : TIMETABLE_GRID_TOP_PADDING;
   const gridBottom: number = hourHeightOverride > 0 ?
-    Math.min(h - 4, gridTop + (AXIS_END_HOUR - AXIS_START_HOUR) * hourHeightOverride) : h - 4;
+    Math.min(h - 4, gridTop + axis.hours() * hourHeightOverride) : h - 4;
   const gridH: number = gridBottom - gridTop;
-  const hoursInDay: number = AXIS_END_HOUR - AXIS_START_HOUR;
+  const hoursInDay: number = axis.hours();
   const hourH: number = hourHeightOverride > 0 ? hourHeightOverride : gridH / hoursInDay;
   const colW: number = (w - gridLeft) / 7;
   const fontUnit: string = 'vp sans-serif';
@@ -517,15 +552,15 @@ export function drawTimetableWeek(ctx: CanvasRenderingContext2D, w: number, h: n
   ctx.setLineDash([]);
   ctx.font = '10' + fontUnit;
   ctx.fillStyle = ink(labelColor, surface.textSub);
-  for (let hour = AXIS_START_HOUR; hour < AXIS_END_HOUR; hour++) {
-    const y: number = gridTop + (hour - AXIS_START_HOUR) * hourH;
+  for (let hour = axis.startHour; hour < axis.endHour; hour++) {
+    const y: number = gridTop + (hour - axis.startHour) * hourH;
     const label: string = hour.toString() + ':00';
     ctx.textAlign = 'left';
     ctx.fillText(label, 8, y);
     ctx.textAlign = 'start';
   }
   // 事件块（课程/考试等全部类型）：真实时刻分钟映射。重叠时按 lane 缩窄，避免互相覆盖。
-  const axisStartMsOffset: number = AXIS_START_HOUR * 60 * 60 * 1000;
+  const axisStartMsOffset: number = axis.startHour * 60 * 60 * 1000;
   const m: number = TimetableDrawStyle.blockMargin;
   const layouts: TimetableBlockLayout[] = [];
   const dayLayouts: TimetableBlockLayout[][] = [[], [], [], [], [], [], []];
@@ -540,7 +575,7 @@ export function drawTimetableWeek(ctx: CanvasRenderingContext2D, w: number, h: n
     }
     const axisStart: number = weekMonday + (dow - 1) * DAY_MILLIS + axisStartMsOffset;
     const axisEnd: number = weekMonday + (dow - 1) * DAY_MILLIS +
-      AXIS_END_HOUR * 60 * 60 * 1000;
+      axis.endHour * 60 * 60 * 1000;
     const visibleFrom: number = Math.max(span.from, axisStart);
     const visibleTo: number = Math.min(span.to, axisEnd);
     if (visibleTo <= visibleFrom) {
@@ -555,36 +590,35 @@ export function drawTimetableWeek(ctx: CanvasRenderingContext2D, w: number, h: n
     layouts.push(layout);
   }
   for (let d = 0; d < 7; d++) {
-    dayLayouts[d].sort((a: TimetableBlockLayout, b: TimetableBlockLayout): number => {
+    const day: TimetableBlockLayout[] = dayLayouts[d];
+    day.sort((a: TimetableBlockLayout, b: TimetableBlockLayout): number => {
       return a.from - b.from;
     });
-    const laneEnds: number[] = [];
-    for (let i = 0; i < dayLayouts[d].length; i++) {
-      const layout: TimetableBlockLayout = dayLayouts[d][i];
-      let lane: number = 0;
-      while (lane < laneEnds.length && laneEnds[lane] > layout.from) {
-        lane++;
-      }
-      if (lane === laneEnds.length) {
-        laneEnds.push(layout.to);
-      } else {
-        laneEnds[lane] = layout.to;
-      }
-      layout.lane = lane;
-    }
-    for (let i = 0; i < dayLayouts[d].length; i++) {
-      const layout: TimetableBlockLayout = dayLayouts[d][i];
-      let overlapCount: number = 1;
-      for (let j = 0; j < dayLayouts[d].length; j++) {
-        if (i === j) {
-          continue;
+    // Blocks that overlap directly or through a chain share one lane count, so none covers another.
+    let start: number = 0;
+    while (start < day.length) {
+      const laneEnds: number[] = [];
+      let clusterEnd: number = day[start].to;
+      let end: number = start;
+      while (end < day.length && (end === start || day[end].from < clusterEnd)) {
+        const layout: TimetableBlockLayout = day[end];
+        let lane: number = 0;
+        while (lane < laneEnds.length && laneEnds[lane] > layout.from) {
+          lane++;
         }
-        const other: TimetableBlockLayout = dayLayouts[d][j];
-        if (other.from < layout.to && other.to > layout.from) {
-          overlapCount++;
+        if (lane === laneEnds.length) {
+          laneEnds.push(layout.to);
+        } else {
+          laneEnds[lane] = layout.to;
         }
+        layout.lane = lane;
+        clusterEnd = Math.max(clusterEnd, layout.to);
+        end++;
       }
-      layout.lanes = Math.max(1, overlapCount);
+      for (let i = start; i < end; i++) {
+        day[i].lanes = Math.max(1, laneEnds.length);
+      }
+      start = end;
     }
   }
 

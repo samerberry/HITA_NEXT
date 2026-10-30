@@ -84,7 +84,7 @@ test('clock edits clear period metadata and date shifts preserve spacing and IDs
   assert.equal(Batch.update([anchor],anchor,dateOnly)[0].fromNumber,1);
 });
 function database(items=series(), failAt=-1) {
-  const rows={ timetable:[{id:'t',endTime:tt.endTime}], subject:[{id:'s',timetableId:'t'}],
+  const rows={ timetable:[{id:'t',startTime:tt.startTime,endTime:tt.endTime}], subject:[{id:'s',timetableId:'t'}],
     events:items.map(item=>RdbHelper.eventValues(item)) };
   const db=new RdbHelper(); let writes=0;
   db.store={createTransaction:async()=>{
@@ -131,6 +131,16 @@ test('concurrent changes and deleted timetables reject before writing, undo neve
   await assert.rejects(db.replaceCourseOccurrences(after,before,'t'),/Course changed/);assert.deepEqual(rows,current);
   rows.timetable=[];
   await assert.rejects(db.replaceCourseOccurrences(after,before,'t'),/Timetable no longer exists/);
+});
+test('edits cannot move occurrences before the first teaching week',async()=>{
+  const items=series(),before=items.slice(0,2),edited=Batch.copy(before[0]);
+  edited.from-=86400000;edited.to-=86400000;
+  const {db,rows}=database(items),initial=structuredClone(rows);
+  await assert.rejects(db.replaceCourseOccurrences(before,Batch.update(before,before[0],edited),'t'),/predates timetable/);
+  assert.deepEqual(rows,initial);
+  const later=Batch.copy(before[0]);later.from+=86400000;later.to+=86400000;
+  await db.replaceCourseOccurrences(before,Batch.update(before,before[0],later),'t');
+  assert.equal(rows.events[0].fromTime,before[0].from+86400000);
 });
 test('undo cannot resurrect a deleted subject or overwrite a reused occurrence ID',async()=>{
   const before=[event('a',1)],{db,rows}=database(before);
@@ -187,6 +197,12 @@ test('cancel, native dialog dismissal and write failure leave the editor retryab
   }
   const failed=editor([1],true);await failed.form.save();
   assert.equal(failed.saved,undefined);assert.equal(failed.form.saving,false);assert.match(failed.form.hint,/保存失败/);
+});
+test('the editor explains a move before the term instead of saving an invisible course',async()=>{
+  const h=editor([1,0]);h.form.dayOffset=-1;
+  await h.form.save();
+  assert.equal(h.writes.length,0);assert.equal(h.form.saving,false);
+  assert.equal(h.form.hint,'日期早于开学日期，请选择本学期内或之后的日期');
 });
 test('no matching weeks disable saving and a late confirmation after closing cannot write',async()=>{
   const h=editor([1,0]);h.form.editScope=1;h.form.selectedWeeks=[];

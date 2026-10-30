@@ -9,6 +9,7 @@ import { CompatibleSheetMaterial } from '../../common/theme/CompatibleSheetMater
 import { ImmersiveHeader } from '../../common/components/ImmersiveHeader';
 import { HeaderBackButton } from '../../common/components/HeaderBackButton';
 import { HeaderActionButton } from '../../common/components/HeaderActionButton';
+import { HitaButton, HitaButtonVariant } from '../../common/components/HitaButton';
 import { LearningTaskEditor } from './LearningTaskEditor';
 import { LearningTaskReminders } from './LearningTaskReminders';
 
@@ -277,15 +278,15 @@ export struct LearningTasksPanel {
               ListItem() {
                 Row({ space: 12 }) {
                   Text(this.error).fontSize(HitaDesign.caption).fontColor($r('app.color.hita_error')).layoutWeight(1)
-                  Button('重试').fontSize(HitaDesign.caption).onClick(() => { void this.load(); })
+                  HitaButton({ label: '重试', variant: HitaButtonVariant.SECONDARY,
+                    buttonHeight: HitaDesign.compactControlHeight, fitContent: true, onTap: () => { void this.load(); } })
                 }.width('100%')
               }
             }
             if (this.changedExam() !== undefined) {
               ListItem() {
-                Button('考试已改期，调整复习日期').fontSize(HitaDesign.caption).width('100%')
-                  .backgroundColor($r('app.color.hita_selected')).fontColor($r('app.color.hita_primary'))
-                  .enabled(!this.busy).onClick(() => this.confirmShift())
+                HitaButton({ label: '考试已改期，调整复习日期', variant: HitaButtonVariant.SECONDARY,
+                  buttonHeight: HitaDesign.controlHeight, disabled: this.busy, onTap: () => this.confirmShift() })
               }
             }
             if (this.scoped().length === 0 && this.error.length === 0) {

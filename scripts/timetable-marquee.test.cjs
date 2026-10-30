@@ -23,7 +23,7 @@ function load(file) {
 }
 const { placeMarqueeFrame, PLACE_MARQUEE_PAUSE_MS, PLACE_MARQUEE_SPEED } =
   load('feature/timetable/views/PlaceMarquee.ets');
-const { drawTimetableWeek, drawTimetablePlaces, TimetablePlaceLabel, timetableEventSpan,
+const { drawTimetableWeek, drawTimetablePlaces, TimetablePlaceLabel, timetableEventSpan, TimetableAxis,
   timetableBlockColor, argbToCss, TimetableDrawStyle, TimetableCardLayer, drawTimetableCardText,
   drawTimetableCardSnapshot } =
   load('feature/timetable/views/TimetableWeekDraw.ets');
@@ -621,4 +621,56 @@ test('offscreen course capture follows the same vp geometry and bounds bitmap al
     global.OffscreenCanvasRenderingContext2D = originalCanvas;
     global.RenderingContextSettings = originalSettings;
   }
+});
+
+test('chained overlaps share one width so no card covers another', () => {
+  const { timetable } = fixture();
+  const day = timetable.startTime + 2 * 86400000;
+  const events = [[8, 10], [9, 11], [10, 12], [14, 15]].map(([from, to], index) => Object.assign(new EasEventItem(), {
+    id: 'chain-' + index, name: 'Course ' + index, from: day + from * 3600000, to: day + to * 3600000
+  }));
+  const layer = new TimetableCardLayer();
+  drawTimetableWeek(canvas(), 380, 830, timetable, events, 1, false, 50, 0, false, false, '', false, layer);
+  const cards = ['chain-0', 'chain-1', 'chain-2', 'chain-3'].map(id => layer.surfaces.find(card => card.eventIds[0] === id));
+  assert.ok(cards.every(card => card !== undefined));
+  const [first, second, third, alone] = cards;
+  close(first.width, second.width);
+  close(second.width, third.width);
+  for (const [a, b] of [[first, second], [second, third]]) {
+    assert.ok(a.left + a.width <= b.left || b.left + b.width <= a.left, `${a.eventIds[0]} covers ${b.eventIds[0]}`);
+  }
+  close(first.left, third.left);
+  assert.ok(alone.width > first.width * 1.5, 'a later, separate class keeps the full column');
+});
+
+test('early and late events widen the axis for the whole term instead of disappearing', () => {
+  const { timetable, events } = fixture();
+  timetable.endTime = timetable.startTime + 14 * 86400000 - 1;
+  const early = Object.assign(new EasEventItem(), { id: 'early', name: 'Run',
+    from: timetable.startTime + 7 * 3600000, to: timetable.startTime + 7.5 * 3600000 });
+  const late = Object.assign(new EasEventItem(), { id: 'late', name: 'Call',
+    from: timetable.startTime + 8 * 86400000 + 23.25 * 3600000, to: timetable.startTime + 8 * 86400000 + 23.75 * 3600000 });
+  const outside = Object.assign(new EasEventItem(), { id: 'outside', name: 'Old',
+    from: timetable.startTime - 86400000 + 5 * 3600000, to: timetable.startTime - 86400000 + 6 * 3600000 });
+  const defaults = TimetableAxis.forEvents(timetable, events.concat([outside]));
+  assert.deepEqual([defaults.startHour, defaults.endHour, defaults.hours()], [8, 23, 15]);
+  const axis = TimetableAxis.forEvents(timetable, events.concat([early, late]));
+  assert.deepEqual([axis.startHour, axis.endHour, axis.hours()], [7, 24, 17]);
+
+  const hidden = new TimetableCardLayer();
+  drawTimetableWeek(canvas(), 380, 2000, timetable, events.concat([early]), 1, false, 50, 0, false, false, '', false, hidden);
+  assert.equal(hidden.surfaces.some(card => card.eventIds[0] === 'early'), false);
+  const ctx = canvas(), layer = new TimetableCardLayer();
+  drawTimetableWeek(ctx, 380, 2000, timetable, events.concat([early]), 1, false, 50, 0, false, false, '', false, layer,
+    undefined, undefined, false, true, axis);
+  const card = layer.surfaces.find(item => item.eventIds[0] === 'early');
+  close(card.top, 24);
+  close(layer.surfaces.find(item => item.eventIds[0] === events[0].id).top, 24 + 50);
+  const labels = ctx.paints.filter(p => p.method === 'fillText').map(p => p.args[0]);
+  assert.equal(labels[0], '7:00');
+  assert.ok(labels.includes('23:00'));
+  const lateWeek = new TimetableCardLayer();
+  drawTimetableWeek(canvas(), 380, 2000, timetable, [late], 2, false, 50, 0, false, false, '', false, lateWeek,
+    undefined, undefined, false, true, axis);
+  close(lateWeek.surfaces[0].top, 24 + (23.25 - 7) * 50);
 });

@@ -117,6 +117,9 @@ export class ClassReminderScheduler {
     if (!classes && !exams) return 0;
     const classMinutes: number = await store.loadLeadMinutes();
     const examMinutes: number = await store.loadExamLeadMinutes();
+    // Synced calendar alarms already cover their events. On a cold start this runs before the calendar sync
+    // opens its store, and an unopened store would report no coverage and send a second reminder.
+    await CalendarSyncStore.getInstance().init(context).catch(() => {});
     const upcoming: EasEventItem[] = ClassReminderScheduler.upcomingClasses(events);
     let published: number = 0;
     for (let i: number = 0; i < upcoming.length; i++) {

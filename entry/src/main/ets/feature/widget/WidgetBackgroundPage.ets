@@ -8,6 +8,7 @@ import { HitaDesign } from '../../common/theme/HitaDesign';
 import { common } from '@kit.AbilityKit';
 import { deviceInfo } from '@kit.BasicServicesKit';
 import { HeaderBackButton } from '../../common/components/HeaderBackButton';
+import { HitaButton, HitaButtonVariant } from '../../common/components/HitaButton';
 import { HeaderFadeMask } from '../../common/components/HeaderFadeMask';
 import { ImmersiveHeader } from '../../common/components/ImmersiveHeader';
 import { CompatibleLightModifier } from '../../common/theme/CompatibleLightModifier';
@@ -432,16 +433,10 @@ export struct WidgetBackgroundPage {
         .margin({ top: 8 })
         .clip(false)
       } else {
-        Button(this.busy ? '正在读取…' : '从图库选择')
-          .height(40)
-          .padding({ left: 24, right: 24 })
-          .fontSize(14)
-          .fontColor(Color.White)
-          .backgroundColor(HitaColors.primary)
-          .attributeModifier(new CompatibleMaterialModifier(HitaColors.primary, true))
-          .enabled(!this.busy)
+        HitaButton({ label: this.busy ? '正在读取…' : '从图库选择', variant: HitaButtonVariant.PRIMARY,
+          buttonHeight: HitaDesign.controlHeight, fitContent: true, disabled: this.busy,
+          onTap: () => { void this.pickImage(); } })
           .margin({ top: 8 })
-          .onClick(() => { void this.pickImage(); })
       }
     }
     .width('100%')

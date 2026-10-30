@@ -84,12 +84,12 @@ import { ClassReminderStore } from '../feature/timetable/data/ClassReminderStore
 import { ClassReminderScheduler, ClassReminderSyncResult } from '../feature/timetable/data/ClassReminderScheduler';
 import { CalendarExportResult } from '../feature/timetable/data/TimetableCalendarExporter';
 import {
-  AXIS_END_HOUR,
   AXIS_START_HOUR,
   TIMETABLE_GRID_TOP_PADDING,
   TIMETABLE_GUTTER_WIDTH,
   TIMETABLE_HEADER_HEIGHT,
   TIMETABLE_HOUR_HEIGHT,
+  TimetableAxis,
   TimetableCardLayer,
   TimetableCardSurface,
   TimetablePlaceLabel,
@@ -269,6 +269,7 @@ struct Home {
   @State private timetableAreaW: number = 0;
   @State private timetableAreaH: number = 0;
   @State private timetableCanvasHeight: number = 0;
+  @State private timetableAxis: TimetableAxis = new TimetableAxis();
   @State private showEveningCourseHint: boolean = false;
   @State timetableFadeOpacity: number = 0;
   @State private timetableScrollY: number = 0;
@@ -860,11 +861,14 @@ struct Home {
     const weekEvents: EasEventItem[] = eventsOfWeek(this.currentTimetable,
       this.timetableEvents, this.timetableWeek);
     const current: number = this.currentTimetable.getWeekNumber(this.nowTick);
+    const axis: TimetableAxis = TimetableAxis.forEvents(this.currentTimetable, this.timetableEvents);
+    if (!axis.same(this.timetableAxis)) {
+      this.timetableAxis = axis;
+    }
     const hourHeight: number = this.timetableHourHeight();
     const bodyViewportHeight: number = Math.max(1,
       this.timetableAreaH - this.timetableChromeH + TIMETABLE_BOTTOM_SAFE_EXTENSION);
-    const contentHeight: number = TIMETABLE_GRID_TOP_PADDING +
-      (AXIS_END_HOUR - AXIS_START_HOUR) * hourHeight + 8;
+    const contentHeight: number = TIMETABLE_GRID_TOP_PADDING + axis.hours() * hourHeight + 8;
     const canvasHeight: number = Math.max(bodyViewportHeight, contentHeight);
     if (this.timetableCanvasHeight !== canvasHeight) {
       this.timetableCanvasHeight = canvasHeight;
@@ -876,7 +880,7 @@ struct Home {
       this.timetableAreaW, canvasHeight,
       this.currentTimetable, weekEvents, this.timetableWeek, current === this.timetableWeek,
       hourHeight, 0, false, false, this.timetableInk('time'), this.darkMode, cardLayer, this.timetableDisplay,
-      this.timetableBackdrop, this.hasTimetableBackground(), false);
+      this.timetableBackdrop, this.hasTimetableBackground(), false, axis);
     const cards: TimetableCardSurface[] = cardLayer.surfaces;
     if (cards.length !== this.timetableCardSurfaces.length ||
       cards.some((card: TimetableCardSurface, index: number): boolean =>
@@ -1392,7 +1396,7 @@ struct Home {
    */
   private timetableTodayMaskVisibleHeight(): number {
     const gridBottom: number = Math.min(this.timetableCanvasHeight - 4,
-      TIMETABLE_GRID_TOP_PADDING + (AXIS_END_HOUR - AXIS_START_HOUR) * this.timetableHourHeight());
+      TIMETABLE_GRID_TOP_PADDING + this.timetableAxis.hours() * this.timetableHourHeight());
     return Math.max(0, gridBottom - this.timetableScrollY);
   }
 
@@ -1410,8 +1414,7 @@ struct Home {
     const hourHeight: number = this.timetableHourHeight();
     const bodyViewportHeight: number = Math.max(1,
       h - this.timetableChromeH + TIMETABLE_BOTTOM_SAFE_EXTENSION);
-    const contentHeight: number = TIMETABLE_GRID_TOP_PADDING +
-      (AXIS_END_HOUR - AXIS_START_HOUR) * hourHeight + 8;
+    const contentHeight: number = TIMETABLE_GRID_TOP_PADDING + this.timetableAxis.hours() * hourHeight + 8;
     this.timetableCanvasHeight = Math.max(bodyViewportHeight, contentHeight);
     this.drawTimetableNow();
   }

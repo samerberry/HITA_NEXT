@@ -36,6 +36,7 @@ import {
 
 const DAY_MS: number = 24 * 60 * 60 * 1000;
 const MAX_DAY_OFFSET: number = 370;
+const BEFORE_TERM_HINT: string = '日期早于开学日期，请选择本学期内或之后的日期';
 const TYPE_ITEMS: string[] = ['日程', '课程', '考试', '备忘'];
 
 @Component
@@ -368,7 +369,7 @@ export struct EventEditorForm {
         try { CourseDateSelection.weeklyDates(timetable, this.selectedWeeks, this.selectedWeekdays, this.weekChoices.length); }
         catch (error) { return error instanceof Error ? error.message : '请检查日期选择'; }
       } else if (this.todayBase + this.dayOffset * DAY_MS < EasTimetable.mondayMsOf(timetable.startTime)) {
-        return '日期早于开学日期，请选择本学期内或之后的日期';
+        return BEFORE_TERM_HINT;
       }
     }
     const time = this.selectedTime();
@@ -498,8 +499,9 @@ export struct EventEditorForm {
       } else {
         await this.persistEvent();
       }
-    } catch (_) {
-      this.hint = '保存失败，请重试';
+    } catch (error) {
+      this.hint = error instanceof Error && error.message === 'Course predates timetable' ?
+        BEFORE_TERM_HINT : '保存失败，请重试';
     } finally {
       this.saving = false;
     }
@@ -522,6 +524,11 @@ export struct EventEditorForm {
     date.setHours(this.hour, this.minute, 0, 0); edited.from = date.getTime();
     date.setHours(this.endHour, this.endMinute, 0, 0); edited.to = date.getTime();
     const after: EasEventItem[] = this.stoppingCourse ? [] : CourseBatchEdit.update(before, original, edited);
+    const timetable: EasTimetable | undefined = this.courseTimetable;
+    if (timetable !== undefined && after.some((item: EasEventItem): boolean =>
+      item.from < EasTimetable.mondayMsOf(timetable.startTime))) {
+      this.hint = BEFORE_TERM_HINT; return;
+    }
     const operation: string = this.stoppingCourse ? '停课' : '修改';
     let confirmed: boolean = false;
     try {
