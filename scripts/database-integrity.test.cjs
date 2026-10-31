@@ -81,7 +81,7 @@ function database() {
   const source = read('common/db/RdbHelper.ets');
   const schemas = source.slice(source.indexOf('const CREATE_TIMETABLE:'), source.indexOf('export class RdbHelper'));
   for (const schema of new Function(compile(schemas +
-    '\nreturn [CREATE_TIMETABLE, CREATE_SUBJECT, CREATE_EVENTS, CREATE_IMPORT_BASE, CREATE_BACKUP_RECEIPT, CREATE_LEARNING_TASK];'))()) {
+    '\nreturn [CREATE_TIMETABLE, CREATE_SUBJECT, CREATE_EVENTS, CREATE_IMPORT_BASE, CREATE_BACKUP_RECEIPT, CREATE_LEARNING_TASK, CREATE_STUDY_OPERATION];'))()) {
     sql.exec(schema);
   }
   const ops = {
@@ -641,6 +641,169 @@ test('backup snapshot refuses cursor failures instead of exporting partial data'
 function learningTask(values = {}) {
   return Object.assign(new LearningTask(), { title: 'Exercises', timetableId: 'a', subjectId: 'math', courseName: 'Math' }, values);
 }
+
+function studyTools(f) {
+  const state = { selected: 'a', cancelled: [] };
+  const overrides = {
+    '../../common/db/RdbHelper': { RdbHelper: { getInstance: () => f.db } },
+    '../timetable/data/TimetableSelectionStore': { TimetableSelectionStore: { loadForQuery: async () => state.selected } },
+    '../learning/LearningTaskReminders': { LearningTaskReminders: { cancel: async id => state.cancelled.push(id) } }
+  };
+  const { StudyAssistantService: service, StudyInputError } = load('feature/assistant/StudyAssistantService.ets', overrides);
+  const request = extra => ({ requestKey: 'homework_request_001', courseName: 'Math', title: 'Exercises', dueDate: '2099-11-10', ...extra });
+  return { service, state, request, StudyInputError };
+}
+
+test('study tools find courses only in the active term and ask for a choice on ambiguous names', async () => {
+  const f = database();
+  try {
+    await seed(f.db); const h = studyTools(f);
+    let courses = await h.service.query({}, { action: 'courses', keyword: ' Math ', limit: 1 });
+    assert.deepEqual(courses.records.map(x => x.subjectId), ['math']);
+    assert.equal(courses.total, 1);
+    await f.db.saveSubject(Object.assign(subject('math-two'), { name: 'Math' }));
+    const ambiguous = await h.service.prepare({}, 'create', h.request());
+    assert.equal(ambiguous.status, 'needs_selection');
+    assert.equal(ambiguous.candidates.length, 2);
+    assert.equal((await f.db.getLearningTasks()).length, 0);
+    assert.equal(f.sql.prepare('SELECT count(*) n FROM assistant_study_operation').get().n, 0);
+    const missing = await h.service.prepare({}, 'create', h.request({ subjectId: 'other-subject' }));
+    assert.equal(missing.status, 'course_not_found');
+    courses = await h.service.query({}, { action: 'courses', keyword: 'Math', offset: 1, limit: '1' });
+    assert.equal(courses.returned, 1); assert.equal(courses.hasMore, false);
+    h.state.selected = 'b';
+    assert.equal((await h.service.query({}, { action: 'courses' })).records[0].subjectId, 'other-subject');
+  } finally { f.sql.close(); }
+});
+
+test('homework preparation creates an all-day draft without a location/time and confirmation writes exactly once', async () => {
+  const f = database();
+  try {
+    await seed(f.db); const h = studyTools(f);
+    const draft = await h.service.prepare({}, 'create', h.request({ title: '' }));
+    assert.equal(draft.status, 'needs_confirmation'); assert.equal(draft.task.title, 'Math作业');
+    assert.equal(draft.task.dueDate, '2099-11-10'); assert.equal(draft.task.allDay, true);
+    assert.equal(draft.task.dueTime, ''); assert.equal((await f.db.getLearningTasks()).length, 0);
+    assert.equal((await h.service.prepare({}, 'create', h.request({ title: '' }))).operationId, draft.operationId);
+    assert.equal((await h.service.prepare({}, 'create', h.request({ title: '', requestKey: 'another_key_001' }))).operationId, draft.operationId);
+    const op = await h.service.finish({}, draft.operationId, true);
+    assert.equal(op.status, 'saved');
+    assert.equal((await f.db.getLearningTasks())[0].id, draft.task.taskId);
+    await h.service.finish({}, draft.operationId, true);
+    assert.equal((await f.db.getLearningTasks()).length, 1);
+    assert.equal((await h.service.prepare({}, 'create', h.request({ title: '' }))).status, 'saved');
+    assert.equal((await h.service.prepare({}, 'create', h.request({ title: '', requestKey: 'another_key_002' }))).status, 'already_exists');
+    await assert.rejects(h.service.prepare({}, 'create', h.request({ title: 'Different homework' })), /requestKey/);
+  } finally { f.sql.close(); }
+});
+
+test('study drafts survive reload, cancel/expiry never save, and a failed commit rolls back task and receipt', async () => {
+  const f = database();
+  try {
+    await seed(f.db); const h = studyTools(f);
+    const first = await h.service.prepare({}, 'create', h.request());
+    const reloaded = studyTools(f);
+    assert.equal((await reloaded.service.operation({}, first.operationId)).status, 'pending');
+    assert.equal((await reloaded.service.finish({}, first.operationId, false)).status, 'cancelled');
+    assert.equal((await h.service.finish({}, first.operationId, true)).status, 'cancelled');
+    const expired = await h.service.prepare({}, 'create', h.request({ requestKey: 'expired_key_001' }));
+    const body = JSON.parse(f.sql.prepare('SELECT body FROM assistant_study_operation WHERE id=?').get(expired.operationId).body);
+    body.createdAt -= 31 * 60000;
+    f.sql.prepare('UPDATE assistant_study_operation SET body=? WHERE id=?').run(JSON.stringify(body), body.id);
+    assert.equal((await h.service.operation({}, body.id)).status, 'expired');
+    await assert.rejects(h.service.finish({}, body.id, true), /过期/);
+    const failed = await h.service.prepare({}, 'create', h.request({ requestKey: 'failed_key_001' }));
+    f.rejectCommit();
+    await assert.rejects(h.service.finish({}, failed.operationId, true), /commit failed/);
+    assert.equal((await f.db.getLearningTasks()).length, 0);
+    assert.equal((await h.service.operation({}, failed.operationId)).status, 'pending');
+  } finally { f.sql.close(); }
+});
+
+test('homework confirm rechecks a deleted/renamed course, deadline and duplicates made after preview', async () => {
+  for (const mode of ['delete', 'rename', 'duplicate', 'deadline', 'reminder']) {
+    const f = database();
+    try {
+      await seed(f.db); const h = studyTools(f);
+      const draft = await h.service.prepare({}, 'create', h.request());
+      if (mode === 'delete') f.sql.prepare('DELETE FROM subject WHERE id=?').run('math');
+      if (mode === 'rename') f.sql.prepare('UPDATE subject SET name=? WHERE id=?').run('New Math', 'math');
+      if (mode === 'duplicate') {
+        const op = await h.service.operation({}, draft.operationId);
+        await f.db.saveLearningTask({ ...op.task, id: 'manual-task' }, true);
+      }
+      if (mode === 'deadline' || mode === 'reminder') {
+        const op = await h.service.operation({}, draft.operationId);
+        if (mode === 'deadline') { op.task.allDay = false; op.task.dueAt = Date.now() - 1; }
+        else op.task.remindAt = Date.now() - 1;
+        f.sql.prepare('UPDATE assistant_study_operation SET body=? WHERE id=?').run(JSON.stringify(op), op.id);
+      }
+      await assert.rejects(h.service.finish({}, draft.operationId, true), /课程已变化|相同作业|截止时间已过|提醒时间已过/);
+      assert.equal((await h.service.operation({}, draft.operationId)).status, 'pending');
+      assert.equal((await f.db.getLearningTasks()).length, mode === 'duplicate' ? 1 : 0);
+    } finally { f.sql.close(); }
+  }
+});
+
+test('task query distinguishes completion, deadline and active term and paginates actual tasks', async () => {
+  const f = database();
+  try {
+    await seed(f.db); const h = studyTools(f);
+    await f.db.saveLearningTask(learningTask({ id: 'one', dueAt: h.service.day('2099-11-10'), allDay: true }), true);
+    await f.db.saveLearningTask(learningTask({ id: 'two' }), true);
+    await f.db.saveLearningTask(learningTask({ id: 'foreign', timetableId: 'b', subjectId: 'other-subject' }), true);
+    await f.db.setLearningTaskCompleted('two', true);
+    const due = await h.service.query({}, { action: 'tasks', dueDate: '2099-11-10' });
+    assert.deepEqual(due.records.map(x => x.taskId), ['one']);
+    const completed = await h.service.query({}, { action: 'tasks', status: 'completed', keyword: 'Math' });
+    assert.deepEqual(completed.records.map(x => x.taskId), ['two']);
+    const all = await h.service.query({}, { action: 'tasks', status: 'all', limit: 1 });
+    assert.equal(all.total, 2); assert.equal(all.hasMore, true); assert.equal(all.nextOffset, 1);
+    assert.equal((await h.service.query({}, { action: 'tasks', status: 'all', offset: 1, limit: 1 })).returned, 1);
+    await assert.rejects(h.service.query({}, { action: 'tasks', status: 'invented' }), /status/);
+  } finally { f.sql.close(); }
+});
+
+test('completion requires a current task ID and confirmation, cancels reminders, and cannot overwrite a later edit', async () => {
+  const f = database();
+  try {
+    await seed(f.db); const h = studyTools(f);
+    await f.db.saveLearningTask(learningTask({ id: 'one', remindAt: Date.now() + day }), true);
+    const first = await h.service.prepare({}, 'complete', { requestKey: 'complete_key_001', taskId: 'one' });
+    assert.equal((await f.db.getLearningTasks())[0].completedAt, 0);
+    await f.db.saveLearningTask({ ...(await f.db.getLearningTasks())[0], title: 'Edited' }, false);
+    await assert.rejects(h.service.finish({}, first.operationId, true), /已被修改/);
+    assert.equal((await f.db.getLearningTasks())[0].completedAt, 0);
+    const next = await h.service.prepare({}, 'complete', { requestKey: 'complete_key_002', taskId: 'one' });
+    assert.equal((await h.service.finish({}, next.operationId, true)).status, 'saved');
+    assert.ok((await f.db.getLearningTasks())[0].completedAt > 0);
+    assert.deepEqual(h.state.cancelled, ['one']);
+    const oldCompletion = (await f.db.getLearningTasks())[0].completedAt;
+    await h.service.finish({}, next.operationId, true);
+    assert.equal((await f.db.getLearningTasks())[0].completedAt, oldCompletion);
+    assert.equal((await h.service.prepare({}, 'complete', { requestKey: 'complete_key_003', taskId: 'one' })).status, 'already_completed');
+    await assert.rejects(h.service.prepare({}, 'complete', { requestKey: 'complete_key_004', taskId: 'missing' }), /找不到/);
+  } finally { f.sql.close(); }
+});
+
+test('study deadlines use local dates, all-day semantics, relative weekdays and strict time validation', async () => {
+  const f = database();
+  try {
+    await seed(f.db); const h = studyTools(f), now = new Date(2026, 9, 31, 4).getTime();
+    assert.equal(h.service.date(h.service.day('11月10日', now)), '2026-11-10');
+    assert.equal(h.service.date(h.service.day('01-02', now)), '2027-01-02');
+    assert.equal(h.service.date(h.service.day('下周一', now)), '2026-11-02');
+    assert.equal(h.service.date(h.service.day('tomorrow', now)), '2026-11-01');
+    for (const value of ['2026-02-30', '2月30日', '下周', '0000-01-01']) assert.throws(() => h.service.day(value, now));
+    for (const extra of [{ dueTime: '24:00' }, { dueDate: '', dueTime: '10:00' }, { remindDate: '2099-11-10' },
+      { remindDate: '2099-11-11', remindTime: '12:00' }, { dueDate: '2000-01-01' }]) {
+      await assert.rejects(h.service.prepare({}, 'create', h.request(extra)));
+    }
+    const timed = await h.service.prepare({}, 'create', h.request({ dueTime: '22:30', remindDate: '2099-11-10', remindTime: '20:00' }));
+    assert.equal(timed.task.allDay, false); assert.equal(timed.task.dueTime, '22:30');
+    assert.ok(timed.task.remindAt < timed.task.dueAt);
+  } finally { f.sql.close(); }
+});
 
 test('task writes reject stale edits and resurrection, preserve delivered reminders, and use monotonic completion revisions', async () => {
   const f = database();

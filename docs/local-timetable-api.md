@@ -23,6 +23,12 @@ const thirdFriday = await LocalTimetableApi.query(context, {
 const nextClass = await LocalTimetableApi.query(context, { queryMode: 'nextClass', limit: 10 });
 const exams = await LocalTimetableApi.query(context, { queryMode: 'upcomingExams', limit: 10 });
 
+// 相对日期按设备本地日历计算；第一节课与从现在起的下一节课分开。
+const nextMonday = await LocalTimetableApi.query(context, {
+  relativeDate: 'nextMonday', queryMode: 'firstClass', limit: 10
+});
+const tomorrow = await LocalTimetableApi.query(context, { relativeDate: 'tomorrow', queryMode: 'range' });
+
 // hasMore 为 true 时，以相同日期条件继续读取。
 const nextPage = await LocalTimetableApi.query(context, {
   offset: response.result.nextOffset,
@@ -69,11 +75,12 @@ Ability 销毁时只移除属于自己的上下文；等待启动期间若上下
 
 | 参数 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `startDate` | String | 不限制日期 | `YYYY-MM-DD`，开始日期 |
-| `endDate` | String | 与另一日期相同 | `YYYY-MM-DD`，结束日期，包含当天 |
+| `startDate` | String | 不限制日期 | `YYYY-MM-DD`，开始日期；兼容单个明确相对日期，如“下周一”“明天” |
+| `endDate` | String | 与另一日期相同 | `YYYY-MM-DD`，结束日期，包含当天；相对日期仅可单独传或与 startDate 表示同一范围 |
+| `relativeDate` | String | 不限制日期 | today、tomorrow、dayAfterTomorrow、yesterday、thisWeek、nextWeek、lastWeek，或 this/next/last 加 Monday 至 Sunday；也接受“下周一”等中文 |
 | `teachingWeek` | Double（填整数） | 不限制教学周 | 1～1000；按当前选中课表起点计算，不与 startDate/endDate 混用 |
 | `dayOfWeek` | Double（填整数） | 不限制星期 | 周一 1 至周日 7；配合教学周查询某天，省略时查询整周 |
-| `queryMode` | String | `range` | `range` 普通范围；`nextClass` 下一节课；`currentClass` 正在上的课；`upcomingExams` 尚未结束的考试 |
+| `queryMode` | String | `range` | `range` 普通范围；`firstClass` 指定范围的第一节课；`nextClass` 从当前时刻起的下一节课；`currentClass` 正在上的课；`upcomingExams` 尚未结束的考试 |
 | `offset` | Double（填整数） | `0` | 非负整数，跳过匹配记录的条数 |
 | `limit` | Double（填整数） | `200` | 每页 1～500 条 |
 
@@ -88,11 +95,30 @@ Ability 销毁时只移除属于自己的上下文；等待启动期间若上下
 每条记录继续带有由应用模型计算的 teachingWeek/dayOfWeek。
 `dayOfWeek` 也可单独用于日期范围内的星期筛选，按照记录开始时间所属星期判断。
 
-`nextClass`、`currentClass`、`upcomingExams` 使用查询时的手机时钟，不能同时传日期、教学周或星期。
+`relativeDate` 不与绝对日期或 teachingWeek 混用。周一到周日为一个日历周，与教学周独立；“下周一”是下一日历周的周一，周一当天查询会得到七天后的周一。“下周”表示下周一至周日，配 dayOfWeek 可限定某一天；“下周一”与不一致的 dayOfWeek 一起传会报错。采用本地 Date 日历运算，跨月、跨年、闰年及夏令时不依赖固定 24 小时偏移。
+
+返回会带标准化的 relativeDate 及算好的 startDate/endDate。跨午夜分页时用第一次返回的绝对范围及原筛选条件继续获取，避免重新解释相对日期导致范围漂移。
+
+`firstClass` 必须带绝对日期、相对日期或教学周范围，只保留始于该范围内、开始最早的 CLASS，保留并列课程，不把考试或其他事项当成第一节课；前一天开始的跨午夜课程不计入当天第一节。它不会因为目标时间早于当前时刻而丢弃指定日期的课程。
+
+无范围的 `nextClass`、`currentClass`、`upcomingExams` 使用查询时的手机时钟。为兼容旧 Agent 把“下周一第一节课”误传为 nextClass 的情况，**nextClass 带明确日期、相对日期或教学周时规范化为 firstClass**，返回 queryMode=firstClass，并保留用户指定范围。只有 dayOfWeek、没有有限范围的 nextClass 仍拒绝。currentClass/upcomingExams 仍拒绝日期/教学周/星期冲突；指定范围考试使用 range 并筛选 EXAM。
 `nextClass` 只保留尚未开始、最早时刻的 CLASS，保留所有同一时刻并列课程；
 `currentClass` 只保留已经开始且尚未结束的 CLASS；
 `upcomingExams` 只保留尚未结束的 EXAM，按开始时间排序并支持分页。
 这些模式的 total / hasMore 描述已筛选的结果，不需要模型从全学期课程中自行找下一节或考试。
+
+### 平台同步（相对日期与第一节课）
+
+安装含本次实现的新 HAP 后，在已有 Timetable 0.1.0 端插件上同步：
+
+1. 添加可选 String 输入 `relativeDate`，说明采用上表；新增能力不修改已有意图名称和版本。
+2. `queryMode` 可选枚举增加 `firstClass`，默认值为 `range`。startDate/endDate 的说明允许单个明确相对日期；如配置了只允许 YYYY-MM-DD 的正则，需同步放宽才能使用旧字段兼容路径。
+3. 更新 Agent 角色指令为 `docs/xiaoyi-timetable-agent-prompt.txt`，保存并重新发布到测试组。云端参数、角色指令不会随 HAP 自动更新；本次代码改动没有代替平台发布。
+4. 未同步新增字段时可使用原有 startDate="下周一"、queryMode=range 查询当天，再筛选 CLASS 取最早项。日期由 HITA 计算；不需要模型先取元数据再猜下周一是哪天。
+
+待手机验收话术：“下周一的第一节课是什么”“明天有什么课”“下周有什么课”“第三周周五的课”“下一节课在哪里”。前两者应返回实际日期；第三条按日历周，第四条按教学周，第五条继续按当前设备时间。对比设备时核对相同 HAP、Agent 发布版本及实际参数，不根据自然语言回复推断模型或时区差异。
+
+2026-10-31 本地验证：73 项相关测试通过；另外在 America/New_York 时区复跑 6 项日期边界测试通过，覆盖夏令时、跨年、周日/周一及并列课程。静态检查、ArkTS 编译及签名 HAP 构建通过。尚未更新云端 Agent 配置，也未进行本轮手机端到端验收。
 
 ## 返回结构
 
@@ -131,6 +157,8 @@ return { code: response.code, result: { data: JSON.stringify(response.result) } 
 | `termStart` / `termEnd` | String | 保存的学期起止时间 |
 | `currentWeek` | 数值 | 当前教学周；学期外为 `-1` |
 | `startDate` / `endDate` | String | 生效的日期筛选，空字符串表示不限日期 |
+| `relativeDate` | String | 标准化的相对日期名称；绝对日期查询时为空 |
+| `queryMode` | String | 实际生效的模式；带明确范围的 nextClass 会返回 firstClass |
 | `total` | 数值 | 本次条件下全部匹配记录数 |
 | `offset` / `limit` / `returned` | 数值 | 当前页偏移、容量和实际返回条数 |
 | `hasMore` | Boolean | 后面是否还有记录 |

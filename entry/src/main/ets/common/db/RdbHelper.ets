@@ -26,6 +26,7 @@ import { CourseDateSelection } from '../../feature/timetable/CourseDateSelection
 import { normalizeHtmlSpaces } from '../util/HtmlSpaces';
 import { ScheduleChangeSignal } from '../util/ScheduleChangeSignal';
 import { LearningContext, LearningTask, LearningTaskKind, LearningTaskRules } from '../model/learning/LearningTask';
+import { StudyOperation, studyOperationExpired, sameStudyOperationTarget } from '../model/learning/StudyOperation';
 
 // The first prototype shipped a different schema under this name.  Use a
 // versioned store so an upgrade cannot keep an incompatible old table layout.
@@ -61,6 +62,8 @@ const CREATE_IMPORT_BASE: string =
   'signature TEXT NOT NULL)';
 
 const CREATE_BACKUP_RECEIPT: string = 'CREATE TABLE IF NOT EXISTS backup_restore_receipt (id TEXT PRIMARY KEY)';
+const CREATE_STUDY_OPERATION: string = 'CREATE TABLE IF NOT EXISTS assistant_study_operation (' +
+  'id TEXT PRIMARY KEY, requestKey TEXT NOT NULL UNIQUE, body TEXT NOT NULL)';
 const CREATE_LEARNING_TASK: string = 'CREATE TABLE IF NOT EXISTS learning_task (' +
   'id TEXT PRIMARY KEY, kind TEXT NOT NULL, title TEXT NOT NULL, note TEXT NOT NULL, ' +
   'timetableId TEXT NOT NULL, subjectId TEXT NOT NULL, courseName TEXT NOT NULL, courseCode TEXT NOT NULL, ' +
@@ -117,6 +120,7 @@ export class RdbHelper {
     await this.execSql(CREATE_IMPORT_BASE);
     await this.execSql(CREATE_BACKUP_RECEIPT);
     await this.execSql(CREATE_LEARNING_TASK);
+    await this.execSql(CREATE_STUDY_OPERATION);
     await this.ensureEventColorColumn();
     await this.repairLegacyWeihaiTimetables();
     await this.repairLegacyBenbuTimetables();
@@ -1024,6 +1028,102 @@ export class RdbHelper {
   async getLearningTasks(): Promise<LearningTask[]> {
     return RdbHelper.readRows(await this.s().query(new relationalStore.RdbPredicates('learning_task')),
       RdbHelper.learningTaskMapper, true);
+  }
+
+  private static studyOperationMapper(col: (name: string) => ValueGetter): StudyOperation {
+    return JSON.parse(col('body').str()) as StudyOperation;
+  }
+
+  async getStudyOperation(id: string, byRequestKey: boolean = false): Promise<StudyOperation | undefined> {
+    const operation: StudyOperation | undefined = RdbHelper.firstRow(await this.s().query(
+      new relationalStore.RdbPredicates('assistant_study_operation').equalTo(byRequestKey ? 'requestKey' : 'id', id)),
+      RdbHelper.studyOperationMapper, true);
+    if (operation !== undefined && studyOperationExpired(operation, Date.now())) operation.status = 'expired';
+    return operation;
+  }
+
+  async prepareStudyOperation(operation: StudyOperation): Promise<StudyOperation> {
+    let result: StudyOperation = operation;
+    await this.writeTransaction(async (tx: relationalStore.Transaction): Promise<void> => {
+      const previous: StudyOperation | undefined = RdbHelper.firstRow(await tx.query(
+        new relationalStore.RdbPredicates('assistant_study_operation').equalTo('requestKey', operation.requestKey)),
+        RdbHelper.studyOperationMapper, true);
+      if (previous !== undefined) {
+        if (previous.signature !== operation.signature) throw new Error('requestKey 已用于其他操作，请重新发起');
+        result = previous;
+        if (studyOperationExpired(result, Date.now())) result.status = 'expired';
+        return;
+      }
+      // Model retries sometimes invent a new key. Reuse an identical unconfirmed draft instead of making another.
+      const drafts: StudyOperation[] = RdbHelper.readRows(await tx.query(
+        new relationalStore.RdbPredicates('assistant_study_operation')), RdbHelper.studyOperationMapper, true);
+      const same: StudyOperation | undefined = drafts.find((item: StudyOperation): boolean =>
+        item.status === 'pending' && !studyOperationExpired(item, Date.now()) && item.signature === operation.signature &&
+        sameStudyOperationTarget(item, operation));
+      if (same !== undefined) { result = same; return; }
+      if (drafts.filter(item => item.status === 'pending' && !studyOperationExpired(item, Date.now())).length >= 64) {
+        throw new Error('待确认操作过多，请先处理已有操作');
+      }
+      if (await tx.insert('assistant_study_operation', { id: operation.id, requestKey: operation.requestKey,
+        body: JSON.stringify(operation) }) < 0) throw new Error('无法保存操作草稿');
+    });
+    return result;
+  }
+
+  /** Task and operation receipt commit together; a retry cannot recreate a task or mark an edited task complete. */
+  async finishStudyOperation(id: string, confirm: boolean): Promise<StudyOperation> {
+    let result: StudyOperation | undefined = undefined;
+    await this.writeTransaction(async (tx: relationalStore.Transaction): Promise<void> => {
+      const predicate: relationalStore.RdbPredicates = new relationalStore.RdbPredicates('assistant_study_operation').equalTo('id', id);
+      const operation: StudyOperation | undefined = RdbHelper.firstRow(await tx.query(predicate), RdbHelper.studyOperationMapper, true);
+      if (operation === undefined) throw new Error('操作不存在或已清理');
+      result = operation;
+      if (operation.status !== 'pending') return;
+      if (studyOperationExpired(operation, Date.now())) throw new Error('操作已过期，请重新发起');
+      if (confirm) {
+        const task: LearningTask = LearningTaskRules.copy(operation.task);
+        if (task.kind !== LearningTaskKind.HOMEWORK) throw new Error('此操作仅支持课程作业');
+        const message: string = operation.kind === 'create' ? LearningTaskRules.validation(task) : LearningTaskRules.storedValidation(task);
+        if (message.length > 0) throw new Error(message);
+        const taskPredicate: relationalStore.RdbPredicates = new relationalStore.RdbPredicates('learning_task').equalTo('id', task.id);
+        const previous: LearningTask | undefined = RdbHelper.firstRow(await tx.query(taskPredicate), RdbHelper.learningTaskMapper, true);
+        if (operation.kind === 'create') {
+          if (previous !== undefined) throw new Error('作业标识已存在，请重新查询');
+          const table: EasTimetable | undefined = RdbHelper.firstRow(await tx.query(
+            new relationalStore.RdbPredicates('timetable').equalTo('id', task.timetableId)), RdbHelper.timetableMapper, true);
+          const subject: EasTermSubject | undefined = RdbHelper.firstRow(await tx.query(
+            new relationalStore.RdbPredicates('subject').equalTo('id', task.subjectId).equalTo('timetableId', task.timetableId)),
+            RdbHelper.subjectMapper, true);
+          if (table === undefined || subject === undefined || subject.name !== task.courseName || subject.code !== task.courseCode) {
+            throw new Error('关联课程已变化，请重新查询后添加');
+          }
+          if (task.dueAt > 0 && LearningTaskRules.deadline(task) < Date.now()) throw new Error('截止时间已过，请重新发起');
+          if (task.remindAt > 0 && task.remindAt <= Date.now()) throw new Error('提醒时间已过，请重新发起');
+          // Prevent an identical homework already saved manually or through another confirmation.
+          const tasks: LearningTask[] = RdbHelper.readRows(await tx.query(new relationalStore.RdbPredicates('learning_task')
+            .equalTo('timetableId', task.timetableId).equalTo('subjectId', task.subjectId)), RdbHelper.learningTaskMapper, true);
+          if (tasks.some(item => item.kind === task.kind && item.title === task.title && item.note === task.note &&
+            item.dueAt === task.dueAt && item.allDay === task.allDay && item.remindAt === task.remindAt)) {
+            throw new Error('相同作业已存在，请查询已有作业');
+          }
+          task.updatedAt = Date.now();
+          if (await tx.insert('learning_task', RdbHelper.learningTaskValues(task)) < 0) throw new Error('作业保存失败');
+        } else if (operation.kind === 'complete') {
+          if (previous === undefined || previous.updatedAt !== task.updatedAt || previous.completedAt > 0) {
+            throw new Error('作业已被修改、完成或删除，请重新查询');
+          }
+          task.completedAt = Date.now();
+          task.notifiedAt = previous.notifiedAt;
+          task.updatedAt = Math.max(Date.now(), previous.updatedAt + 1);
+          if (await tx.update(RdbHelper.learningTaskValues(task), taskPredicate) !== 1) throw new Error('作业状态保存失败');
+        } else throw new Error('不支持此操作');
+        operation.task = task;
+        operation.status = 'saved';
+      } else operation.status = 'cancelled';
+      if (await tx.update({ body: JSON.stringify(operation) }, predicate) !== 1) throw new Error('操作状态保存失败');
+    });
+    if (result === undefined) throw new Error('操作未完成');
+    return result;
   }
 
   async getLearningContext(): Promise<LearningContext> {

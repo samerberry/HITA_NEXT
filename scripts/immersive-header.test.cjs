@@ -317,20 +317,21 @@ test('news blur eases across the last 52vp of the heading and ends before the do
   }
 });
 
-test('manager export material is on a fixed circle button, not on the glyph bounds', () => {
+test('manager export is a full-width list row below calendar import and uses the save picker', () => {
   const page = read('pages/TimetableManagerPage.ets');
-  assert.match(page, /else if \(deviceInfo\.apiAvailable\('26\.0\.0'\)\) \{\s*Button/);
-  assert.match(page, /Button\(\{ type: ButtonType\.Circle \}\) \{\s*SymbolGlyph\(\$r\('sys\.symbol\.doc_plaintext'\)\)[^}]+?;\s*\}\s*\.width\(44\)\s*\.height\(44\)\s*\.padding\(0\)/);
-  assert.match(page, /else \{\s*SymbolGlyph\(\$r\('sys\.symbol\.doc_plaintext'\)\)\s*\.fontSize\(HitaDesign\.iconMd\)\s*\.fontColor\(\[HitaColors\.primary\]\)\s*\.width\(44\)\s*\.height\(44\)/);
+  const actions = page.slice(page.indexOf('  private addCard()'), page.indexOf('  build()'));
+  assert.match(actions, /title: '导入日历文件'[\s\S]*HitaListRow\([\s\S]*'导出当前课表 ICS'[\s\S]*this\.showExportMenu\(\)/);
+  assert.match(page, /new picker\.DocumentViewPicker\(ctx\)\.save\(options\)/);
+  assert.match(page, /if \(uris\.length === 0\) \{\s*return;/);
+  assert.doesNotMatch(page.slice(page.indexOf('ImmersiveHeader({ barHeight: HEADER_HEIGHT })')), /showExportMenu|sys\.symbol\.doc_plaintext/);
 });
 
 test('timetable manager actions and campus selector receive the shadow-free control material', () => {
   const manager = read('pages/TimetableManagerPage.ets');
   const header = manager.slice(manager.indexOf('ImmersiveHeader({ barHeight: HEADER_HEIGHT })'));
-  assert.equal((header.match(/new CompatibleMaterialModifier\(Color\.Transparent\)/g) || []).length, 2);
+  assert.equal((header.match(/new CompatibleMaterialModifier\(Color\.Transparent\)/g) || []).length, 1);
   assert.match(header, /fontColor\(HitaColors\.error\)/);
   assert.match(header, /this\.confirmDelete\(\)/);
-  assert.match(header, /this\.showExportMenu\(\)/);
   const home = read('pages/Home.ets');
   const campus = home.slice(home.indexOf('ImmersiveHeader({ barHeight: HitaDesign.spaceXs + HitaDesign.space2xs * 2 + HitaDesign.controlHeight })'));
   assert.match(campus, /sessionCampusButton\('SHENZHEN'[\s\S]*sessionCampusButton\('BENBU'[\s\S]*sessionCampusButton\('WEIHAI'/);

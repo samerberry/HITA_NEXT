@@ -3423,7 +3423,7 @@ struct Home {
           this.moreSectionTitle('课表工具');
           Column() {
             this.desktopWidgetSettings();
-            HitaListRow({ symbol: $r('sys.symbol.checkmark_circle_fill'), title: '学习待办', subtitle: '课程作业与考试复习',
+            HitaListRow({ symbol: $r('sys.symbol.checkmark_square'), title: '学习待办', subtitle: '课程作业与考试复习',
               divider: true, onTap: () => {
                 this.openAcademicPanel(5);
               } });

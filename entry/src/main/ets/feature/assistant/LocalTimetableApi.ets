@@ -16,6 +16,7 @@ export enum TimetableQueryCode {
 export class TimetableQuery {
   startDate: string = '';
   endDate: string = '';
+  relativeDate: string = '';
   teachingWeek: number = 0;
   dayOfWeek: number = 0;
   queryMode: string = 'range';
@@ -54,6 +55,7 @@ export class TimetableQueryData {
   currentWeek: number = -1;
   startDate: string = '';
   endDate: string = '';
+  relativeDate: string = '';
   teachingWeek: number = 0;
   dayOfWeek: number = 0;
   queryMode: string = 'range';
@@ -118,6 +120,30 @@ export class LocalTimetableApi {
       if (typeof end !== 'string') throw new Error('endDate 必须是 YYYY-MM-DD 格式的字符串');
       query.endDate = end.trim();
     }
+    const relative: Object | undefined = parameters['relativeDate'];
+    if (relative !== undefined) {
+      if (typeof relative !== 'string') throw new Error('relativeDate 必须是相对日期字符串');
+      if (relative.trim().length > 0) query.relativeDate = LocalTimetableApi.relativeName(relative);
+    }
+    // Existing platform schemas may only expose startDate/endDate. Accept the same
+    // explicit relative expressions there, without asking the model to compute dates.
+    const startRelative: boolean = query.startDate.length > 0 && !/^\d{4}-\d{2}-\d{2}$/.test(query.startDate);
+    const endRelative: boolean = query.endDate.length > 0 && !/^\d{4}-\d{2}-\d{2}$/.test(query.endDate);
+    if (startRelative || endRelative) {
+      const startName: string = startRelative ? LocalTimetableApi.relativeName(query.startDate) : '';
+      const endName: string = endRelative ? LocalTimetableApi.relativeName(query.endDate) : '';
+      if (query.relativeDate.length > 0 ||
+        (query.startDate.length > 0 && !startRelative) || (query.endDate.length > 0 && !endRelative) ||
+        (startName.length > 0 && endName.length > 0 && startName !== endName)) {
+        throw new Error('相对日期不能与其他日期条件混用，请只提供一个相对日期');
+      }
+      query.relativeDate = startName.length > 0 ? startName : endName;
+      query.startDate = '';
+      query.endDate = '';
+    }
+    if (query.relativeDate.length > 0 && (query.startDate.length > 0 || query.endDate.length > 0)) {
+      throw new Error('relativeDate 与 startDate/endDate 不能同时提供');
+    }
     if (query.startDate.length > 0 && query.endDate.length === 0) query.endDate = query.startDate;
     if (query.endDate.length > 0 && query.startDate.length === 0) query.startDate = query.endDate;
     if (query.startDate.length > 0 &&
@@ -126,19 +152,32 @@ export class LocalTimetableApi {
     }
     query.teachingWeek = LocalTimetableApi.optionalInteger(parameters, 'teachingWeek', 1, 1000);
     query.dayOfWeek = LocalTimetableApi.optionalInteger(parameters, 'dayOfWeek', 1, 7);
+    const relativeDay: number = LocalTimetableApi.relativeWeekday(query.relativeDate);
+    if (relativeDay > 0) {
+      if (query.dayOfWeek > 0 && query.dayOfWeek !== relativeDay) throw new Error('相对日期与 dayOfWeek 的星期不一致');
+      query.dayOfWeek = relativeDay;
+    }
     const mode: Object | undefined = parameters['queryMode'];
     if (mode !== undefined) {
-      if (typeof mode !== 'string' || ['range', 'nextClass', 'currentClass', 'upcomingExams'].indexOf(mode) < 0) {
-        throw new Error('queryMode 必须是 range、nextClass、currentClass 或 upcomingExams');
+      if (typeof mode !== 'string' || ['range', 'firstClass', 'nextClass', 'currentClass', 'upcomingExams'].indexOf(mode) < 0) {
+        throw new Error('queryMode 必须是 range、firstClass、nextClass、currentClass 或 upcomingExams');
       }
       query.queryMode = mode;
     }
-    if (query.teachingWeek > 0 && query.startDate.length > 0) {
+    if (query.teachingWeek > 0 && (query.startDate.length > 0 || query.relativeDate.length > 0)) {
       throw new Error('teachingWeek 与日期范围不能同时提供；教学周日期由 HITA 计算');
     }
-    if (query.queryMode !== 'range' &&
-      (query.startDate.length > 0 || query.teachingWeek > 0 || query.dayOfWeek > 0)) {
-      throw new Error('当前、下一节课程或未来考试由设备时间确定，不要同时提供日期、教学周或星期');
+    const scoped: boolean = query.startDate.length > 0 || query.relativeDate.length > 0 || query.teachingWeek > 0;
+    // Older prompts can confuse "the first class next Monday" with nextClass.
+    // An explicit calendar scope is authoritative; return its earliest CLASS,
+    // never silently discard the scope and answer with today's next class.
+    if (query.queryMode === 'nextClass' && scoped) query.queryMode = 'firstClass';
+    if (query.queryMode === 'firstClass' && !scoped) {
+      throw new Error('firstClass 需要指定日期、相对日期或教学周；从现在起的下一节课请用 nextClass');
+    }
+    if (['nextClass', 'currentClass', 'upcomingExams'].indexOf(query.queryMode) >= 0 &&
+      (scoped || query.dayOfWeek > 0)) {
+      throw new Error('当前课程和未来查询模式按设备当前时间计算；指定日期查课请用 range，查第一节课请用 firstClass');
     }
     const offset: Object | undefined = parameters['offset'];
     if (offset !== undefined) {
@@ -155,6 +194,65 @@ export class LocalTimetableApi {
       query.limit = limit;
     }
     return query;
+  }
+
+  /** Shared by deadline tools; rejects a whole week where a single calendar day is required. */
+  static resolveSingleDay(value: string, now: number): number {
+    const query: TimetableQuery = new TimetableQuery();
+    query.relativeDate = LocalTimetableApi.relativeName(value);
+    query.dayOfWeek = LocalTimetableApi.relativeWeekday(query.relativeDate);
+    const result: TimetableQueryData = new TimetableQueryData();
+    LocalTimetableApi.resolveRelative(result, query, now);
+    if (result.startDate !== result.endDate) throw new Error('请提供具体到某一天的日期');
+    return LocalTimetableApi.parseDate(result.startDate);
+  }
+
+  private static relativeName(value: string): string {
+    const text: string = value.trim().replace(/星期|礼拜/g, '周').replace(/^这周/, '本周');
+    const names: Record<string, string> = {
+      '今天': 'today', '明天': 'tomorrow', '后天': 'dayAfterTomorrow', '昨天': 'yesterday',
+      '本周': 'thisWeek', '下周': 'nextWeek', '上周': 'lastWeek'
+    };
+    if (Object.keys(names).indexOf(text) >= 0) return names[text];
+    if (['today', 'tomorrow', 'dayAfterTomorrow', 'yesterday', 'thisWeek', 'nextWeek', 'lastWeek'].indexOf(text) >= 0) return text;
+    const weekdays: string[] = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    for (const prefix of ['this', 'next', 'last']) {
+      for (const weekday of weekdays) {
+        if (text === prefix + weekday) return text;
+      }
+    }
+    const match: RegExpMatchArray | null = text.match(/^(本|下|上)周([一二三四五六日天])$/);
+    if (match !== null) {
+      const day: number = match[2] === '天' ? 6 : '一二三四五六日'.indexOf(match[2]);
+      return (match[1] === '本' ? 'this' : match[1] === '下' ? 'next' : 'last') + weekdays[day];
+    }
+    throw new Error('不支持该相对日期，请使用今天、明天、后天、本周、下周、上周或下周一等明确日期');
+  }
+
+  private static relativeWeekday(value: string): number {
+    const weekdays: string[] = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    return weekdays.findIndex((day: string): boolean => value.endsWith(day)) + 1;
+  }
+
+  private static resolveRelative(result: TimetableQueryData, query: TimetableQuery, now: number): void {
+    if (query.relativeDate.length === 0) return;
+    const start: Date = new Date(now);
+    start.setHours(0, 0, 0, 0);
+    let days: number = 1;
+    const value: string = query.relativeDate;
+    if (value === 'tomorrow' || value === 'dayAfterTomorrow' || value === 'yesterday') {
+      start.setDate(start.getDate() + (value === 'tomorrow' ? 1 : value === 'dayAfterTomorrow' ? 2 : -1));
+    } else if (value !== 'today') {
+      // Calendar weeks start on Monday, independently of the semester's teaching weeks.
+      const weekOffset: number = value.startsWith('next') ? 1 : value.startsWith('last') ? -1 : 0;
+      start.setDate(start.getDate() - ((start.getDay() + 6) % 7) + weekOffset * 7);
+      if (query.dayOfWeek > 0) start.setDate(start.getDate() + query.dayOfWeek - 1);
+      else days = 7;
+    }
+    const end: Date = new Date(start.getTime());
+    end.setDate(end.getDate() + days - 1);
+    result.startDate = LocalTimetableApi.dateTime(start.getTime()).slice(0, 10);
+    result.endDate = LocalTimetableApi.dateTime(end.getTime()).slice(0, 10);
   }
 
   private static optionalInteger(parameters: Record<string, Object>, key: string,
@@ -188,11 +286,13 @@ export class LocalTimetableApi {
     LocalTimetableApi.setClock(result, now);
     result.startDate = query.startDate;
     result.endDate = query.endDate;
+    result.relativeDate = query.relativeDate;
     result.teachingWeek = query.teachingWeek;
     result.dayOfWeek = query.dayOfWeek;
     result.queryMode = query.queryMode;
     result.offset = query.offset;
     result.limit = query.limit;
+    LocalTimetableApi.resolveRelative(result, query, now);
     const timetable: EasTimetable | undefined = snapshot.timetable;
     if (timetable === undefined) {
       response.code = TimetableQueryCode.NO_TIMETABLE;
@@ -235,8 +335,9 @@ export class LocalTimetableApi {
         if (event.type !== EasEventType.EXAM || event.to <= now) continue;
       } else if (query.queryMode !== 'range') {
         if (event.type !== EasEventType.CLASS) continue;
-        if (query.queryMode === 'nextClass') {
-          if (event.from <= now) continue;
+        if (query.queryMode === 'nextClass' || query.queryMode === 'firstClass') {
+          if (query.queryMode === 'firstClass' && event.from < from) continue;
+          if (query.queryMode === 'nextClass' && event.from <= now) continue;
           nextStart = Math.min(nextStart, event.from);
         } else if (event.from > now || event.to <= now) {
           continue;
@@ -244,7 +345,7 @@ export class LocalTimetableApi {
       }
       matching.push(event);
     }
-    if (query.queryMode === 'nextClass') {
+    if (query.queryMode === 'nextClass' || query.queryMode === 'firstClass') {
       matching = matching.filter((event: EasEventItem): boolean => event.from === nextStart);
     }
     hilog.info(0x0000, 'HitaQuery',

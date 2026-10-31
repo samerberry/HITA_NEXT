@@ -42,7 +42,7 @@ export default class TimetableIntentExecutor extends InsightIntentExecutor {
 
   private static queryParameters(parameters: Record<string, Object>): Record<string, Object> {
     const query: Record<string, Object> = {};
-    const keys: string[] = ['startDate', 'endDate', 'teachingWeek', 'dayOfWeek', 'queryMode', 'offset', 'limit'];
+    const keys: string[] = ['startDate', 'endDate', 'relativeDate', 'teachingWeek', 'dayOfWeek', 'queryMode', 'offset', 'limit'];
     const numericKeys: string[] = ['offset', 'limit', 'teachingWeek', 'dayOfWeek'];
     for (const key of keys) {
       const value: Object | undefined = parameters[key];

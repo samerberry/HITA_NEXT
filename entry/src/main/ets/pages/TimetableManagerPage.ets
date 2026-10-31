@@ -1,11 +1,10 @@
-import { CompatibleLightModifier } from '../common/theme/CompatibleLightModifier';
 import { HitaDesign } from '../common/theme/HitaDesign';
 /** Android HITA-style timetable library. */
 import { common } from '@kit.AbilityKit';
-import { deviceInfo } from '@kit.BasicServicesKit';
 import { DeleteParticleCard } from '../common/components/DeleteParticleCard';
 import { DeleteEffectController } from '../common/util/DeleteEffectController';
 import { HeaderBackButton } from '../common/components/HeaderBackButton';
+import { HitaListRow } from '../common/components/HitaListRow';
 import { ImmersiveHeader } from '../common/components/ImmersiveHeader';
 import { CompatibleMaterialModifier } from '../common/theme/CompatibleMaterialModifier';
 import { HeaderFadeMask } from '../common/components/HeaderFadeMask';
@@ -320,31 +319,20 @@ struct TimetableManagerPage {
 
   @Builder
   private addCard() {
-    Column({ space: 4 }) {
-      this.addActionGlyph($r('sys.symbol.plus'), '新建课表', () => { this.createEmptyTimetable(); });
-      this.addActionGlyph($r('sys.symbol.repeat_1'), '教务导入', () => { this.openImportPage(); });
-      this.addActionGlyph($r('sys.symbol.doc_plaintext'), '导入日历文件', () => { this.importIcs(); });
+    Column() {
+      HitaListRow({ symbol: $r('sys.symbol.plus'), title: '新建课表',
+        onTap: () => { this.createEmptyTimetable(); } });
+      HitaListRow({ symbol: $r('sys.symbol.repeat_1'), title: '教务导入', divider: true,
+        onTap: () => { this.openImportPage(); } });
+      HitaListRow({ symbol: $r('sys.symbol.doc_plaintext'), title: '导入日历文件', divider: true,
+        onTap: () => { this.importIcs(); } });
+      HitaListRow({ symbol: $r('sys.symbol.upload'),
+        title: this.exporting ? '正在导出…' : '导出当前课表 ICS', divider: true,
+        onTap: () => { this.showExportMenu(); } });
     }
-    .width('100%').padding(8).backgroundColor($r('app.color.hita_surface'))
+    .width('100%').backgroundColor($r('app.color.hita_surface'))
     .borderRadius(HitaDesign.cardRadius)
-  }
-
-  @Builder
-  private addActionGlyph(symbol: Resource, label: string, action: () => void) {
-    Button({ type: ButtonType.Normal }) {
-      Row({ space: HitaDesign.gap }) {
-        SymbolGlyph(symbol).fontSize(HitaDesign.iconMd).fontColor([HitaColors.primary]).width(32)
-        Text(label).fontSize(HitaDesign.body).fontColor(HitaColors.onSurface).layoutWeight(1)
-          .textAlign(TextAlign.Start)
-        SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(HitaDesign.iconXs)
-          .fontColor([HitaColors.onSurfaceVariant]).width(16).accessibilityLevel('no')
-      }.width('100%')
-    }
-    .width('100%').height(HitaDesign.buttonHeight).padding({ left: 8, right: 8 })
-    .backgroundColor(Color.Transparent).borderRadius(HitaDesign.fieldRadius)
-    .attributeModifier(new CompatibleLightModifier(HitaDesign.fieldRadius))
-    .accessibilityText(label).enabled(!this.adding && !this.loading && !this.deleting)
-    .onClick(action)
+    .enabled(!this.adding && !this.loading && !this.deleting && !this.exporting)
   }
 
   build() {
@@ -423,31 +411,6 @@ struct TimetableManagerPage {
               .onClick(() => {
                 this.confirmDelete();
               })
-          } else if (deviceInfo.apiAvailable('26.0.0')) {
-            Button({ type: ButtonType.Circle }) {
-              SymbolGlyph($r('sys.symbol.doc_plaintext'))
-                .fontSize(HitaDesign.iconMd)
-                .fontColor([CompatibleMaterialModifier.foreground(HitaColors.primary)]);
-            }
-            .width(44)
-            .height(44)
-            .padding(0)
-            .flexShrink(0)
-            .backgroundColor(Color.Transparent)
-            .attributeModifier(new CompatibleMaterialModifier(Color.Transparent))
-            .accessibilityText('导出课表')
-            .onClick(() => {
-              this.showExportMenu();
-            });
-          } else {
-            SymbolGlyph($r('sys.symbol.doc_plaintext'))
-              .fontSize(HitaDesign.iconMd)
-              .fontColor([HitaColors.primary])
-              .width(44)
-              .height(44)
-              .onClick(() => {
-                this.showExportMenu();
-              });
           }
         }
         .width('100%')

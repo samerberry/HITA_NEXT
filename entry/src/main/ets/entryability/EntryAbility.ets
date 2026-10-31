@@ -108,6 +108,14 @@ export default class EntryAbility extends UIAbility {
       hilog.info(DOMAIN, TAG, 'Succeeded in loading content.');
       AppearanceStore.getInstance().onContentReady();
       this.contentReady = true;
+      TimetableExecutionContext.current()?.setStudyOpener(async (id: string): Promise<void> => {
+        const mainWindow: window.Window = await window.getLastWindow(this.context);
+        const router = mainWindow.getUIContext().getRouter();
+        AppStorage.setOrCreate('hita_study_operation', id);
+        if (!router.getState().name.endsWith('StudyOperationConfirmPage')) {
+          await router.pushUrl({ url: 'pages/StudyOperationConfirmPage' });
+        }
+      });
       if (this.campusOperation.length > 0) void this.openCampusConfirmation();
     });
   }

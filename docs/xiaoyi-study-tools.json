@@ -1,0 +1,70 @@
+{
+  "description": "小艺端插件手动配置对照表，不是平台一键导入文件。所有工具均需启用 result.data 的融合生成。",
+  "bundleName": "cn.berry.hitanext",
+  "abilityName": "EntryAbility",
+  "domain": "hita",
+  "intentVersion": "0.1.0",
+  "output": {
+    "code": { "type": "Double", "description": "0执行成功；2参数错误；3执行失败；4工具或模式不支持。code=0仍需检查data中的status。" },
+    "result": { "type": "Object", "children": {
+      "data": { "type": "String", "required": true, "description": "完整JSON文本，解析后读取status、records、operationId或task等字段；needs_confirmation不代表保存。" }
+    } }
+  },
+  "tools": [
+    {
+      "intentName": "StudyQuery",
+      "executeMode": "background",
+      "description": "搜索当前选中课表的课程，或查询实际课程作业。返回真实ID；任务失败不能当作没有作业。",
+      "inputs": {
+        "action": { "type": "String", "required": true, "enum": ["courses", "tasks"], "description": "courses搜索课程；tasks查询作业。" },
+        "keyword": { "type": "String", "description": "课程名/课程代码关键词；tasks时匹配作业标题或课程名。" },
+        "subjectId": { "type": "String", "description": "tasks可选，按实际课程ID精确筛选。" },
+        "status": { "type": "String", "enum": ["pending", "completed", "all"], "default": "pending", "description": "作业状态；默认未完成，包括逾期。" },
+        "dueDate": { "type": "String", "description": "tasks可选，按截止日期查询，例如2026-11-10、11月10日、明天。" },
+        "offset": { "type": "Double", "default": 0, "description": "非负整数；分页偏移。" },
+        "limit": { "type": "Double", "default": 10, "description": "1至50的整数；hasMore为true时继续读取。" }
+      }
+    },
+    {
+      "intentName": "PrepareHomework",
+      "executeMode": "background",
+      "description": "为课程作业准备待确认草稿，不会直接保存。只给截止日期即可，不要求地点和具体时刻。拿到operationId后调用ConfirmLearningOperation。",
+      "inputs": {
+        "requestKey": { "type": "String", "required": true, "description": "8至80位字母数字横线下划线；同一请求重试复用，改变内容则使用新值。" },
+        "courseName": { "type": "String", "description": "关联课程名称，与subjectId至少提供一个；歧义时根据candidates请用户选择。" },
+        "subjectId": { "type": "String", "description": "课程搜索返回的真实ID，优先于courseName；不能编造。" },
+        "title": { "type": "String", "description": "作业名称，可省略，默认课程名加作业；最多120字符。" },
+        "note": { "type": "String", "description": "作业内容/备注，最多4000字符。" },
+        "dueDate": { "type": "String", "description": "截止日期，支持完整日期、11月10日、明天、下周一；不指定年份就原样传，由HITA计算。可省略。" },
+        "dueTime": { "type": "String", "description": "仅用户明确提供时填写HH:mm；省略表示全天截止，需要同时有dueDate。" },
+        "remindDate": { "type": "String", "description": "仅用户明确要求提醒时填写；与remindTime成对提供。" },
+        "remindTime": { "type": "String", "description": "HH:mm，需为未来且不晚于截止时间；用户未要求提醒时省略。" }
+      }
+    },
+    {
+      "intentName": "PrepareTaskCompletion",
+      "executeMode": "background",
+      "description": "准备完成某条课程作业。先查询真实taskId，同名多条先请用户选择；准备不代表已经完成。",
+      "inputs": {
+        "requestKey": { "type": "String", "required": true, "description": "本次唯一请求标识，8至80位字母数字横线下划线；重试复用。" },
+        "taskId": { "type": "String", "required": true, "description": "StudyQuery返回的实际taskId；不得使用subjectId或编造ID。" }
+      }
+    },
+    {
+      "intentName": "LearningOperation",
+      "executeMode": "background",
+      "description": "查询准备操作的真实回执。用户在HITA确认返回后调用；只有status=saved才可报告操作完成，不连续轮询等待用户。",
+      "inputs": {
+        "operationId": { "type": "String", "required": true, "description": "准备工具返回的原始operationId。" }
+      }
+    },
+    {
+      "intentName": "ConfirmLearningOperation",
+      "executeMode": "foreground",
+      "description": "打开HITA本机作业确认页，让用户确认添加或完成作业。返回needs_confirmation仅代表等待确认，不能报告已经保存。",
+      "inputs": {
+        "operationId": { "type": "String", "required": true, "description": "准备工具返回的原始operationId。" }
+      }
+    }
+  ]
+}

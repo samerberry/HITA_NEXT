@@ -9,6 +9,16 @@
         "ability": "EntryAbility",
         "executeMode": ["background"]
       }
-    }
+    },
+    { "intentName": "StudyQuery", "domain": "hita", "intentVersion": "0.1.0",
+      "srcEntry": "./ets/entryability/StudyIntentExecutor.ets", "uiAbility": { "ability": "EntryAbility", "executeMode": ["background"] } },
+    { "intentName": "PrepareHomework", "domain": "hita", "intentVersion": "0.1.0",
+      "srcEntry": "./ets/entryability/StudyIntentExecutor.ets", "uiAbility": { "ability": "EntryAbility", "executeMode": ["background"] } },
+    { "intentName": "PrepareTaskCompletion", "domain": "hita", "intentVersion": "0.1.0",
+      "srcEntry": "./ets/entryability/StudyIntentExecutor.ets", "uiAbility": { "ability": "EntryAbility", "executeMode": ["background"] } },
+    { "intentName": "LearningOperation", "domain": "hita", "intentVersion": "0.1.0",
+      "srcEntry": "./ets/entryability/StudyIntentExecutor.ets", "uiAbility": { "ability": "EntryAbility", "executeMode": ["background"] } },
+    { "intentName": "ConfirmLearningOperation", "domain": "hita", "intentVersion": "0.1.0",
+      "srcEntry": "./ets/entryability/StudyIntentExecutor.ets", "uiAbility": { "ability": "EntryAbility", "executeMode": ["foreground"] } }
   ]
 }

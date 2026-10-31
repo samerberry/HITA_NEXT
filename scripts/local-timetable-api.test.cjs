@@ -190,7 +190,7 @@ test('local calendar boundaries are correct across daylight saving transitions',
 test('malformed dates, reversed ranges, and invalid pagination fail before touching local data', async () => {
   for (const params of [
     { startDate: '2026-02-29' }, { startDate: '2026-13-01' }, { startDate: '2026-04-31' },
-    { startDate: '明天' }, { startDate: '2026-10-30T00:00:00Z' }, { startDate: '0001-01-01' },
+    { startDate: '将来某一天' }, { startDate: '2026-10-30T00:00:00Z' }, { startDate: '0001-01-01' },
     { startDate: 12 }, { endDate: null }, { startDate: '2026-10-31', endDate: '2026-10-30' },
     { offset: -1 }, { offset: 0.5 }, { offset: '0' }, { offset: Infinity },
     { limit: 0 }, { limit: 501 }, { limit: NaN }, { limit: '2' }
@@ -505,12 +505,137 @@ test('invalid or conflicting semantic conditions fail before reading data', asyn
     { teachingWeek: 0 }, { teachingWeek: 1.5 }, { teachingWeek: 1001 }, { teachingWeek: '3' },
     { dayOfWeek: 0 }, { dayOfWeek: 8 }, { dayOfWeek: true }, { queryMode: 'next' },
     { teachingWeek: 3, startDate: '2026-10-16' },
-    { queryMode: 'nextClass', teachingWeek: 3 }, { queryMode: 'nextClass', dayOfWeek: 5 },
+    { queryMode: 'firstClass' }, { queryMode: 'nextClass', dayOfWeek: 5 },
     { queryMode: 'currentClass', endDate: '2026-10-31' }
   ]) {
     const h = harness();
     assert.equal((await h.query(params)).code, 2, JSON.stringify(params));
     assert.deepEqual(h.state.calls, []);
+  }
+});
+
+test('relative weekdays use device calendar weeks across Sunday, Monday and year boundaries', async t => {
+  const h = harness();
+  let now = dayAt(31, 4);
+  t.mock.method(Date, 'now', () => now);
+  for (const [clock, relativeDate, expected] of [
+    [dayAt(31, 4), '下周一', '2026-11-02'],
+    [dayAt(1, 23, 10), '下星期一', '2026-11-02'],
+    [dayAt(2, 0, 10), '下周一', '2026-11-09'],
+    [dayAt(31, 23, 11), 'nextMonday', '2027-01-04'],
+    [dayAt(1, 1, 0, 2027), '上周日', '2026-12-27'],
+    [dayAt(31, 23, 11), '明天', '2027-01-01'],
+    [dayAt(28, 23, 1, 2028), '后天', '2028-03-01'],
+    [dayAt(31, 4), '本周一', '2026-10-26']
+  ]) {
+    now = clock;
+    const response = await h.query({ relativeDate });
+    assert.equal(response.code, 0);
+    assert.equal(response.result.startDate, expected, `${relativeDate} at ${new Date(clock)}`);
+    assert.equal(response.result.endDate, expected);
+  }
+  const nextWeek = (await h.query({ relativeDate: 'nextWeek' })).result;
+  assert.equal(nextWeek.startDate, '2026-11-02');
+  assert.equal(nextWeek.endDate, '2026-11-08');
+  const friday = (await h.query({ relativeDate: 'nextWeek', dayOfWeek: 5 })).result;
+  assert.equal(friday.startDate, '2026-11-06');
+  assert.equal(friday.endDate, '2026-11-06');
+});
+
+test('relative dates honor local calendar days across daylight-saving changes', async t => {
+  const h = harness();
+  // When run under America/New_York these dates cross 23- and 25-hour days.
+  let now = dayAt(7, 23, 2);
+  t.mock.method(Date, 'now', () => now);
+  assert.equal((await h.query({ relativeDate: 'dayAfterTomorrow' })).result.startDate, '2026-03-09');
+  now = dayAt(31, 23);
+  const week = (await h.query({ relativeDate: 'nextWeek' })).result;
+  assert.equal(week.startDate, '2026-11-02');
+  assert.equal(week.endDate, '2026-11-08');
+});
+
+test('first class on a relative day excludes exams, retains earliest ties and respects pagination', async t => {
+  const h = harness();
+  t.mock.method(Date, 'now', () => dayAt(31, 4));
+  const at = (id, day, hour, type = 'CLASS') => Object.assign(h.event(id, day, type), {
+    from: dayAt(day, hour, 10), to: dayAt(day, hour + 1, 10)
+  });
+  h.state.events = [at('later', 2, 10), at('first-b', 2, 8), at('first-a', 2, 8),
+    at('exam', 2, 7, 'EXAM'), at('note', 2, 6, 'OTHER'), at('tuesday', 3, 8),
+    Object.assign(at('overnight', 1, 23), { to: dayAt(2, 1, 10) })];
+  const first = await h.query({ relativeDate: '下周一', queryMode: 'firstClass', limit: 1 });
+  assert.equal(first.code, 0);
+  assert.equal(first.result.startDate, '2026-11-02');
+  assert.equal(first.result.queryMode, 'firstClass');
+  assert.equal(first.result.total, 2);
+  assert.equal(first.result.hasMore, true);
+  assert.equal(first.result.courses[0].id, 'first-a');
+  const next = (await h.query({ relativeDate: 'nextMonday', queryMode: 'firstClass',
+    offset: first.result.nextOffset, limit: 1 })).result;
+  assert.equal(next.courses[0].id, 'first-b');
+  assert.equal(next.hasMore, false);
+  // An explicitly requested day is authoritative, even if its first class has started.
+  t.mock.method(Date, 'now', () => dayAt(2, 9, 10));
+  const past = (await h.query({ startDate: '2026-11-02', queryMode: 'firstClass' })).result;
+  assert.deepEqual(past.courses.map(c => c.id), ['first-a', 'first-b']);
+  const upcoming = (await h.query({ queryMode: 'nextClass' })).result;
+  assert.deepEqual(upcoming.courses.map(c => c.id), ['later']);
+  const empty = await h.query({ startDate: '2026-11-04', queryMode: 'firstClass' });
+  assert.equal(empty.code, 0);
+  assert.equal(empty.result.total, 0);
+  assert.equal(empty.result.isComplete, true);
+  h.state.events = h.state.events.filter(e => e.type !== 'CLASS');
+  const noClass = (await h.query({ startDate: '2026-11-02', queryMode: 'firstClass' })).result;
+  assert.equal(noClass.total, 0);
+  assert.equal(noClass.isComplete, true);
+});
+
+test('scoped legacy nextClass queries return the first class in that scope without dropping its date', async t => {
+  const h = harness();
+  t.mock.method(Date, 'now', () => dayAt(31, 4));
+  for (const scope of [
+    { startDate: '2026-10-30' }, { teachingWeek: 9, dayOfWeek: 5 },
+    { relativeDate: '本周五' }, { startDate: '本周五', endDate: 'thisFriday' }
+  ]) {
+    const response = await h.query({ ...scope, queryMode: 'nextClass' });
+    assert.equal(response.code, 0);
+    assert.equal(response.result.queryMode, 'firstClass');
+    assert.equal(response.result.startDate, '2026-10-30');
+    assert.deepEqual(response.result.courses.map(c => c.id), ['lesson-a']);
+  }
+});
+
+test('ambiguous or conflicting relative dates fail before reading the database', async () => {
+  for (const params of [
+    { relativeDate: 1 }, { relativeDate: '下下周' }, { relativeDate: '周末以后' },
+    { relativeDate: 'nextMonday', dayOfWeek: 2 }, { relativeDate: 'nextWeek', teachingWeek: 3 },
+    { relativeDate: 'tomorrow', startDate: '2026-11-02' },
+    { startDate: '下周一', endDate: '下周二' }, { startDate: '下周一', endDate: '2026-11-02' },
+    { relativeDate: 'tomorrow', queryMode: 'currentClass' },
+    { relativeDate: 'tomorrow', queryMode: 'upcomingExams' }
+  ]) {
+    const h = harness();
+    const response = await h.query(params);
+    assert.equal(response.code, 2, JSON.stringify(params));
+    assert.deepEqual(h.state.calls, []);
+  }
+});
+
+test('intent accepts relative dates through new and existing platform fields and transports resolved dates', async t => {
+  const h = harness();
+  t.mock.method(Date, 'now', () => dayAt(31, 4));
+  const Executor = h.load('entryability/TimetableIntentExecutor.ets').default;
+  h.load('feature/assistant/TimetableExecutionContext.ets').TimetableExecutionContext.attach(h.context, Promise.resolve());
+  for (const params of [
+    { relativeDate: 'nextWeek', dayOfWeek: '1', queryMode: 'firstClass' },
+    { startDate: '下周一', endDate: null, queryMode: 'nextClass' }
+  ]) {
+    const response = await new Executor().onExecuteInUIAbilityBackgroundMode('Timetable', params);
+    const data = JSON.parse(response.result.data);
+    assert.equal(response.code, 0);
+    assert.equal(data.startDate, '2026-11-02');
+    assert.equal(data.endDate, '2026-11-02');
+    assert.equal(data.queryMode, 'firstClass');
   }
 });
 
