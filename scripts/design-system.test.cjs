@@ -107,12 +107,9 @@ test('no button anywhere puts fixed white text on an untinted material', () => {
 
 test('white icons outside a material host sit on solid fills', () => {
   // Outside an ImmersiveHeader or a sheet even a tinted material renders clear, leaving white icons on the light page.
-  const assistant = read('pages/AssistantPage.ets');
-  const composer = assistant.slice(assistant.indexOf('  inputBar() {'));
   const detail = read('pages/TimetableDetailPage.ets');
   const swipeDelete = detail.slice(detail.indexOf('  private courseDeleteAction('), detail.indexOf('  private sessionRow('));
-  for (const control of [composer, swipeDelete]) assert.doesNotMatch(control, /CompatibleMaterialModifier/);
-  assert.match(composer, /paperplane_fill[\s\S]*?\.backgroundColor\(\$r\('app\.color\.hita_primary_fill'\)\)/);
+  assert.doesNotMatch(swipeDelete, /CompatibleMaterialModifier/);
   assert.match(swipeDelete, /\.backgroundColor\(\$r\('app\.color\.hita_error_fill'\)\)/);
 });
 

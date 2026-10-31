@@ -85,18 +85,15 @@ struct CampusSkillConfirmPage {
     return this.time(event.from) + ' 至 ' + this.time(event.to) + (event.place.length > 0 ? '，' + event.place : '');
   }
 
-  @Builder
-  private header() {
-    Row({ space: HitaDesign.gap }) {
-      HeaderBackButton({ onBack: () => { if (!this.busy) this.close(); } })
-      Text('确认小艺操作').fontSize(HitaDesign.title).fontWeight(FontWeight.Medium)
-        .fontColor(CompatibleMaterialModifier.foreground(HitaColors.onSurface))
-    }.width('100%').padding({ left: HitaDesign.inset, right: HitaDesign.inset })
-  }
-
   build() {
     Column({ space: HitaDesign.sectionGap }) {
-      ImmersiveHeader({ barHeight: HitaDesign.headerHeight, content: () => { this.header(); } })
+      ImmersiveHeader({ barHeight: HitaDesign.headerHeight }) {
+        Row({ space: HitaDesign.gap }) {
+          HeaderBackButton({ onBack: () => { if (!this.busy) this.close(); } })
+          Text('确认小艺操作').fontSize(HitaDesign.title).fontWeight(FontWeight.Medium)
+            .fontColor(CompatibleMaterialModifier.foreground(HitaColors.onSurface))
+        }.width('100%').padding({ left: HitaDesign.inset, right: HitaDesign.inset })
+      }
       Scroll() {
         Column({ space: HitaDesign.spaceLg }) {
           if (this.operation !== undefined) {
