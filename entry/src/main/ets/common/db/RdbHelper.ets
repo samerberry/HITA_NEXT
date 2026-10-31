@@ -529,11 +529,11 @@ export class RdbHelper {
   }
 
   /** 按 -startTime 排序的全量课表。 */
-  async getTimetables(): Promise<EasTimetable[]> {
+  async getTimetables(strict: boolean = false): Promise<EasTimetable[]> {
     const pred: relationalStore.RdbPredicates = new relationalStore.RdbPredicates('timetable');
     pred.orderByDesc('startTime');
-    const rs: relationalStore.ResultSet | null = await this.qry(pred);
-    return RdbHelper.readRows(rs, RdbHelper.timetableMapper);
+    const rs: relationalStore.ResultSet | null = await (strict ? this.s().query(pred) : this.qry(pred));
+    return RdbHelper.readRows(rs, RdbHelper.timetableMapper, strict);
   }
 
   async getTimetableById(id: string, strict: boolean = false): Promise<EasTimetable | undefined> {

@@ -12,12 +12,13 @@ import { CourseDetailContent } from '../feature/timetable/views/CourseDetailCont
 import { common } from '@kit.AbilityKit';
 import { formProvider } from '@kit.FormKit';
 import { deviceInfo } from '@kit.BasicServicesKit';
-import { CommonModifier, curves, FrameCallback, FrameNode, KeyboardAvoidMode, SymbolGlyphModifier } from '@kit.ArkUI';
+import { curves, FrameCallback, FrameNode, KeyboardAvoidMode, SymbolGlyphModifier } from '@kit.ArkUI';
 import { HeaderBackButton } from '../common/components/HeaderBackButton';
 import { ImmersiveHeader } from '../common/components/ImmersiveHeader';
 import { ImmersiveEventCard } from '../common/components/ImmersiveEventCard';
 import { HitaButton, HitaButtonVariant } from '../common/components/HitaButton';
 import { HitaListRow, HitaRowAccessory } from '../common/components/HitaListRow';
+import { SplitDock } from '../common/components/SplitDock';
 import { HitaTag, HitaTagTone } from '../common/components/HitaTag';
 import { HeaderFadeMask } from '../common/components/HeaderFadeMask';
 import { HeaderFade } from '../common/theme/HeaderFade';
@@ -25,7 +26,6 @@ import { TimetableTheme } from '../common/theme/TimetableTheme';
 import { TimetableBackdropColors, TimetableBackdropPixels } from '../common/theme/TimetableBackdrop';
 import { AppearanceMode, AppearanceStore } from '../common/theme/AppearanceStore';
 import { NAV_BAR_INSET_FALLBACK, STATUS_BAR_INSET_FALLBACK } from '../common/theme/StatusBarInset';
-import { CompatibleDockModifier } from '../common/theme/CompatibleDockModifier';
 import { CompatibleMaterialModifier } from '../common/theme/CompatibleMaterialModifier';
 import { CompatibleSheetMaterial } from '../common/theme/CompatibleSheetMaterial';
 import { CompatibleLightModifier } from '../common/theme/CompatibleLightModifier';
@@ -35,7 +35,8 @@ import { DockLightOverlay } from '../common/components/DockLightOverlay';
 import { DockLightController } from '../common/util/DockLightEffect';
 import { DOCK_HOLD_DELAY_MS, DockNavigationGuard } from '../common/util/DockNavigationGuard';
 import { display as screenDisplay } from '@kit.ArkUI';
-import { DOCK_HANDEDNESS_DURATION, DOCK_RAIL_INSET, DOCK_RAIL_THICKNESS, DOCK_SIDE_MARGIN, DOCK_WIDTH,
+import { DOCK_ITEM_COUNT, DOCK_HANDEDNESS_DURATION, DOCK_RAIL_INSET, DOCK_RAIL_THICKNESS, DOCK_SIDE_MARGIN, DOCK_WIDTH,
+  DOCK_NAV_WIDTH, DOCK_NATIVE_PADDING, DOCK_ACTION_START, DOCK_ACTION_SIZE,
   DOCK_GUTTER_ACTION_EDGE, DOCK_RAIL_EXIT, DOCK_RAIL_MASK_WIDTH, DOCK_RAIL_MIN_TABLET_WIDTH, dockRailMode, dockRailOnRight, dockWideFoldScreen, dockSideOffset } from '../common/util/DockHandedness';
 import { DockRail } from '../common/components/DockRail';
 import { FLOATING_ACTION_EXIT_DURATION, FLOATING_ACTION_GAP, floatingActionExitProgress } from '../feature/timetable/views/FloatingActionsMotion';
@@ -149,7 +150,7 @@ function tabPage(bottomInset: number, background: ResourceColor, leftInset: numb
   .expandSafeArea([SafeAreaType.SYSTEM, SafeAreaType.KEYBOARD], [SafeAreaEdge.BOTTOM])
 }
 
-const DOCK_BAR_ID: string = 'home-dock-bar';
+const DOCK_GROUP_ID: string = 'home-dock-group';
 
 class TimetableMarqueeCallback extends FrameCallback {
   private callback: (timeMs: number) => void;
@@ -294,7 +295,7 @@ struct Home {
   private tabsController: TabsController = new TabsController();
   private timetableDateBottom: number = TIMETABLE_CHROME_FALLBACK;
   private weekGestureActive: boolean = false;
-  private dockNavigation: DockNavigationGuard = new DockNavigationGuard();
+  private dockNavigation: DockNavigationGuard = new DockNavigationGuard(DOCK_ITEM_COUNT, NAV_TAB_COUNT);
   @State private dockHolding: boolean = false;
   private dockHoldTimer: number = -1;
   private dockPressSource: number = TAB_TODAY;
@@ -313,30 +314,6 @@ struct Home {
   /** Fully opened tri-fold or opened wide fold: the landscape rail follows the grip. */
   private foldRailDevice: boolean = false;
   private dockHandObserver: HoldingHandObserver = new HoldingHandObserver();
-  /** Native floating bar capsule in Home's coordinates; the API 26 light is laid over it. */
-  @State dockBarHostX: number = 0;
-  @State dockBarHostW: number = 0;
-  @State dockBarY: number = 0;
-  /** Capsule found inside the native bar; the system moves it for the grip without telling us. */
-  @State dockCapsuleX: number = -1;
-  private dockCapsuleY: number = 0;
-  private dockBarTrackUntil: number = 0;
-  private dockBarTracking: boolean = false;
-  private homeLeft: number = 0;
-  private homeTop: number = 0;
-  private dockBarModifier: CommonModifier = new CommonModifier()
-    .id(DOCK_BAR_ID)
-    .onAreaChange((_old: Area, area: Area) => this.onDockBarArea(area))
-    .onTouchIntercept((event: TouchEvent) => {
-      this.dockNavigation.begin(event, true);
-      return HitTestMode.Default;
-    })
-    .onTouch((event: TouchEvent) => {
-      this.observeDockTouch(event, true);
-    })
-    .onGestureRecognizerJudgeBegin((event: BaseGestureEvent, current: GestureRecognizer) => {
-      return this.judgePagePan(current, true);
-    }, true);
   private moreScroller: Scroller = new Scroller();
   private timetableScroller: Scroller = new Scroller();
 
@@ -1296,8 +1273,6 @@ struct Home {
 
   private onHomeArea(area: Area): void {
     this.foldRailDevice = Home.readFoldRailDevice();
-    this.homeLeft = Number(area.globalPosition.x);
-    this.homeTop = Number(area.globalPosition.y);
     this.homeWidth = Number(area.width);
     this.homeHeight = Number(area.height);
     // Entering the tri-fold rail takes the current grip side without a slide.
@@ -1308,11 +1283,11 @@ struct Home {
       this.railShift = 0;
     }
     this.railWasFollowing = following;
-    // Unfolding into rail mode on API 27+ needs grip readings the bottom bar did not.
+    // Re-evaluate whether this layout follows the grip when the window changes.
     if (this.pageVisible) this.startDockHandedness();
   }
 
-  private dockTab(icon: Resource, label: string): BottomTabBarStyle {
+  private dockTab(icon: Resource, label: string, index: number): BottomTabBarStyle {
     const normal: SymbolGlyphModifier = new SymbolGlyphModifier(icon);
     normal.fontSize(HitaDesign.iconMd);
     normal.fontColor([$r('sys.color.ohos_id_color_text_secondary')]);
@@ -1326,7 +1301,7 @@ struct Home {
     return BottomTabBarStyle.of(symbol, label)
       .layoutMode(LayoutMode.VERTICAL)
       .labelStyle({
-        font: { size: 11, weight: FontWeight.Medium },
+        font: { size: HitaDesign.dockLabel, weight: FontWeight.Medium },
         selectedColor: $r('sys.color.ohos_id_color_text_primary'),
         unselectedColor: $r('sys.color.ohos_id_color_text_secondary')
       });
@@ -2014,11 +1989,8 @@ struct Home {
         this.homeTabs();
         if (this.railMode()) {
           this.dockRail();
-        } else if (!deviceInfo.apiAvailable('27.0.0')) {
-          DockLightOverlay({ controller: this.dockLight })
-            .hitTestBehavior(HitTestMode.None)
-            .position({ x: Math.max(0, this.dockBarX()), y: this.dockLightY() })
-            .visibility(this.dockBarHostW > 0 ? Visibility.Visible : Visibility.Hidden)
+        } else {
+          this.splitDock();
         }
       }
       .width('100%')
@@ -2091,7 +2063,7 @@ struct Home {
   }
 
   private dockLightEnabled(): boolean {
-    return deviceInfo.apiAvailable('26.0.0') && !deviceInfo.apiAvailable('27.0.0');
+    return deviceInfo.apiAvailable('26.0.0');
   }
 
   private updateDockHoldLight(holding: boolean): void {
@@ -2100,13 +2072,9 @@ struct Home {
     if (began && this.dockHolding) this.dockLight.move(this.dockLightPosition);
   }
 
-  /**
-   * API 27+ lets the native tab bar follow the hand on its own. API 26 also draws
-   * the press light above the bar and API 23-25 draws the whole dock, so both
-   * follow the same grip readings the bar receives.
-   */
+  /** One grip offset keeps the separated navigation, assistant and light together. */
   private startDockHandedness(): void {
-    const needed: boolean = this.railMode() ? this.foldRailDevice : !deviceInfo.apiAvailable('27.0.0');
+    const needed: boolean = this.railMode() ? this.foldRailDevice : true;
     if (!needed) {
       this.dockHandObserver.stop();
       this.dockHandednessActive = false;
@@ -2125,10 +2093,8 @@ struct Home {
       this.getUIContext().animateTo({ duration: DOCK_HANDEDNESS_DURATION, curve: Curve.FastOutSlowIn }, () => {
         this.dockSide = side;
       });
-      this.trackDockBar();
     }, () => {
       this.dockSide = 0;
-      this.trackDockBar();
       if (this.railFollowsHand() && this.railRight) this.moveRailTo(false);
     });
     this.dockHandednessActive = subscribed;
@@ -2168,92 +2134,28 @@ struct Home {
     });
   }
 
-  /**
-   * The bar node may be the capsule itself or a wider host around it. Centre the 212 x 56 light on
-   * what the system laid out; only a wide host is shifted by the grip, so a phone bar (no grip
-   * movement) never takes the offset that pushed the light out of line.
-   */
-  private onDockBarArea(area: Area): void {
-    const width: number = Number(area.width);
-    const height: number = Number(area.height);
-    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return;
-    this.dockBarHostX = Number(area.globalPosition.x) - this.homeLeft;
-    this.dockBarHostW = width;
-    this.dockBarY = Number(area.globalPosition.y) - this.homeTop + Math.max(0, height - 56) / 2;
-    this.trackDockBar(400);
+  /** The complete dock stays centred on phone windows and follows the grip on wide screens. */
+  private bottomDockOffset(): number {
+    return this.homeWidth >= DOCK_RAIL_MIN_TABLET_WIDTH ? this.dockOffset() : 0;
   }
 
-  /**
-   * Follow the capsule frame by frame for a while. Grip handling animates the native capsule inside
-   * its bar without an area change, so the light reads its drawn position until the move settles.
-   */
-  private trackDockBar(durationMs: number = 800): void {
-    if (!this.dockLightEnabled() || this.railMode()) return;
-    this.dockBarTrackUntil = Math.max(this.dockBarTrackUntil, Date.now() + durationMs);
-    if (this.dockBarTracking) return;
-    this.dockBarTracking = true;
-    const frame: TimetableMarqueeCallback = new TimetableMarqueeCallback((_timeMs: number) => {
-      this.measureDockCapsule();
-      if (Date.now() < this.dockBarTrackUntil && this.pageVisible && !this.railMode()) {
-        this.getUIContext().postFrameCallback(frame);
-      } else {
-        this.dockBarTracking = false;
-      }
-    });
-    this.getUIContext().postFrameCallback(frame);
+  private setBottomDockBounds(x: number, y: number): void {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    this.dockNavigation.setBounds(x, y, DOCK_WIDTH, DOCK_ACTION_SIZE,
+      DOCK_NATIVE_PADDING, false, true, DOCK_NAV_WIDTH, DOCK_ACTION_START);
   }
 
-  private measureDockCapsule(): void {
-    let capsule: FrameNode | undefined = undefined;
+  /** Read the shared rendered position only for hit testing, including during an interrupted slide. */
+  private syncBottomDockBounds(): void {
+    if (!deviceInfo.apiAvailable('26.0.0') || this.railMode()) return;
     try {
-      const root: FrameNode | null = this.getUIContext().getFrameNodeById(DOCK_BAR_ID);
-      if (root !== null) capsule = this.findDockCapsule(root, 0);
+      const group: FrameNode | null = this.getUIContext().getFrameNodeById(DOCK_GROUP_ID);
+      if (group === null) return;
+      const position: Position = group.getPositionToWindowWithTransform();
+      this.setBottomDockBounds(Number(position.x), Number(position.y));
     } catch (_) {
-      capsule = undefined;
+      // The initial layout bounds remain available before the node is attached.
     }
-    if (capsule !== undefined) {
-      const position: Position = capsule.getPositionToWindowWithTransform();
-      const height: number = this.getUIContext().px2vp(capsule.getMeasuredSize().height);
-      const x: number = Number(position.x) - this.homeLeft;
-      const y: number = Number(position.y) - this.homeTop + Math.max(0, height - 56) / 2;
-      if (Number.isFinite(x) && Number.isFinite(y)) {
-        if (Math.abs(x - this.dockCapsuleX) > 0.25) this.dockCapsuleX = x;
-        this.dockCapsuleY = y;
-      }
-    }
-    this.syncDockBarBounds();
-  }
-
-  /** The bar itself or its first descendant drawn as the 212 vp capsule. */
-  private findDockCapsule(node: FrameNode, depth: number): FrameNode | undefined {
-    const width: number = this.getUIContext().px2vp(node.getMeasuredSize().width);
-    if (Math.abs(width - DOCK_WIDTH) <= 2) return node;
-    if (depth >= 5) return undefined;
-    let child: FrameNode | null = node.getFirstChild();
-    while (child !== null) {
-      const found: FrameNode | undefined = this.findDockCapsule(child, depth + 1);
-      if (found !== undefined) return found;
-      child = child.getNextSibling();
-    }
-    return undefined;
-  }
-
-  private dockBarX(): number {
-    if (this.dockCapsuleX >= 0) return this.dockCapsuleX;
-    if (this.dockBarHostW <= 0) return -1;
-    // The system only moves the floating bar for the grip on wide screens.
-    const shift: number = this.dockBarHostW > DOCK_WIDTH + 1 && this.homeWidth >= DOCK_RAIL_MIN_TABLET_WIDTH ?
-      this.dockOffset() : 0;
-    return this.dockBarHostX + (this.dockBarHostW - DOCK_WIDTH) / 2 + shift;
-  }
-
-  private dockLightY(): number {
-    return this.dockCapsuleX >= 0 ? this.dockCapsuleY : this.dockBarY;
-  }
-
-  private syncDockBarBounds(): void {
-    if (this.railMode() || this.dockBarHostW <= 0) return;
-    this.dockNavigation.setBounds(this.homeLeft + this.dockBarX(), this.homeTop + this.dockLightY(), DOCK_WIDTH, 56);
   }
 
   private dockOffset(): number {
@@ -2271,11 +2173,12 @@ struct Home {
 
   private updateDockBounds(area: Area, padding: number = 0, vertical: boolean = false): void {
     this.dockNavigation.setBounds(Number(area.globalPosition.x), Number(area.globalPosition.y),
-      Number(area.width), Number(area.height), padding, vertical);
+      Number(area.width), Number(area.height), padding, vertical, true);
   }
 
   private observeDockTouch(event: TouchEvent, fromDock: boolean = false): void {
     if (fromDock && event.type === TouchType.Down && event.touches.length === 1) {
+      this.syncBottomDockBounds();
       this.dockNavigation.begin(event, true);
     }
     if (!this.dockNavigation.observe(event) || !this.dockNavigation.isDock()) {
@@ -2288,15 +2191,14 @@ struct Home {
       return;
     }
     if (event.type === TouchType.Down && event.touches.length === 1) {
-      // The system may have moved the capsule for the grip on its own; re-read before lighting it.
-      this.measureDockCapsule();
-      this.trackDockBar();
       this.clearDockHoldTimer();
-      this.dockPressSource = this.selectedNav;
+      const actionTarget: number = this.dockNavigation.actionTarget();
+      this.dockPressSource = actionTarget >= 0 ? actionTarget : this.selectedNav;
       this.dockLightPosition = this.dockNavigation.lightPosition(event) ??
-        (this.dockPressSource + 0.5) * 212 / 3;
+        (this.dockPressSource + 0.5) * DOCK_WIDTH / DOCK_ITEM_COUNT;
       if (this.dockLightEnabled()) {
         this.dockLight.press(this.dockPressSource);
+        if (actionTarget >= 0) this.dockLight.move(this.dockLightPosition);
       }
       this.updateDockHoldLight(false);
       this.dockHoldTimer = setTimeout(() => {
@@ -2330,7 +2232,7 @@ struct Home {
 
   @Builder
   homeTabs() {
-    Tabs({ barPosition: BarPosition.End, controller: this.tabsController, barModifier: this.dockBarModifier }) {
+    Tabs({ barPosition: BarPosition.End, controller: this.tabsController }) {
       TabContent() {
         Column() {
           this.tabToday();
@@ -2339,7 +2241,7 @@ struct Home {
         .tabPage(0, COLOR_SURFACE, this.railGutter(), this.railGutter())
       }
       .clip(false)
-      .tabBar(this.dockTab($r('sys.symbol.calendar'), '今日'))
+      .tabBar(this.dockTab($r('sys.symbol.calendar'), '今日', 0))
 
       TabContent() {
         Column() {
@@ -2348,7 +2250,7 @@ struct Home {
         .tabPage(0, Color.Transparent)
       }
       .clip(false)
-      .tabBar(this.dockTab($r('sys.symbol.doc_plaintext'), '时间表'))
+      .tabBar(this.dockTab($r('sys.symbol.doc_plaintext'), '时间表', 1))
 
       TabContent() {
         Column() {
@@ -2359,14 +2261,14 @@ struct Home {
       .clip(false)
       .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
       .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.BOTTOM])
-      .tabBar(this.dockTab($r('sys.symbol.more'), '更多'))
+      .tabBar(this.dockTab($r('sys.symbol.more'), '更多', 2))
     }
     .width('100%')
     .height('100%')
     .vertical(false)
     .barOverlap(true)
     .barMode(BarMode.Fixed)
-    .barHeight(deviceInfo.apiAvailable('26.0.0') && !this.railMode() ? 56 : 0)
+    .barHeight(0)
     .barBackgroundColor(Color.Transparent)
     .divider(null)
     // Native paging tracks the finger on every system, including over the
@@ -2395,9 +2297,6 @@ struct Home {
       return this.dockNavigation.allowsChange(comingIndex);
     })
     .animationDuration(TAB_SWIPE_MS)
-    .attributeModifier(new CompatibleDockModifier(12 + this.navBarInset,
-      this.selectedNav === TAB_TIMETABLE && this.hasTimetableBackground(), this.darkMode,
-      deviceInfo.apiAvailable('27.0.0') || this.dockHandednessActive, this.railMode()))
     .backgroundColor(this.currentTab === 1 ? Color.Transparent : COLOR_SURFACE)
     .expandSafeArea([SafeAreaType.SYSTEM, SafeAreaType.KEYBOARD], [SafeAreaEdge.BOTTOM])
     .onAnimationStart((index: number, targetIndex: number, extraInfo: TabsAnimationEvent) => {
@@ -2521,7 +2420,7 @@ struct Home {
       })
       if (this.dockLightEnabled()) {
         // The bottom-dock light drawn along the upright rail: slot 0 is the top item.
-        DockLightOverlay({ controller: this.dockLight, vertical: true })
+        DockLightOverlay({ controller: this.dockLight, vertical: true, itemPadding: 4 })
           .hitTestBehavior(HitTestMode.None)
       }
     }
@@ -2534,6 +2433,50 @@ struct Home {
       y: this.statusBarInset + Math.max(0,
         (this.homeHeight - this.statusBarInset - this.navBarInset - DOCK_WIDTH) / 2)
     })
+  }
+
+  @Builder
+  splitDock() {
+    if (!(this.selectedNav === TAB_TIMETABLE && this.hasTimetableBackground())) {
+      Column()
+        .width('100%')
+        .height(DOCK_RAIL_MASK_WIDTH + this.navBarInset)
+        .linearGradient({
+          angle: 0,
+          colors: [[$r('app.color.hita_dock_mask'), 0], [$r('app.color.hita_dock_mask_clear'), 1]]
+        })
+        .hitTestBehavior(HitTestMode.None);
+    }
+    Stack({ alignContent: Alignment.TopStart }) {
+      SplitDock({
+        selectedIndex: this.selectedNav,
+        darkMode: this.darkMode,
+        onSelect: (index: number) => this.requestDockClick(index)
+      });
+      DockLightOverlay({ controller: this.dockLight })
+        .hitTestBehavior(HitTestMode.None);
+    }
+    .id(DOCK_GROUP_ID)
+    .width(DOCK_WIDTH)
+    .height(DOCK_ACTION_SIZE)
+    .margin({ bottom: HitaDesign.spaceSm + this.navBarInset })
+    .translate({ x: this.bottomDockOffset(), y: 0 })
+    .clip(false)
+    .hitTestBehavior(HitTestMode.Default)
+    .onAreaChange((_old: Area, area: Area) => {
+      this.setBottomDockBounds(Number(area.globalPosition.x), Number(area.globalPosition.y));
+    })
+    .onTouchIntercept((event: TouchEvent) => {
+      if (event.type === TouchType.Down) {
+        this.syncBottomDockBounds();
+        this.dockNavigation.begin(event, true);
+      }
+      return HitTestMode.Default;
+    })
+    .onTouch((event: TouchEvent) => this.observeDockTouch(event, true))
+    .onGestureRecognizerJudgeBegin((event: BaseGestureEvent, current: GestureRecognizer) => {
+      return this.judgePagePan(current, true);
+    }, true);
   }
 
   @Builder
@@ -3494,12 +3437,8 @@ struct Home {
 
           this.moreSectionTitle('更多');
           Column() {
-            HitaListRow({ symbol: $r('sys.symbol.AI_message'), title: '助手',
-              subtitle: '课表问答', onTap: () => {
-                this.getUIContext().getRouter().pushUrl({ url: 'pages/AssistantPage' });
-              } });
             HitaListRow({ symbol: $r('sys.symbol.doc_text'), title: '资讯',
-              subtitle: '博客与通知', divider: true, onTap: () => {
+              subtitle: '博客与通知', onTap: () => {
                 this.getUIContext().getRouter().pushUrl({ url: 'pages/NewsPage' });
               } });
             HitaListRow({ symbol: $r('sys.symbol.link'), title: '常用入口',

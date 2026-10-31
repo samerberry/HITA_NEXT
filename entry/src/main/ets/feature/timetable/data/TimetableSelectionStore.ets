@@ -70,6 +70,19 @@ export class TimetableSelectionStore {
     }
   }
 
+  /** Read-only, fresh selection for tools. A read failure must not select a different user's timetable. */
+  static async loadForQuery(context: common.Context): Promise<string> {
+    const path: string = TimetableSelectionStore.mirrorPath(context);
+    if (fileIo.accessSync(path)) {
+      return fileIo.readTextSync(path).trim();
+    }
+    // Compatibility with installations that have not created the selection mirror yet.
+    const store: preferences.Preferences = await preferences.getPreferences(context, { name: STORE_NAME });
+    const value: preferences.ValueType = await store.get(ACTIVE_TIMETABLE_KEY, '');
+    if (typeof value !== 'string') throw new Error('Invalid saved timetable selection');
+    return value;
+  }
+
   async save(id: string): Promise<void> {
     if (this.store === undefined || id.length === 0) {
       return;

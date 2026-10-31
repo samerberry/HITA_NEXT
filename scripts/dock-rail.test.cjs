@@ -99,10 +99,10 @@ test('vertical rail: the press light maps the rail length onto the shared 0-212 
 
 test('wiring: the rail replaces the bottom dock and every surface keeps clear of it', () => {
   const home = read('pages/Home.ets');
-  assert.match(home, /if \(this\.railMode\(\)\) \{\s*this\.dockRail\(\);\s*\} else if \(!deviceInfo\.apiAvailable\('27\.0\.0'\)\)/);
+  assert.match(home, /if \(this\.railMode\(\)\) \{\s*this\.dockRail\(\);\s*\} else \{\s*this\.splitDock\(\);/);
   assert.match(home, /if \(this\.railMode\(\)\) \{\s*this\.dockRail\(\);\s*\} else \{\s*this\.compatibleDock\(\);/);
-  assert.match(home, /\.barHeight\(deviceInfo\.apiAvailable\('26\.0\.0'\) && !this\.railMode\(\) \? 56 : 0\)/);
-  assert.match(home, /this\.dockHandednessActive, this\.railMode\(\)\)\)/);
+  assert.match(home, /\.barHeight\(0\)/);
+  assert.doesNotMatch(home, /new CompatibleDockModifier/);
   assert.match(home, /return this\.railMode\(\) \? this\.navBarInset : 64 \+ this\.navBarInset;/);
   assert.match(home, /FOLD_STATUS_EXPANDED_WITH_SECOND_EXPANDED/);
   assert.match(home, /deviceInfo\.deviceType === 'tablet'/);
@@ -118,7 +118,7 @@ test('wiring: the rail replaces the bottom dock and every surface keeps clear of
   assert.match(home, /if \(this\.railFollowsHand\(\)\) \{\s*this\.dockSide = side;\s*this\.moveRailTo\(side > 0\);\s*return;/);
   assert.ok(home.includes('.translate({ x: this.railShift, y: 0 })'));
   assert.ok(home.includes('x: this.railOnRight() ? this.homeWidth'));
-  assert.ok(home.includes("const needed: boolean = this.railMode() ? this.foldRailDevice : !deviceInfo.apiAvailable('27.0.0');"));
+  assert.ok(home.includes('const needed: boolean = this.railMode() ? this.foldRailDevice : true;'));
   // Gutters are symmetric and side-independent, so content never shifts with the rail.
   assert.ok(home.includes('private railGutter(): number {\n    return this.railMode() ? DOCK_RAIL_INSET : 0;'));
   assert.ok(!home.includes('railInset('));
@@ -133,11 +133,11 @@ test('wiring: the rail replaces the bottom dock and every surface keeps clear of
   assert.match(rail, /this\.updateDockBounds\(area, 4, true\)/);
   assert.match(rail, /this\.observeDockTouch\(event, true\)/);
   // Drawn upright on its own canvas: a rotated 212×56 canvas was squeezed by the 56 vp column first.
-  assert.ok(rail.includes('DockLightOverlay({ controller: this.dockLight, vertical: true })'));
+  assert.ok(rail.includes('DockLightOverlay({ controller: this.dockLight, vertical: true, itemPadding: 4 })'));
   assert.ok(!rail.includes('.rotate('));
   const light = read('common/components/DockLightOverlay.ets');
   assert.ok(light.includes('if (this.vertical) this.canvas.setTransform(0, 1, -1, 0, 56, 0);'));
-  assert.ok(light.includes('.width(this.vertical ? 56 : 212)'));
+  assert.ok(light.includes('.width(this.vertical ? 56 : DOCK_WIDTH)'));
   // API 26 renders ordinary-component materials only in a Navigation title bar or the bottom TabBar,
   // so the API 26+ capsule is hosted in a native title region enlarged for its shadow.
   const railUi = read('common/components/DockRail.ets');
@@ -215,26 +215,22 @@ test('rail selection only highlights the icon, like the native bottom bar', () =
   assert.ok(!ui.includes('RAIL_ITEM'));
   assert.ok(!ui.includes("'#18FFFFFF'"));
   assert.ok(ui.includes("$r('sys.color.ohos_id_color_text_primary')"));
-  assert.ok(ui.includes('.fontSize(11)'));
+  assert.ok(ui.includes('.fontSize(HitaDesign.dockLabel)'));
+  assert.match(read('common/theme/HitaDesign.ets'), /static readonly dockLabel: number = 11;/);
 });
 
-test('API 26 bottom light is laid over the measured native bar, not a fixed corner', () => {
+test('bottom navigation, assistant and light share one grip transform', () => {
   const home = read('pages/Home.ets');
-  assert.ok(home.includes('.onAreaChange((_old: Area, area: Area) => this.onDockBarArea(area))'));
-  assert.match(home, /DockLightOverlay\(\{ controller: this\.dockLight \}\)\s*\.hitTestBehavior\(HitTestMode\.None\)\s*\.position\(\{ x: Math\.max\(0, this\.dockBarX\(\)\), y: this\.dockLightY\(\) \}\)/);
-  assert.ok(!home.includes('.margin({ bottom: 12 + this.navBarInset })'));
-  const place = home.slice(home.indexOf('  private onDockBarArea('), home.indexOf('  private dockOffset()'));
-  assert.ok(place.includes('this.dockBarHostX + (this.dockBarHostW - DOCK_WIDTH) / 2 + shift'));
-  // Phones never take the grip offset; the system only moves the bar on wide screens.
-  assert.ok(place.includes('this.homeWidth >= DOCK_RAIL_MIN_TABLET_WIDTH'));
-  assert.ok(home.includes('this.dockNavigation.setBounds(this.homeLeft + this.dockBarX(), this.homeTop + this.dockLightY(), DOCK_WIDTH, 56);'));
-  // The system moves the capsule for the grip without an area change, so the light reads the drawn
-  // capsule frame by frame while a move can be in flight, and again on every press.
-  assert.ok(home.includes('.id(DOCK_BAR_ID)'));
-  assert.ok(place.includes('capsule.getPositionToWindowWithTransform()'));
-  assert.ok(place.includes('if (Math.abs(width - DOCK_WIDTH) <= 2) return node;'));
-  assert.ok(place.includes('if (this.dockCapsuleX >= 0) return this.dockCapsuleX;'));
-  assert.match(home, /this\.dockSide = side;\s*\}\);\s*this\.trackDockBar\(\);/);
-  assert.match(home, /this\.dockSide = 0;\s*this\.trackDockBar\(\);/);
-  assert.match(home, /this\.measureDockCapsule\(\);\s*this\.trackDockBar\(\);\s*this\.clearDockHoldTimer\(\);/);
+  const shared = home.slice(home.indexOf('  splitDock() {'), home.indexOf('  compatibleDock() {'));
+  assert.match(shared, /Stack\([\s\S]*?SplitDock\([\s\S]*?DockLightOverlay\([\s\S]*?\.id\(DOCK_GROUP_ID\)/);
+  assert.match(shared, /\.translate\(\{ x: this\.bottomDockOffset\(\), y: 0 \}\)/);
+  assert.match(shared, /\.margin\(\{ bottom: HitaDesign\.spaceSm \+ this\.navBarInset \}\)/);
+  assert.match(shared, /\.hitTestBehavior\(HitTestMode\.Default\)/);
+  assert.doesNotMatch(home, /trackDockBar|findDockCapsule|dockCapsuleX|dockBarModifier/);
+  const ui = read('common/components/SplitDock.ets');
+  assert.match(ui, /ImmersiveHeader\([\s\S]*?new CompatibleRailModifier\(this\.darkMode\)/);
+  assert.match(ui, /AssistantDockButton\([\s\S]*?\.position\(\{ x: DOCK_ACTION_START, y: 0 \}\)/);
+  assert.doesNotMatch(ui, /sideOffset|dockSide|animateTo|\.translate\(/);
+  assert.match(home, /group\.getPositionToWindowWithTransform\(\)/);
+  assert.match(home, /this\.syncBottomDockBounds\(\);\s*this\.dockNavigation\.begin\(event, true\);/);
 });

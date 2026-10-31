@@ -10,7 +10,7 @@
 import { uiMaterial } from '@kit.ArkUI';
 import { Available } from '@kit.BasicServicesKit';
 import { dockWhiteLightColor } from '../util/DockLightEffect';
-import { DOCK_SIDE_MARGIN, DOCK_WIDTH } from '../util/DockHandedness';
+import { DOCK_SIDE_MARGIN, DOCK_NAV_WIDTH } from '../util/DockHandedness';
 
 @Available({ minApiVersion: 'HarmonyOS 26.0.0' })
 export class DockBarMaterial {
@@ -18,9 +18,9 @@ export class DockBarMaterial {
     darkMode: boolean = false, lightAlpha: number = 0, handedness: boolean = false): FloatingTabBarStyle {
     const style: FloatingTabBarStyle = {
       barWidth: {
-        smallBarWidth: DOCK_WIDTH,
-        mediumBarWidth: DOCK_WIDTH,
-        largeBarWidth: DOCK_WIDTH
+        smallBarWidth: DOCK_NAV_WIDTH,
+        mediumBarWidth: DOCK_NAV_WIDTH,
+        largeBarWidth: DOCK_NAV_WIDTH
       },
       barBottomMargin: bottomMargin,
       // 智感握姿：单手握持时页签栏移向握持侧，边距与自绘光效的位移计算一致。

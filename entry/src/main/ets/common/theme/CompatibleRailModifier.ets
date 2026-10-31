@@ -11,7 +11,7 @@ export class CompatibleRailModifier implements AttributeModifier<CommonAttribute
 
   applyNormalAttribute(instance: CommonAttribute): void {
     if (deviceInfo.apiAvailable('26.0.0')) {
-      if (DockBarMaterial.applyRail(instance, deviceInfo.apiAvailable('27.0.0') ? 1 : 0)) {
+      if (DockBarMaterial.applyRail(instance, 0)) {
         return;
       }
     }

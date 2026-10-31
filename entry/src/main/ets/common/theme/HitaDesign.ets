@@ -9,6 +9,10 @@ export class HitaDesign {
   static readonly caption: number = 14;
   /** Short badges only; never use for a sentence or a field label. */
   static readonly label: number = 12;
+  /** Compact native bottom-tab captions, shared by all four Dock items. */
+  static readonly dockLabel: number = 11;
+  /** Match the native bottom tab's compact icon-to-label gap (Dock only). */
+  static readonly dockIconLabelGap: number = 2;
   static readonly iconXs: number = 12;
   static readonly iconSm: number = 16;
   static readonly iconMd: number = 20;

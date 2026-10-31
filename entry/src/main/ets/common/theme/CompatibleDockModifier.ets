@@ -26,7 +26,7 @@ export class CompatibleDockModifier implements AttributeModifier<TabsAttribute> 
       }
       instance.barFloatingStyle(DockBarMaterial.floatingStyle(
         this.bottomMargin, this.hideMask, this.darkMode,
-        deviceInfo.apiAvailable('27.0.0') ? 1 : 0, this.handedness));
+        0, this.handedness));
     }
   }
 }

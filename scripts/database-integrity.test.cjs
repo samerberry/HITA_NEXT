@@ -159,6 +159,17 @@ test('strict calendar reads distinguish query, cursor and column failures from e
   }
 });
 
+test('strict timetable listing preserves query and row failures for callable local tools', async () => {
+  const db = new RdbHelper();
+  db.store = { query: async () => { throw Error('list unavailable'); } };
+  await assert.rejects(db.getTimetables(true), /list unavailable/);
+  assert.deepEqual(await db.getTimetables(), []);
+  db.store.query = async () => ({ goToNextRow() { throw Error('cursor unavailable'); }, close() {} });
+  await assert.rejects(db.getTimetables(true), /row read failed/);
+  db.store.query = async () => rowsResult([]);
+  assert.deepEqual(await db.getTimetables(true), []);
+});
+
 test('failed single-row edits preserve timetable, subject and event identities and contents', async () => {
   for (const [tableName, item, save] of [
     ['timetable', table(), 'saveTimetable'],

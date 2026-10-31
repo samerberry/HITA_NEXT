@@ -18,7 +18,7 @@ function campusPortals() {
   return mod.exports;
 }
 
-test('assistant, news and campus links are registered routes in More, after academic tools and settings', () => {
+test('More omits the assistant and keeps news and campus links as registered routes', () => {
   const home = read('pages/Home.ets');
   const more = home.slice(home.indexOf('  tabMine()'), home.indexOf('  userCard()'));
   const academic = more.indexOf("this.moreSectionTitle('教务功能')");
@@ -28,8 +28,18 @@ test('assistant, news and campus links are registered routes in More, after acad
   // 更多 is the last section; it runs to the end of the scroll content.
   const section = more.slice(extras, more.indexOf('Blank().height(this.dockPageInset()', extras));
   const routes = JSON.parse(fs.readFileSync(path.join(root, '../resources/base/profile/main_pages.json'))).src;
+  assert.doesNotMatch(more, /XiaoyiAssistantEntry|AssistantDockItem|title: '助手'/);
+  const action = read('feature/assistant/AssistantDockItem.ets');
+  assert.match(action, /import lazy \{ XiaoyiAssistantEntry \}/);
+  assert.match(action, /canIUse\('SystemCapability\.AI\.Agent\.AgentKit'\)/);
+  assert.match(action, /deviceInfo\.deviceType === 'phone' \|\| deviceInfo\.deviceType === 'tablet'/);
+  assert.match(action, /XiaoyiAssistantEntry\(\{ glyphTint: this\.glyphTint \}\)/);
+  assert.doesNotMatch(home, /openXiaoyi|VoiceAbility|com\.huawei\.hmos\.vassistant/);
+  assert.ok(!routes.includes('pages/AssistantPage'));
+  assert.doesNotMatch(home, /pages\/AssistantPage/);
+  assert.equal(fs.existsSync(path.join(root, 'pages/AssistantPage.ets')), false);
   for (const [page, label, symbol] of [
-    ['AssistantPage', '助手', 'AI_message'], ['NewsPage', '资讯', 'doc_text'],
+    ['NewsPage', '资讯', 'doc_text'],
     ['PortalsPage', '常用入口', 'link']
   ]) {
     assert.ok(section.includes(`HitaListRow({ symbol: $r('sys.symbol.${symbol}'), title: '${label}'`));
@@ -50,7 +60,7 @@ function deferred() {
 }
 
 // Exercise actual route controller methods without ArkUI builders or live services.
-function pageClass(name, mocks = {}, moduleCache = new Map()) {
+function pageClass(name, mocks = {}) {
   let source = read(`pages/${name}.ets`);
   source = source.slice(0, source.indexOf('\n  build()')) + '\n}\n';
   source = source.replace(/^import lazy /gm, 'import ');
@@ -70,11 +80,6 @@ function pageClass(name, mocks = {}, moduleCache = new Map()) {
       if (mocks.openFails) return Promise.reject(Error('route unavailable'));
     } }),
     getPromptAction: () => ({ showToast: options => ui.toasts.push(options.message) })
-  };
-  const settings = class {
-    provider = 'deepseek';
-    apiKey = '';
-    hasCloudModel() { return false; }
   };
   const platform = spec => {
     if (spec.endsWith('/HitaDesign')) {
@@ -103,35 +108,9 @@ function pageClass(name, mocks = {}, moduleCache = new Map()) {
         ui.clipboard.push(data);
       } })
     } };
-    if (spec.endsWith('/AssistantConversation')) {
-      if (!moduleCache.has(spec)) {
-        const state = { exports: {} };
-        const code = ts.transpileModule(read('feature/assistant/AssistantConversation.ets')
-          .replace(/^@Observed\r?\n/gm, ''), {
-          compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 }
-        }).outputText;
-        new Function('require', 'module', 'exports', code)(platform, state, state.exports);
-        moduleCache.set(spec, state.exports);
-      }
-      return moduleCache.get(spec);
-    }
     if (spec === '@kit.ArkUI') return { KeyboardAvoidMode: { NONE: 'none', OFFSET: 'offset' } };
     if (spec.endsWith('/StatusBarInset')) return {
       STATUS_BAR_INSET_FALLBACK: 44, NAV_BAR_INSET_FALLBACK: 28, KEYBOARD_INSET_FALLBACK: 0
-    };
-    if (spec.endsWith('/AssistantService')) return {
-      AssistantService: {
-        welcome: () => ({ content: 'welcome', role: 'assistant' }),
-        reply: mocks.reply
-      },
-      AssistantRole: { USER: 'user', ASSISTANT: 'assistant' },
-      AssistantMessage: { of: (role, content) => ({ role, content }) }
-    };
-    if (spec.endsWith('/AssistantSettingsStore')) return {
-      AssistantProvider: { DEEPSEEK: 'deepseek' }, AssistantSettings: settings,
-      AssistantSettingsStore: { getInstance: () => ({
-        init: async () => {}, load: async () => new settings()
-      }) }
     };
     if (spec.endsWith('/NewsService')) {
       const service = { exports: {} };
@@ -158,66 +137,68 @@ function pageClass(name, mocks = {}, moduleCache = new Map()) {
     id => timers.delete(id));
   const Page = mod.exports[name];
   Page.prototype.getUIContext = () => ui;
-  return { Page, ui, timers, moduleCache };
+  return { Page, ui, timers };
 }
 
-test('assistant input follows the keyboard and reclaims the former dock space', () => {
-  const { Page, ui, timers } = pageClass('AssistantPage');
-  const page = new Page();
-  assert.equal(page.inputBarBottom(), 28);
-  page.navBarInset = 20;
-  assert.equal(page.inputBarBottom(), 20);
-  page.keyboardInset = 302;
-  assert.equal(page.inputBarBottom(), 302);
-  page.onPageShow();
-  assert.equal(ui.modes.at(-1), 'none');
-  assert.equal(timers.size, 1);
-  page.onPageHide();
-  assert.equal(ui.modes.at(-1), 'offset');
-  assert.equal(timers.size, 0);
-  assert.equal(ui.stopped, 2);
-  assert.equal(ui.cleared, 1);
-  page.scrollToLatest();
-  assert.equal(timers.size, 0);
+function xiaoyiEntry() {
+  let source = read('feature/assistant/XiaoyiAssistantEntry.ets');
+  source = source.slice(0, source.indexOf('\n  build()')) + '\n}';
+  source = source.replace('@Component', '').replace(/@Prop\s+/g, '').replace('export struct', 'export class');
+  const listeners = new Map(), logs = [], toasts = [];
+  const Controller = class {
+    on(event, callback) { assert.ok(!listeners.has(event)); listeners.set(event, callback); }
+    off(event, callback) { assert.equal(listeners.get(event), callback); listeners.delete(event); }
+  };
+  const mod = { exports: {} };
+  const compiled = ts.transpileModule(source, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 }
+  }).outputText;
+  new Function('require', 'module', 'exports', compiled)(name => {
+    if (name === '@kit.AgentFrameworkKit') return { FunctionController: Controller };
+    if (name === '@kit.PerformanceAnalysisKit') return { hilog: {
+      debug: () => {},
+      info: (...args) => logs.push(args), warn: (...args) => logs.push(args)
+    } };
+    return {};
+  }, mod, mod.exports);
+  const entry = new mod.exports.XiaoyiAssistantEntry();
+  entry.getUIContext = () => ({ getPromptAction: () => ({
+    showToast: options => toasts.push(options.message)
+  }) });
+  return { entry, listeners, logs, toasts };
+}
+
+test('native dialog subscriptions are cleaned up and work after recreating the Dock', () => {
+  const { entry, listeners, logs } = xiaoyiEntry();
+  for (let cycle = 0; cycle < 2; cycle++) {
+    entry.aboutToAppear();
+    assert.equal(listeners.size, 2);
+    listeners.get('agentDialogOpened')();
+    listeners.get('agentDialogClosed')();
+    entry.aboutToDisappear();
+    assert.equal(listeners.size, 0);
+  }
+  assert.deepEqual(logs.map(args => args[2]),
+    ['dialog opened', 'dialog closed', 'dialog opened', 'dialog closed']);
 });
 
-test('leaving and reopening assistant preserves messages and an in-flight reply without resending', async () => {
-  const pending = deferred();
-  let requests = 0;
-  const { Page, moduleCache } = pageClass('AssistantPage', {
-    reply: () => { requests++; return pending.promise; }
-  });
-  const first = new Page();
-  const sending = first.send('明天有什么课');
-  assert.equal(first.chat.sending, true);
-  first.onPageHide();
-  first.aboutToDisappear();
-  // ArkUI evaluates an @Entry page again on pushUrl; only imported modules retain state.
-  const { Page: ReopenedPage } = pageClass('AssistantPage', {}, moduleCache);
-  const reopened = new ReopenedPage();
-  assert.equal(reopened.chat.messages.at(-1).content, '明天有什么课');
-  assert.equal(reopened.chat.sending, true);
-  await reopened.send('重复请求');
-  reopened.clearChat();
-  assert.equal(requests, 1);
-  assert.equal(reopened.chat.messages.length, 2);
-  pending.resolve({ role: 'assistant', content: '课表回答' });
-  await sending;
-  assert.equal(reopened.chat.messages.at(-1).content, '课表回答');
-  assert.equal(reopened.chat.sending, false);
-  reopened.clearChat();
-  assert.equal(reopened.chat.messages.length, 1);
+test('native dialog failure shows a usable message and logs only its error code', () => {
+  const { entry, logs, toasts } = xiaoyiEntry();
+  entry.onAgentError({ code: 1022400014, message: 'PRIVATE-INTERNAL-DATA' });
+  assert.match(toasts[0], /无法呼出助手/);
+  assert.deepEqual(logs[0], [0, 'HitaAgent', 'dialog failed code=%{public}d', 1022400014]);
+  assert.doesNotMatch(JSON.stringify({ logs, toasts }), /PRIVATE-INTERNAL-DATA/);
 });
 
-test('assistant reply errors release the shared sending state after leaving', async () => {
-  const { Page } = pageClass('AssistantPage', { reply: async () => { throw Error('offline'); } });
-  const first = new Page();
-  const sending = first.send('问题');
-  first.aboutToDisappear();
-  await sending;
-  const reopened = new Page();
-  assert.equal(reopened.chat.sending, false);
-  assert.match(reopened.chat.messages.at(-1).content, /稍后再试/);
+test('the official control invokes HITA without an automatic prompt or app navigation', () => {
+  const source = read('feature/assistant/XiaoyiAssistantEntry.ets');
+  assert.match(source, /from '@kit\.AgentFrameworkKit'/);
+  assert.match(source, /HITA_AGENT_ID: string = 'agent26e52f2a50ad42059267f9077d548b6c'/);
+  assert.match(source, /FunctionComponent\(\{\s*agentId: HITA_AGENT_ID,\s*controller: this\.controller/);
+  assert.match(source, /title: ''/);
+  assert.match(source, /Text\('助手'\)/);
+  assert.match(source, /queryText: ''/);
+  assert.doesNotMatch(source, /\.startAbility\(|\.openLink\(|\.bindSheet\(|\.opacity\(0\)|getRouter\(\)/);
 });
 
 test('a late news response cannot update a page that was closed', async () => {

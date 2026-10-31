@@ -1,7 +1,6 @@
 {
   "src": [
     "pages/Home",
-    "pages/AssistantPage",
     "pages/NewsPage",
     "pages/PortalsPage",
     "pages/NoticesPage",

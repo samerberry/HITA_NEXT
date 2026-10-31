@@ -1,4 +1,16 @@
-export const DOCK_WIDTH: number = 212;
+/** Three page tabs followed by the native assistant action. */
+export const DOCK_ITEM_COUNT: number = 4;
+export const DOCK_WIDTH: number = 280;
+/** Centre the navigation capsule, gap and independent action as one 280 vp group. */
+export const DOCK_NAV_WIDTH: number = 216;
+export const DOCK_NATIVE_PADDING: number = 12;
+export const DOCK_ACTION_SIZE: number = 56;
+export const DOCK_ACTION_START: number = 224;
+
+export function dockItemCenter(index: number, padding: number = DOCK_NATIVE_PADDING): number {
+  if (padding === DOCK_NATIVE_PADDING && index === 3) return DOCK_ACTION_START + DOCK_ACTION_SIZE / 2;
+  return padding + (index + 0.5) * (DOCK_WIDTH - padding * 2) / DOCK_ITEM_COUNT;
+}
 /** Distance from the screen edge when the dock follows the holding hand. */
 export const DOCK_SIDE_MARGIN: number = 16;
 export const DOCK_HANDEDNESS_DURATION: number = 300;

@@ -375,6 +375,14 @@
     {
       "name": "hita_card_shadow",
       "value": "#08000000"
+    },
+    {
+      "name": "hita_dock_mask",
+      "value": "#66F1F3F5"
+    },
+    {
+      "name": "hita_dock_mask_clear",
+      "value": "#00F1F3F5"
     }
   ]
 }

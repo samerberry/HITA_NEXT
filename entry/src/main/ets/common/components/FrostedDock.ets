@@ -1,5 +1,7 @@
 import { HitaDesign } from '../theme/HitaDesign';
-import { DOCK_WIDTH } from '../util/DockHandedness';
+import { DOCK_WIDTH, DOCK_ACTION_SIZE, dockItemCenter } from '../util/DockHandedness';
+import { CompatibleRailModifier } from '../theme/CompatibleRailModifier';
+import { AssistantDockItem } from '../../feature/assistant/AssistantDockItem';
 /** API 23 dock: backdrop blur and alpha-preserving foreground inversion. */
 @Component
 export struct FrostedDock {
@@ -14,17 +16,18 @@ export struct FrostedDock {
   onDockAreaChanged: (area: Area) => void = () => {};
   private areaWidth: number = 0;
   private areaHeight: number = 0;
+  private readonly unselectedColor: ResourceColor = '#B8FFFFFF';
 
   @Builder
   item(icon: Resource, label: string, index: number) {
-    Column({ space: 3 }) {
+    Column({ space: HitaDesign.dockIconLabelGap }) {
       SymbolGlyph(icon)
         .fontSize(HitaDesign.iconMd)
-        .fontColor([this.selectedIndex === index ? '#FFFFFFFF' : '#B8FFFFFF'])
+        .fontColor([this.selectedIndex === index ? '#FFFFFFFF' : this.unselectedColor])
       Text(label)
-        .fontSize(HitaDesign.label)
+        .fontSize(HitaDesign.dockLabel)
         .fontWeight(FontWeight.Medium)
-        .fontColor(this.selectedIndex === index ? '#FFFFFFFF' : '#B8FFFFFF')
+        .fontColor(this.selectedIndex === index ? '#FFFFFFFF' : this.unselectedColor)
     }
     .layoutWeight(1)
     .height(48)
@@ -47,35 +50,43 @@ export struct FrostedDock {
           })
           .hitTestBehavior(HitTestMode.None)
       }
-      Stack({ alignContent: Alignment.Start }) {
+      Stack({ alignContent: Alignment.TopStart }) {
         Column()
-          .width(68)
+          .width(dockItemCenter(2, 4) - dockItemCenter(0, 4) + DOCK_ACTION_SIZE)
+          .height(DOCK_ACTION_SIZE)
+          .position({ x: dockItemCenter(0, 4) - DOCK_ACTION_SIZE / 2, y: 0 })
+          .borderRadius(DOCK_ACTION_SIZE / 2)
+          .attributeModifier(new CompatibleRailModifier(this.darkMode))
+          .hitTestBehavior(HitTestMode.None)
+        Column()
+          .width(DOCK_ACTION_SIZE)
+          .height(DOCK_ACTION_SIZE)
+          .position({ x: dockItemCenter(3, 4) - DOCK_ACTION_SIZE / 2, y: 0 })
+          .borderRadius(DOCK_ACTION_SIZE / 2)
+          .attributeModifier(new CompatibleRailModifier(this.darkMode))
+          .hitTestBehavior(HitTestMode.None)
+        Column()
+          .width(DOCK_ACTION_SIZE)
           .height(48)
           .borderRadius(24)
           .backgroundColor(this.darkMode ? '#18FFFFFF' : '#10000000')
-          .translate({ x: this.selectedIndex * 68 })
+          .position({ x: dockItemCenter(this.selectedIndex, 4) - DOCK_ACTION_SIZE / 2, y: 4 })
           .animation({ duration: 300, curve: Curve.FastOutSlowIn })
           .hitTestBehavior(HitTestMode.None)
         Row() {
           this.item($r('sys.symbol.calendar'), '今日', 0)
           this.item($r('sys.symbol.doc_plaintext'), '时间表', 1)
           this.item($r('sys.symbol.more'), '更多', 2)
+          AssistantDockItem({ glyphTint: this.unselectedColor }).layoutWeight(1)
         }
-        .width('100%')
+        .width(DOCK_WIDTH - 8)
         .height(48)
-        // One alpha-only foreground pass, not six separate offscreen layers.
-        // Keep the selection fill outside it so only glyph pixels invert.
+        .position({ x: 4, y: 4 })
+        // One foreground inversion pass for all four transparent Dock items.
         .blendMode(BlendMode.DIFFERENCE, BlendApplyType.OFFSCREEN)
       }
       .width(DOCK_WIDTH)
       .height(56)
-      .padding(4)
-      .borderRadius(28)
-      .backgroundEffect({
-        radius: 24, saturation: 1.1, brightness: 1,
-        color: this.darkMode ? '#66101214' : '#44F1F3F5'
-      })
-      .border({ width: 0.5, color: this.darkMode ? '#33FFFFFF' : '#88FFFFFF' })
       .margin({ bottom: 12 + this.bottomInset })
       .offset({ x: this.sideOffset, y: 0 })
       .onAreaChange((_old: Area, area: Area) => this.onDockAreaChanged(area))
