@@ -22,6 +22,10 @@
     ],
     "metadata": [
       {
+        "name": "ohos.insightIntent",
+        "resource": "$profile:insight_intent"
+      },
+      {
         "name": "ohos.arkui.UIMaterial.state",
         "value": "enable"
       }

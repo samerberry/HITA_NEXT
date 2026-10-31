@@ -14,6 +14,7 @@ import {
 import { ClassReminderStore } from '../feature/timetable/data/ClassReminderStore';
 import { AppearanceStore } from '../common/theme/AppearanceStore';
 import { NextClassWidgetService } from '../feature/widget/NextClassWidgetService';
+import { TimetableExecutionContext } from '../feature/assistant/TimetableExecutionContext';
 
 const DOMAIN: number = 0x0000;
 const TAG: string = 'HitaNEXT';
@@ -39,6 +40,7 @@ export default class EntryAbility extends UIAbility {
       NextClassWidgetService.attach(this.context);
       ScheduleSyncService.attach(this.context);
     });
+    TimetableExecutionContext.attach(this.context, this.startup);
     this.captureReminderWant(want);
     void this.startup.then(() => this.restoreClassReminders()).catch(() => {});
   }
@@ -71,6 +73,7 @@ export default class EntryAbility extends UIAbility {
   }
 
   onDestroy(): void {
+    TimetableExecutionContext.detach(this.context);
     ScheduleSyncService.detach();
     hilog.info(DOMAIN, TAG, 'Ability onDestroy');
   }

@@ -31,12 +31,12 @@ test('API 23-25 render without loading the API 26 material module or calling its
     const instance = { barHeight: value => calls.push(['height', value]) };
     if (api >= 26) instance.barFloatingStyle = value => calls.push(['native', value]);
     new mod.exports.CompatibleDockModifier(36, true, true).applyNormalAttribute(instance);
-    assert.deepEqual(calls, api >= 26 ? [['material', 36, true, true, api === 26 ? 0 : 1, false],
+    assert.deepEqual(calls, api >= 26 ? [['material', 36, true, true, 0, false],
       ['native', 'native-style']] : []);
     if (api >= 26) {
       calls.length = 0;
       new mod.exports.CompatibleDockModifier(36, false, false, true).applyNormalAttribute(instance);
-      assert.deepEqual(calls[0], ['material', 36, false, false, api === 26 ? 0 : 1, true]);
+      assert.deepEqual(calls[0], ['material', 36, false, false, 0, true]);
     }
   }
 });
@@ -59,10 +59,10 @@ test('older dock keeps three actions, reactive selection, safe-area spacing and 
     'all symbols and labels share one alpha-only foreground inversion pass');
   const item = dock.slice(dock.indexOf('  item('), dock.indexOf('  build()'));
   assert.doesNotMatch(item, /\.blendMode|\.backgroundColor/);
-  assert.match(dock, /\.width\(68\)[\s\S]*?\.translate\(\{ x: this\.selectedIndex \* 68 \}\)/);
+  assert.match(dock, /\.width\(DOCK_ACTION_SIZE\)[\s\S]*?dockItemCenter\(this\.selectedIndex, 4\) - DOCK_ACTION_SIZE \/ 2/);
   assert.match(dock, /\.animation\(\{ duration: 300, curve: Curve\.FastOutSlowIn \}\)/);
   assert.doesNotMatch(dock, /\.invert\(|\.shadow\(|\.opacity\(/);
-  assert.match(dock, /\.backgroundEffect\(\{/);
+  assert.equal((dock.match(/new CompatibleRailModifier\(this.darkMode\)/g) || []).length, 2);
   assert.match(dock, /\.margin\(\{ bottom: 12 \+ this\.bottomInset \}\)/);
   assert.match(dock, /\.onClick\(\(\) => this\.onSelect\(index\)\)/);
   assert.match(dock, /\.accessibilitySelected\(this\.selectedIndex === index\)/);
@@ -70,8 +70,8 @@ test('older dock keeps three actions, reactive selection, safe-area spacing and 
   assert.match(home, /if \(!deviceInfo\.apiAvailable\('26\.0\.0'\)\) \{\s*FrostedDock/);
   assert.match(home, /onSelect: \(index: number\) => \{\s*this\.requestDockClick\(index\)/);
   assert.match(dock, /\.onTouch\(\(event: TouchEvent\) => this\.onDockTouch\(event\)\)/);
-  assert.match(home, /\.barHeight\(deviceInfo\.apiAvailable\('26\.0\.0'\) && !this\.railMode\(\) \? 56 : 0\)/);
-  assert.match(home, /if \(deviceInfo\.apiAvailable\('26\.0\.0'\)\) \{\s*Stack[\s\S]*?this\.homeTabs\(\);[\s\S]*?DockLightOverlay/);
+  assert.match(home, /\.barHeight\(0\)/);
+  assert.match(home, /if \(deviceInfo\.apiAvailable\('26\.0\.0'\)\) \{\s*Stack[\s\S]*?this\.homeTabs\(\);[\s\S]*?this\.splitDock\(\)/);
   assert.match(home, /Stack\(\{ alignContent: Alignment\.Bottom \}\) \{\s*this\.homeTabs\(\);\s*if \(this\.railMode\(\)\) \{\s*this\.dockRail\(\);\s*\} else \{\s*this\.compatibleDock\(\);/);
   assert.doesNotMatch(home, /\.overlay\(this\.compatibleDock/);
 });

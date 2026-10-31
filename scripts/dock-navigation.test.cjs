@@ -208,6 +208,66 @@ function boundedGuard() {
   return guard;
 }
 
+test('four-slot Dock keeps the assistant action out of page navigation in either orientation', () => {
+  for (const vertical of [false, true]) {
+    for (const target of [0, 1, 2, 3]) {
+      const guard = new Guard(4, 3);
+      guard.setBounds(0, 0, vertical ? 56 : 280, vertical ? 280 : 56, 4, vertical);
+      const along = 4 + (target + 0.5) * 68;
+      const p = point(vertical ? 28 : along, vertical ? along : 28);
+      nowMs = 0;
+      const press = event(TouchType.Down, [p]);
+      guard.begin(press, true);
+      guard.observe(press);
+      assert.equal(guard.actionTarget(), target === 3 ? 3 : -1);
+      nowMs = 220;
+      guard.observe(event(TouchType.Up, [p]));
+      const changes = [];
+      guard.commitClick(guard.requestClick(), target, i => changes.push(i));
+      assert.deepEqual(changes, target < 3 ? [target] : []);
+      assert.equal(guard.allowsChange(3), false);
+    }
+  }
+});
+
+test('assistant taps cannot be misreported as the first page, and swipes cannot enter the action slot', () => {
+  const guard = new Guard(4, 3);
+  assert.equal(guard.allowsChange(3), false, 'content swipe from More stays on More');
+  for (const page of [0, 1, 2]) assert.equal(guard.allowsChange(page), true);
+  guard.setBounds(0, 672, 280, 56);
+  nowMs = 0;
+  const press = event(TouchType.Down, [point(245)]);
+  guard.begin(press, true);
+  guard.observe(press);
+  guard.observe(event(TouchType.Up, [point(245)]));
+  for (const callbackIndex of [0, 3]) {
+    guard.commitClick(guard.requestClick(), callbackIndex, () => assert.fail('assistant changed the page'));
+  }
+  guard.reset();
+  assert.equal(guard.actionTarget(), -1, 'reset clears action feedback');
+  guard.commitClick(guard.requestClick(), 3, () => assert.fail('accessibility selected the action as a page'));
+  assert.equal(guard.allowsChange(3), false);
+});
+
+test('a held release in the split gap selects no page in either orientation', () => {
+  for (const vertical of [false, true]) {
+    const guard = new Guard(4, 3);
+    const padding = vertical ? 4 : 12;
+    guard.setBounds(0, 0, vertical ? 56 : 280, vertical ? 280 : 56, padding, vertical, true,
+      vertical ? 0 : 216, vertical ? 0 : 224);
+    nowMs = 0;
+    const start = event(TouchType.Down, [point(vertical ? 28 : 108, vertical ? 106 : 28)]);
+    guard.begin(start, true);
+    guard.observe(start);
+    nowMs = 220;
+    const gap = vertical ? 208 : 220;
+    guard.observe(event(TouchType.Up, [point(vertical ? 28 : gap, vertical ? gap : 28)]));
+    assert.equal(guard.releaseTarget(), -1);
+    assert.equal(guard.actionTarget(), -1);
+    assert.deepEqual(click(guard, 2), []);
+  }
+});
+
 test('a stationary hold releases onto its current icon without requiring a native click', () => {
   const guard = boundedGuard();
   assert.equal(guard.activateHold(179), false);

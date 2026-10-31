@@ -1,6 +1,7 @@
 import { FrameCallback } from '@kit.ArkUI';
 import { DockFlowMotion, DockLightController, DockLightPlayer } from '../util/DockLightEffect';
 import { ImmersiveLightEnvelope } from '../util/ImmersiveLightEffect';
+import { DOCK_WIDTH, DOCK_NAV_WIDTH, DOCK_ACTION_SIZE, DOCK_NATIVE_PADDING, dockItemCenter } from '../util/DockHandedness';
 
 class DockLightFrame extends FrameCallback {
   private draw: (timeMs: number) => void;
@@ -19,8 +20,9 @@ class DockLightFrame extends FrameCallback {
 @Component
 export struct DockLightOverlay {
   controller: DockLightController = new DockLightController();
-  /** Side rail: draw the same 212 vp track top-to-bottom instead of rotating a horizontal canvas. */
+  /** Side rail: draw the same track top-to-bottom. */
   vertical: boolean = false;
+  itemPadding: number = DOCK_NATIVE_PADDING;
   private canvas: CanvasRenderingContext2D = new CanvasRenderingContext2D(new RenderingContextSettings(true));
   private generation: number = 0;
   private ready: boolean = false;
@@ -53,7 +55,7 @@ export struct DockLightOverlay {
     this.envelope.reset();
     this.motion.settle();
     if (this.ready) {
-      this.canvas.clearRect(0, 0, 212, 212);
+      this.canvas.clearRect(0, 0, DOCK_WIDTH, DOCK_WIDTH);
     }
   }
 
@@ -64,14 +66,14 @@ export struct DockLightOverlay {
       this.envelope.release(nowMs);
     }
     // A light still flowing keeps its position and velocity and turns toward the new tab.
-    if (!this.motion.isMoving()) this.motion.jump(DockLightOverlay.slot(from));
-    this.motion.retarget(DockLightOverlay.slot(to), nowMs);
+    if (!this.motion.isMoving()) this.motion.jump(this.slot(from));
+    this.motion.retarget(this.slot(to), nowMs);
     this.animate();
   }
 
   private press(source: number): void {
     // A rapid second tap must not snap the travelling light back onto the tapped tab.
-    if (!this.motion.isMoving()) this.motion.jump(DockLightOverlay.slot(source));
+    if (!this.motion.isMoving()) this.motion.jump(this.slot(source));
     this.pressed = true;
     this.envelope.press(Date.now());
     this.animate();
@@ -86,8 +88,8 @@ export struct DockLightOverlay {
     }
   }
 
-  private static slot(index: number): number {
-    return (index + 0.5) * 212 / 3;
+  private slot(index: number): number {
+    return dockItemCenter(index, this.itemPadding);
   }
 
   private release(cancelled: boolean): void {
@@ -105,12 +107,12 @@ export struct DockLightOverlay {
         return;
       }
       const nowMs: number = Date.now();
-      this.canvas.clearRect(0, 0, 212, 212);
+      this.canvas.clearRect(0, 0, DOCK_WIDTH, DOCK_WIDTH);
       const center: number = this.motion.step(nowMs);
       this.canvas.save();
-      // Map the track (x along 0-212, y across 0-56) onto the upright rail: slot 0 at the top.
+      // Map the horizontal track onto the upright rail: slot 0 at the top.
       if (this.vertical) this.canvas.setTransform(0, 1, -1, 0, 56, 0);
-      this.clipCapsule();
+      this.clipCapsule(center);
       this.drawGlow(center, this.envelope.sample(nowMs), 45);
       this.canvas.restore();
       if (this.pressed || this.envelope.needsFrame(nowMs) || this.motion.isMoving()) {
@@ -122,13 +124,19 @@ export struct DockLightOverlay {
     this.getUIContext().postFrameCallback(frame);
   }
 
-  private clipCapsule(): void {
+  private clipCapsule(center: number): void {
+    const radius: number = DOCK_ACTION_SIZE / 2;
+    const navEnd: number = this.vertical ? this.slot(2) + radius : DOCK_NAV_WIDTH;
+    const actionStart: number = this.slot(3) - radius;
+    const action: boolean = center >= (navEnd + actionStart) / 2;
+    const left: number = action ? actionStart : (this.vertical ? this.slot(0) - radius : 0);
+    const right: number = action ? actionStart + DOCK_ACTION_SIZE : navEnd;
     this.canvas.beginPath();
-    this.canvas.moveTo(28, 0);
-    this.canvas.lineTo(184, 0);
-    this.canvas.arc(184, 28, 28, -Math.PI / 2, Math.PI / 2);
-    this.canvas.lineTo(28, 56);
-    this.canvas.arc(28, 28, 28, Math.PI / 2, Math.PI * 1.5);
+    this.canvas.moveTo(left + radius, 0);
+    this.canvas.lineTo(right - radius, 0);
+    this.canvas.arc(right - radius, radius, radius, -Math.PI / 2, Math.PI / 2);
+    this.canvas.lineTo(left + radius, DOCK_ACTION_SIZE);
+    this.canvas.arc(left + radius, radius, radius, Math.PI / 2, Math.PI * 1.5);
     this.canvas.closePath();
     this.canvas.clip();
   }
@@ -144,8 +152,8 @@ export struct DockLightOverlay {
 
   build() {
     Canvas(this.canvas)
-      .width(this.vertical ? 56 : 212)
-      .height(this.vertical ? 212 : 56)
+      .width(this.vertical ? 56 : DOCK_WIDTH)
+      .height(this.vertical ? DOCK_WIDTH : 56)
       .hitTestBehavior(HitTestMode.None)
       .accessibilityLevel('no-hide-descendants')
       .onReady(() => {

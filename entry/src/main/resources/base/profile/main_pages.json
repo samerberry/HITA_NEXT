@@ -2,7 +2,6 @@
   "src": [
     "pages/Home",
     "pages/CampusSkillConfirmPage",
-    "pages/AssistantPage",
     "pages/NewsPage",
     "pages/PortalsPage",
     "pages/NoticesPage",

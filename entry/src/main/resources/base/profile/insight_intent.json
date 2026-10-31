@@ -1,0 +1,14 @@
+{
+  "insightIntents": [
+    {
+      "intentName": "Timetable",
+      "domain": "hita",
+      "intentVersion": "0.1.0",
+      "srcEntry": "./ets/entryability/TimetableIntentExecutor.ets",
+      "uiAbility": {
+        "ability": "EntryAbility",
+        "executeMode": ["background"]
+      }
+    }
+  ]
+}

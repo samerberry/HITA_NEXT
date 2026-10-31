@@ -252,7 +252,7 @@ test('the window fills the status bar instead of leaving a white top inset', () 
   assert.doesNotMatch(tabPage, /SafeAreaEdge\.TOP/);
   const tab = home.slice(home.indexOf('  tabTimetable()'), home.indexOf('  tabMine()'));
   assert.match(tab, /Image\(this\.timetableBgUri\)[\s\S]*SafeAreaEdge\.TOP, SafeAreaEdge\.BOTTOM/);
-  assert.match(home, /new CompatibleDockModifier\(12 \+ this\.navBarInset,/);
+  assert.match(home, /\.margin\(\{ bottom: HitaDesign\.spaceSm \+ this\.navBarInset \}\)/);
   assert.match(ability, /captureSystemInsets/);
   assert.match(ability, /TYPE_NAVIGATION_INDICATOR/);
   assert.match(ability, /TYPE_KEYBOARD/);
@@ -266,19 +266,3 @@ test('the window fills the status bar instead of leaving a white top inset', () 
   assert.doesNotMatch(home, /AssistantTab|NewsTab/);
 });
 
-test('standalone assistant composer follows the keyboard without reserving a removed dock', () => {
-  const assistant = fs.readFileSync(path.join(etsRoot, 'pages/AssistantPage.ets'), 'utf8');
-  assert.doesNotMatch(assistant, /DOCK_CLEARANCE/);
-  assert.match(assistant, /hita_keyboard_vp/);
-  assert.match(assistant, /private inputBarBottom\(\): number/);
-  assert.match(assistant, /return this\.navBarInset/);
-  assert.match(assistant, /return this\.keyboardInset/);
-  assert.match(assistant, /setKeyboardAvoidMode\(KeyboardAvoidMode\.NONE\)/);
-  assert.match(assistant, /setKeyboardAvoidMode\(KeyboardAvoidMode\.OFFSET\)/);
-  assert.match(assistant, /bottom: HitaDesign\.spaceXs \+ this\.inputBarBottom\(\)/);
-  assert.match(assistant, /private dismissKeyboard\(\): void/);
-  assert.match(assistant, /composerController\.stopEditing\(\)/);
-  assert.match(assistant, /getFocusController\(\)\.clearFocus\(\)/);
-  assert.match(assistant, /\.scrollBar\(BarState\.Off\)[\s\S]*this\.dismissKeyboard\(\)/);
-  assert.doesNotMatch(assistant, /padding\(\{ left: 16, right: 16, top: 6, bottom: 8 \}\)/);
-});

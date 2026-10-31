@@ -2,7 +2,8 @@ import { deviceInfo } from '@kit.BasicServicesKit';
 import { HitaDesign } from '../theme/HitaDesign';
 import { CompatibleRailModifier } from '../theme/CompatibleRailModifier';
 import { ImmersiveHeader } from './ImmersiveHeader';
-import { DOCK_RAIL_THICKNESS, DOCK_WIDTH } from '../util/DockHandedness';
+import { DOCK_RAIL_THICKNESS, DOCK_WIDTH, dockItemCenter } from '../util/DockHandedness';
+import { AssistantDockItem } from '../../feature/assistant/AssistantDockItem';
 
 const RAIL_PADDING: number = 4;
 /** Room around the capsule inside its host for the material shadow and press deformation. */
@@ -29,18 +30,18 @@ export struct DockRail {
 
   @Builder
   item(icon: Resource, label: string, index: number) {
-    Column({ space: 3 }) {
+    Column({ space: HitaDesign.dockIconLabelGap }) {
       SymbolGlyph(icon)
         .fontSize(HitaDesign.iconMd)
         .fontColor([this.glyphColor(index)])
       Text(label)
-        .fontSize(11)
+        .fontSize(HitaDesign.dockLabel)
         .fontWeight(FontWeight.Medium)
         .fontColor(this.glyphColor(index))
         .maxLines(1)
     }
     .width('100%')
-    .layoutWeight(1)
+    .height(DOCK_RAIL_THICKNESS)
     .justifyContent(FlexAlign.Center)
     .borderRadius(24)
     .accessibilityText(label)
@@ -58,23 +59,37 @@ export struct DockRail {
   @Builder
   capsule() {
     Stack({ alignContent: Alignment.Top }) {
-      if (this.systemGlass) {
-        Column() { this.items() }
-          .width('100%')
-          .height('100%')
-      } else {
-        Column() { this.items() }
-          .width('100%')
-          .height('100%')
-          // Same single offscreen inversion pass as the API 23 bottom dock.
-          .blendMode(BlendMode.DIFFERENCE, BlendApplyType.OFFSCREEN)
+      Column({ space: HitaDesign.spaceSm }) {
+        if (this.systemGlass) {
+          this.items();
+        } else {
+          Column({ space: HitaDesign.spaceSm }) { this.items() }
+            .width('100%')
+            .blendMode(BlendMode.DIFFERENCE, BlendApplyType.OFFSCREEN);
+        }
       }
+      .width(DOCK_RAIL_THICKNESS)
+      .height(dockItemCenter(2, RAIL_PADDING) - dockItemCenter(0, RAIL_PADDING) + DOCK_RAIL_THICKNESS)
+      .position({ x: 0, y: dockItemCenter(0, RAIL_PADDING) - DOCK_RAIL_THICKNESS / 2 })
+      .borderRadius(DOCK_RAIL_THICKNESS / 2)
+      .attributeModifier(new CompatibleRailModifier(this.darkMode));
+      Stack() {
+        if (this.systemGlass) {
+          AssistantDockItem({ glyphTint: this.glyphColor(-1) }).height(HitaDesign.buttonHeight);
+        } else {
+          AssistantDockItem({ glyphTint: this.glyphColor(-1) })
+            .height(HitaDesign.buttonHeight)
+            .blendMode(BlendMode.DIFFERENCE, BlendApplyType.OFFSCREEN);
+        }
+      }
+      .width(DOCK_RAIL_THICKNESS)
+      .height(DOCK_RAIL_THICKNESS)
+      .position({ x: 0, y: dockItemCenter(3, RAIL_PADDING) - DOCK_RAIL_THICKNESS / 2 })
+      .borderRadius(DOCK_RAIL_THICKNESS / 2)
+      .attributeModifier(new CompatibleRailModifier(this.darkMode));
     }
     .width(DOCK_RAIL_THICKNESS)
     .height(DOCK_WIDTH)
-    .padding(RAIL_PADDING)
-    .borderRadius(DOCK_RAIL_THICKNESS / 2)
-    .attributeModifier(new CompatibleRailModifier(this.darkMode))
     .onAreaChange((_old: Area, area: Area) => this.onRailAreaChanged(area))
     .onTouch((event: TouchEvent) => this.onRailTouch(event))
   }

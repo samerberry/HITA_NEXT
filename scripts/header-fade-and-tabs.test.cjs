@@ -56,7 +56,7 @@ test('the shared header mask supplies the existing curve and reverses it for bot
 test('tabs swipe between neighbours except over a timetable grid, whose swipes page weeks', () => {
   const home = read('pages/Home.ets');
   const shell = home.slice(home.indexOf('  build() {'), home.indexOf('  activeSheet()'));
-  assert.match(shell, /Tabs\(\{ barPosition: BarPosition\.End, controller: this\.tabsController, barModifier: this\.dockBarModifier \}\)/);
+  assert.match(shell, /Tabs\(\{ barPosition: BarPosition\.End, controller: this\.tabsController \}\)/);
   assert.match(shell, /\.scrollable\(true\)/);
   assert.doesNotMatch(home, /tabSwipeLocked|handleChromeTabPanEnd/);
   assert.match(shell, /\.onAnimationStart\([\s\S]*?this\.selectedNav = targetIndex/);

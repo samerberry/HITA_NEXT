@@ -55,19 +55,13 @@ function harness({ api = 26, controllerDelay = 0, withBounds = true, localPoint,
   const changeRequests = [];
   const code = `
     class Home {
-      dockNavigation = new Guard();
+      dockNavigation = new Guard(4, 3);
       dockHolding = false;
       dockLightAlpha = DOCK_TAP_LIGHT_ALPHA;
       dockLightGeneration = 0;
       dockHoldTimer = -1;
       dockPressSource = 0;
       selectedNav = 0;
-      // No native bar is measured here (host width 0), so capsule tracking leaves the
-      // guard bounds that updateDockBounds sets below.
-      dockBarHostW = 0;
-      dockCapsuleX = -1;
-      dockBarTrackUntil = 0;
-      dockBarTracking = false;
       pageVisible = true;
       railMode() { return true; }
       getUIContext() { return { postFrameCallback: frame => setTimeout(() => frame.onFrame(), 16) }; }
@@ -92,17 +86,17 @@ function harness({ api = 26, controllerDelay = 0, withBounds = true, localPoint,
   const page = new Function('Guard', 'DOCK_HOLD_DELAY_MS', 'deviceInfo', 'TouchType',
     'setTimeout', 'clearTimeout', 'changes', 'lights', 'stoppedLights', 'changeRequests',
     'clock', 'controllerDelay', 'Date', 'DOCK_TAP_LIGHT_ALPHA', 'DOCK_HOLD_LIGHT_RAMP_MS',
-    'sampleDockHoldLight', 'DockHoldLightCallback', 'envelope', 'lightTouches', transpile(code) + '; return new Home();')(
+    'sampleDockHoldLight', 'DockHoldLightCallback', 'envelope', 'lightTouches', 'DOCK_WIDTH', 'DOCK_ITEM_COUNT', transpile(code) + '; return new Home();')(
     guardModule.exports.DockNavigationGuard, guardModule.exports.DOCK_HOLD_DELAY_MS,
     { apiAvailable: version => api >= Number(version.split('.')[0]) },
     TouchType, setTimer, id => timers.delete(id), changes, lights,
     stoppedLights, changeRequests, clock, controllerDelay, { now: () => clock.now },
     lightModule.exports.DOCK_TAP_LIGHT_ALPHA, lightModule.exports.DOCK_HOLD_LIGHT_RAMP_MS,
     lightModule.exports.sampleDockHoldLight,
-    class { constructor(callback) { this.onFrame = callback; } }, envelope, lightTouches);
+    class { constructor(callback) { this.onFrame = callback; } }, envelope, lightTouches, 280, 4);
   if (withBounds) {
     page.updateDockBounds({
-      globalPosition: { x: 300, y: 700 }, width: 212, height: 56
+      globalPosition: { x: 300, y: 700 }, width: 280, height: 56
     }, api26 ? 0 : 4);
   }
   const touch = (type, x = 35, y = 28, noReleasePoint = false) => {
@@ -118,6 +112,27 @@ function harness({ api = 26, controllerDelay = 0, withBounds = true, localPoint,
   return { page, clock, touch, advance, changes, lights, stoppedLights, changeRequests, timers,
     lightTouches, alpha: () => envelope.sample(clock.now) };
 }
+
+test('assistant action lights its own touch position and preserves the current page despite native callbacks', () => {
+  for (const selected of [0, 1, 2]) {
+    const h = harness();
+    h.page.selectedNav = selected;
+    // Native item centres include capsule padding; use an off-centre point too.
+    h.touch(TouchType.Down, 236);
+    assert.deepEqual(h.lightTouches, [['press', 3], ['move', 236]]);
+    h.advance(60);
+    h.touch(TouchType.Up, 236);
+    h.page.requestDockClick(0);
+    h.advance(0);
+    h.page.requestDockClick(3);
+    h.advance(1000);
+    assert.deepEqual(h.changeRequests, []);
+    assert.deepEqual(h.lights, [], 'the action never transfers the light back to the selected page');
+    assert.equal(h.page.selectedNav, selected);
+    assert.equal(h.page.dockHolding, false);
+    assert.equal(h.alpha(), 0, 'action feedback fades after release');
+  }
+});
 
 test('a tap draws from the selected page and commits only after release dispatch', () => {
   const h = harness();
@@ -138,17 +153,17 @@ test('a tap draws from the selected page and commits only after release dispatch
 });
 
 test('holds keep API 26 light active and release at the final icon on both renderers', () => {
-  for (const api of [23, 24, 25, 26]) {
+  for (const api of [23, 24, 25, 26, 27, 28]) {
     const h = harness({ api });
     h.touch(TouchType.Down, 35);
     h.advance(179);
     assert.equal(h.page.dockHolding, false);
     h.advance(1);
-    assert.equal(h.page.dockHolding, api === 26);
+    assert.equal(h.page.dockHolding, api >= 26);
     for (const x of [177, 106, 35, 177]) {
       h.touch(TouchType.Move, x);
       h.advance(200);
-      assert.equal(h.page.dockHolding, api === 26, 'only API 26 has held light feedback');
+      assert.equal(h.page.dockHolding, api >= 26, 'glass surfaces share held light feedback');
       assert.equal(h.page.dockNavigation.isHolding(), true);
       assert.deepEqual(h.changes, [], 'content must remain at its original page while pressed');
     }
@@ -271,8 +286,8 @@ test('repeated timestamps do not freeze hold motion or the next gesture', () => 
   assert.deepEqual(h.lights, [[2, 1]]);
 });
 
-test('other APIs never transfer or stop new light effects during taps, holds or lifecycle cleanup', () => {
-  for (const api of [23, 24, 25, 27, 28]) {
+test('older APIs never transfer or stop new light effects during taps, holds or lifecycle cleanup', () => {
+  for (const api of [23, 24, 25]) {
     const h = harness({ api });
     h.touch(TouchType.Down, 106);
     h.advance(60);

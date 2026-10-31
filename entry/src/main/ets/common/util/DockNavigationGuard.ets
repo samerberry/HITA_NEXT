@@ -2,6 +2,14 @@ export const DOCK_HOLD_DELAY_MS: number = 180;
 
 /** Keep content fixed while scrubbing the dock; authorize one target on release. */
 export class DockNavigationGuard {
+  private itemCount: number;
+  private pageCount: number;
+
+  constructor(itemCount: number = 3, pageCount: number = itemCount) {
+    this.itemCount = itemCount;
+    this.pageCount = pageCount;
+  }
+
   private sequence: number = 0;
   private dock: boolean = false;
   private dockPointer: boolean = false;
@@ -24,11 +32,15 @@ export class DockNavigationGuard {
   private width: number = 0;
   private height: number = 0;
   private padding: number = 0;
-  /** The tablet side rail lays its three items out top to bottom. */
+  /** The tablet side rail lays its items out top to bottom. */
   private vertical: boolean = false;
+  private splitSurfaces: boolean = false;
+  private navigationEnd: number = 0;
+  private actionStart: number = 0;
 
   setBounds(left: number, top: number, width: number, height: number, padding: number = 0,
-    vertical: boolean = false): void {
+    vertical: boolean = false, splitSurfaces: boolean = false, navigationEnd: number = 0,
+    actionStart: number = 0): void {
     if (!Number.isFinite(left) || !Number.isFinite(top) || !Number.isFinite(width) ||
       !Number.isFinite(height) || (vertical ? height : width) <= padding * 2 || (vertical ? width : height) <= 0) {
       return;
@@ -39,6 +51,9 @@ export class DockNavigationGuard {
     this.height = height;
     this.padding = padding;
     this.vertical = vertical;
+    this.splitSurfaces = splitSurfaces;
+    this.navigationEnd = navigationEnd;
+    this.actionStart = actionStart;
   }
 
   private length(): number {
@@ -133,8 +148,19 @@ export class DockNavigationGuard {
       this.targetIndex = -1;
       return;
     }
-    const itemLength: number = (this.length() - this.padding * 2) / 3;
-    this.targetIndex = Math.max(0, Math.min(2, Math.floor(this.along(touch) / itemLength)));
+    const itemLength: number = (this.length() - this.padding * 2) / this.itemCount;
+    const position: number = this.along(touch) + this.padding;
+    if (this.splitSurfaces) {
+      const navEnd: number = this.navigationEnd > 0 ? this.navigationEnd :
+        this.padding + (this.pageCount - 0.5) * itemLength + 28;
+      const actionBegin: number = this.actionStart > 0 ? this.actionStart :
+        this.padding + (this.pageCount + 0.5) * itemLength - 28;
+      this.targetIndex = position > navEnd && position < actionBegin ? -1 :
+        (position >= actionBegin ? this.pageCount :
+          Math.max(0, Math.min(this.pageCount - 1, Math.floor(this.along(touch) / itemLength))));
+      return;
+    }
+    this.targetIndex = Math.max(0, Math.min(this.itemCount - 1, Math.floor(this.along(touch) / itemLength)));
   }
 
   activateHold(nowMs: number = Date.now()): boolean {
@@ -156,6 +182,12 @@ export class DockNavigationGuard {
     return this.dockPointer;
   }
 
+  /** Action feedback follows the touched slot without selecting a page. */
+  actionTarget(): number {
+    return this.dockPointer && !this.rejected && this.targetIndex >= this.pageCount &&
+      this.targetIndex < this.itemCount ? this.targetIndex : -1;
+  }
+
   isRejected(): boolean {
     return this.rejected;
   }
@@ -165,7 +197,8 @@ export class DockNavigationGuard {
       touch.id === this.pointerId) ?? event.changedTouches.find((touch: TouchObject): boolean =>
       touch.id === this.pointerId);
     if (point === undefined || this.length() <= this.padding * 2) return undefined;
-    return Math.max(0, Math.min(212, this.along(point) * 212 / (this.length() - this.padding * 2)));
+    if (this.splitSurfaces) return Math.max(0, Math.min(this.length(), this.along(point) + this.padding));
+    return Math.max(0, Math.min(this.length(), this.along(point) * this.length() / (this.length() - this.padding * 2)));
   }
 
   releaseTarget(): number {
@@ -184,13 +217,14 @@ export class DockNavigationGuard {
 
   commitClick(sequence: number, index: number, changeIndex: (index: number) => void): void {
     if (sequence !== this.sequence || this.pressed || this.rejected || this.consumed ||
-      (this.moved && !this.holding)) {
+      (this.moved && !this.holding) ||
+      (this.dockPointer && this.targetIndex >= this.pageCount)) {
       return;
     }
     // Native item indices are authoritative for taps. Only a held release
     // needs geometry, because a long press may suppress the item click.
     const target: number = this.holding ? this.targetIndex : index;
-    if (target < 0 || target >= 3 || (this.holding && this.length() <= 0)) {
+    if (target < 0 || target >= this.pageCount || (this.holding && this.length() <= 0)) {
       return;
     }
     this.consumed = true;
@@ -204,6 +238,8 @@ export class DockNavigationGuard {
   }
 
   allowsChange(index: number): boolean {
+    // An action slot never becomes a page, including a swipe from the last page.
+    if (index < 0 || index >= this.pageCount) return false;
     if (!this.dock) {
       return true;
     }
