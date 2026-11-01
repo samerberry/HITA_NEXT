@@ -215,13 +215,13 @@ test('date resolution prefers the calendar, labels saved fallback, and leaves un
   const session = Object.assign(new EasSession(), { campus: EasCampus.WEIHAI });
   const db = { getTimetableByEasCode: async key => {
     assert.equal(key, 'WEIHAI:2026-20271');
-    return { startTime: date(2026, 9, 14) };
+    return { startTime: date(2026, 9, 7) };
   } };
   let result = await importer.loadStartDate(db, { getStartDate: async () => date(2026, 8, 24) }, session, term());
   assert.equal(result.startTime, date(2026, 8, 24));
   assert.equal(result.fromSaved, false);
   result = await importer.loadStartDate(db, { getStartDate: async () => undefined }, session, term());
-  assert.equal(result.startTime, date(2026, 9, 14));
+  assert.equal(result.startTime, date(2026, 9, 7));
   assert.equal(result.fromSaved, true);
   result = await importer.loadStartDate({ getTimetableByEasCode: async () => undefined },
     { getStartDate: async () => undefined }, session, term());
@@ -229,6 +229,35 @@ test('date resolution prefers the calendar, labels saved fallback, and leaves un
   await assert.rejects(importer.loadStartDate(db, {
     getStartDate: async () => { throw new Error('教务会话已失效，请重新登录'); }
   }, session, term()), /会话已失效/);
+});
+
+test('a saved autumn date left by the old default is not reused when the calendar is unavailable', async () => {
+  // 0.1.0 computed the second Monday of September; 2026 → 9/14, 2025 → 9/8, 2027 → 9/13.
+  assert.equal(importer.legacyAutumnStart(term()), date(2026, 9, 14));
+  assert.equal(importer.legacyAutumnStart(term('1', '2025-2026')), date(2025, 9, 8));
+  assert.equal(importer.legacyAutumnStart(term('1', '2027-2028')), date(2027, 9, 13));
+  assert.equal(importer.legacyAutumnStart(term('2')), 0, 'only autumn terms had the old default');
+  const session = Object.assign(new EasSession(), { campus: EasCampus.BENBU });
+  const saved = startTime => ({ getTimetableByEasCode: async () => ({ startTime }) });
+  const offline = { getStartDate: async () => undefined };
+  for (const legacy of [date(2026, 9, 14), date(2026, 9, 16)]) {
+    const result = await importer.loadStartDate(saved(legacy), offline, session, term());
+    assert.equal(result.startTime, 0, 'the user is asked to pick the date');
+    assert.equal(result.fromSaved, false);
+  }
+  const spring = await importer.loadStartDate(saved(date(2027, 3, 1)), offline, session, term('2'));
+  assert.equal(spring.startTime, date(2027, 3, 1));
+  const online = await importer.loadStartDate(saved(date(2026, 9, 14)),
+    { getStartDate: async () => date(2026, 9, 14) }, session, term());
+  assert.equal(online.startTime, date(2026, 9, 14), 'a calendar that really says 9/14 is still accepted');
+});
+
+test('quick import with only a legacy saved date asks for a manual date and writes nothing', async () => {
+  const setup = importSetup({ remote: null, savedDate: date(2026, 9, 14) });
+  const result = await setup.EasTimetableImporter.importCurrent({});
+  assert.equal(result.success, false);
+  assert.match(result.message, /手动选择/);
+  assert.equal(setup.calls.writes, 0);
 });
 
 function importSetup({ remote = date(2026, 8, 24), savedDate, selectedTerms = [term()], weeks = [1, 3] } = {}) {

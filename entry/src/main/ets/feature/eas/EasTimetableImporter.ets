@@ -837,9 +837,30 @@ export class EasTimetableImporter {
     const saved: EasTimetable | undefined = await rdb.getTimetableByEasCode(
       session.campus.toString() + ':' + term.getCode());
     if (saved !== undefined && Number.isFinite(saved.startTime) && saved.startTime > 0) {
-      out.startTime = EasTimetable.mondayMsOf(saved.startTime);
+      const monday: number = EasTimetable.mondayMsOf(saved.startTime);
+      if (monday === EasTimetableImporter.legacyAutumnStart(term)) {
+        // 早期版本推算出的默认值，不是校历日期；沿用会让错误日期一直留下去，改由用户手动选择。
+        hilog.warn(DOMAIN, TAG, 'ignore legacy autumn start term=%{public}s', term.getCode());
+        return out;
+      }
+      out.startTime = monday;
       out.fromSaved = true;
     }
     return out;
+  }
+
+  /**
+   * 0.1.0 版在没有校历时把秋季学期开学日推算成 9 月第二个周一（2026 年为 9 月 14 日）。
+   * 只对秋季学期（学期代码 1）返回该日期，其他学期返回 0。
+   */
+  static legacyAutumnStart(term: EasTermItem): number {
+    const years: RegExpExecArray | null = /^(\d{4})-\d{4}$/.exec(term.yearCode);
+    if (years === null || Number(term.termCode) !== 1) {
+      return 0;
+    }
+    const date: Date = new Date(Number(years[1]), 8, 1, 0, 0, 0, 0);
+    const firstDay: number = date.getDay() === 0 ? 7 : date.getDay();
+    date.setDate(1 + ((8 - firstDay) % 7) + 7);
+    return date.getTime();
   }
 }
