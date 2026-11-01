@@ -107,12 +107,36 @@ struct TimetableManagerPage {
     });
   }
 
-  private async importIcs(): Promise<void> {
+  /** 有当前课表时先问：新建一张，还是合并进当前课表（同名同时间的课按文件更新）。 */
+  private chooseIcsTarget(): void {
+    if (this.adding || this.loading || this.deleting) return;
+    const current: EasTimetable | undefined =
+      this.timetables.find((item: EasTimetable): boolean => item.id === this.activeTimetableId);
+    if (current === undefined) {
+      this.importIcs(undefined);
+      return;
+    }
+    this.getUIContext().getPromptAction().showActionMenu({
+      title: '导入日历文件',
+      buttons: [
+        { text: '新建课表', color: HitaColors.primary },
+        { text: '合并到“' + current.name + '”', color: HitaColors.primary }
+      ]
+    }).then((ret) => {
+      // 不在菜单回调里等待文件选择器，避免阻塞 UI 线程。
+      setTimeout(() => {
+        this.importIcs(ret.index === 1 ? current.id : undefined);
+      }, 0);
+    }).catch(() => {
+    });
+  }
+
+  private async importIcs(targetId: string | undefined): Promise<void> {
     if (this.adding || this.loading || this.deleting) return;
     this.adding = true;
     const ctx: common.UIAbilityContext = this.getUIContext().getHostContext() as common.UIAbilityContext;
     try {
-      const result: IcsImportResult | undefined = await TimetableIcsImporter.pickAndImport(ctx);
+      const result: IcsImportResult | undefined = await TimetableIcsImporter.pickAndImport(ctx, targetId);
       if (result === undefined) {
         return;
       }
@@ -325,7 +349,7 @@ struct TimetableManagerPage {
       HitaListRow({ symbol: $r('sys.symbol.repeat_1'), title: '教务导入', divider: true,
         onTap: () => { this.openImportPage(); } });
       HitaListRow({ symbol: $r('sys.symbol.doc_plaintext'), title: '导入日历文件', divider: true,
-        onTap: () => { this.importIcs(); } });
+        onTap: () => { this.chooseIcsTarget(); } });
       HitaListRow({ symbol: $r('sys.symbol.upload'),
         title: this.exporting ? '正在导出…' : '导出当前课表 ICS', divider: true,
         onTap: () => { this.showExportMenu(); } });

@@ -87,7 +87,7 @@ export class EasTimetableImporter {
    */
   static async importCurrent(context: common.Context, selectedTerm?: EasTermItem,
     startTimeMs?: number, scheduleOverride?: EasTimePeriodInDay[], studentType?: string,
-    confirm?: EasReimportConfirm): Promise<EasImportResult> {
+    confirm?: EasReimportConfirm, targetTimetableId?: string): Promise<EasImportResult> {
     const result: EasImportResult = new EasImportResult();
     try {
       await EasSessionStore.getInstance().init(context);
@@ -135,6 +135,28 @@ export class EasTimetableImporter {
         }
       }
       result.term = term;
+      let target: EasTimetable | undefined = undefined;
+      if (targetTimetableId !== undefined && targetTimetableId.length > 0) {
+        target = await rdb.getTimetableById(targetTimetableId, true);
+        const code: string = session.campus.toString() + ':' + term.getCode();
+        if (target === undefined) {
+          result.message = '要合并的课表已不存在';
+          return result;
+        }
+        if (target.code === code) {
+          // 已经关联这个学期，按普通的重新导入处理。
+          target = undefined;
+        } else if (EasTimetableImporter.isEasTimetable(target)) {
+          result.message = '当前课表已关联其他教务学期，不能合并';
+          return result;
+        } else {
+          const owner: EasTimetable | undefined = await rdb.getTimetableByEasCode(code);
+          if (owner !== undefined) {
+            result.message = '这个学期已有教务课表“' + owner.name + '”，请直接重新导入';
+            return result;
+          }
+        }
+      }
       const start: EasTermStartResult = startTimeMs === undefined ?
         await EasTimetableImporter.loadStartDate(rdb, provider, session, term) : new EasTermStartResult();
       if (startTimeMs !== undefined && Number.isFinite(startTimeMs) && startTimeMs > 0) {
@@ -163,9 +185,12 @@ export class EasTimetableImporter {
         }
       }
       const plan: EasImportPlan = await EasTimetableImporter.buildImport(rdb, session, term, courses, schedule,
-        start.startTime);
+        start.startTime, target);
       let outcome: EasReimportOutcome | undefined = undefined;
-      if (plan.replaceCourses) {
+      let overlay: TimetableMergePlan | undefined = undefined;
+      if (target !== undefined) {
+        overlay = await EasTimetableImporter.overlay(rdb, plan);
+      } else if (plan.replaceCourses) {
         outcome = await EasTimetableImporter.reimport(rdb, plan, confirm);
         if (outcome === EasReimportOutcome.CANCELLED) {
           result.cancelled = true;
@@ -193,7 +218,10 @@ export class EasTimetableImporter {
       await EasTimetableImporter.rememberRemote(context, timetable.id, plan.events);
       result.success = true;
       result.message = '已导入 ' + readback.length.toString() + ' 个课次';
-      if (outcome === EasReimportOutcome.MERGED) {
+      if (overlay !== undefined) {
+        result.message = '已合并到“' + timetable.name + '”：更新 ' + overlay.updates.length.toString() + ' 个、新增 ' +
+          overlay.inserts.length.toString() + ' 个课次，之后随教务课表更新';
+      } else if (outcome === EasReimportOutcome.MERGED) {
         result.message = '已重新导入，保留了你添加、修改和翘掉的课';
       } else if (outcome === EasReimportOutcome.EDITS_UPDATED) {
         result.message = '已重新导入，你改过的课已换成教务版本';
@@ -414,6 +442,30 @@ export class EasTimetableImporter {
     return outcome;
   }
 
+  /**
+   * 把教务课表合并进手建或 ICS 导入的课表，并把它关联到这个学期：同名同时间的课换成教务版本，其余教务课新增，
+   * 本地其他课和日程不动。ICS 导入时占位的科目类型按教务分类修正。
+   */
+  private static async overlay(rdb: RdbHelper, plan: EasImportPlan): Promise<TimetableMergePlan> {
+    const id: string = plan.timetable.id;
+    const local: EasEventItem[] = await rdb.getEventsOfTimetable(id, true);
+    const merge: TimetableMergePlan = TimetableUpdateDiff.overlay(local, plan.events);
+    const saved: Map<string, EasTermSubject> = new Map<string, EasTermSubject>();
+    for (const subject of await rdb.getSubjectsOfTimetable(id)) {
+      saved.set(subject.id, subject);
+    }
+    const subjects: EasTermSubject[] = plan.subjects.filter((subject: EasTermSubject): boolean => {
+      const before: EasTermSubject | undefined = saved.get(subject.id);
+      if (before === undefined) {
+        return merge.inserts.some((event: EasEventItem): boolean => event.subjectId === subject.id);
+      }
+      return before.field === 'ics' && (before.type !== subject.type || before.credit !== subject.credit);
+    });
+    await rdb.applyTimetableMerge(id, subjects, merge.inserts, merge.updates, [], merge.base, merge.local,
+      plan.timetable);
+    return merge;
+  }
+
   private static async saveCourses(rdb: RdbHelper, session: EasSession, term: EasTermItem,
     courses: EasCourseItem[], schedule: EasTimePeriodInDay[], startTimeMs: number): Promise<EasImportPlan> {
     const plan: EasImportPlan = await EasTimetableImporter.buildImport(rdb, session, term, courses, schedule,
@@ -434,15 +486,19 @@ export class EasTimetableImporter {
   }
 
   private static async buildImport(rdb: RdbHelper, session: EasSession, term: EasTermItem,
-    courses: EasCourseItem[], schedule: EasTimePeriodInDay[], startTimeMs: number): Promise<EasImportPlan> {
+    courses: EasCourseItem[], schedule: EasTimePeriodInDay[], startTimeMs: number,
+    target?: EasTimetable): Promise<EasImportPlan> {
     const code: string = session.campus.toString() + ':' + term.getCode();
-    let timetable: EasTimetable | undefined = await rdb.getTimetableByEasCode(code);
+    let timetable: EasTimetable | undefined = target !== undefined ? target : await rdb.getTimetableByEasCode(code);
     const replaceCourses: boolean = timetable !== undefined;
     if (timetable === undefined) {
       timetable = new EasTimetable();
-      timetable.code = code;
     }
-    timetable.name = term.name;
+    timetable.code = code;
+    if (target === undefined) {
+      // 合并到已有课表时保留用户起的名字。
+      timetable.name = term.name;
+    }
     timetable.startTime = EasTimetable.mondayMsOf(startTimeMs);
     let maxWeek: number = 1;
     for (let i = 0; i < courses.length; i++) {

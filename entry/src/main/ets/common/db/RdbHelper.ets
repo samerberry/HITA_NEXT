@@ -74,6 +74,7 @@ const CREATE_LEARNING_TASK: string = 'CREATE TABLE IF NOT EXISTS learning_task (
 export class RdbHelper {
   /** applyTimetableMerge found the timetable changed after the plan was built. */
   static readonly STALE_MERGE: string = 'Timetable changed since the update check';
+  static readonly TERM_TAKEN: string = 'Another timetable already holds this term';
   private static instance: RdbHelper | undefined = undefined;
   private store: relationalStore.RdbStore | undefined = undefined;
   private initializing: Promise<void> | undefined = undefined;
@@ -451,8 +452,10 @@ export class RdbHelper {
    */
   async applyTimetableMerge(timetableId: string, newSubjects: EasTermSubject[], inserts: EasEventItem[],
     updates: EasEventItem[], deletes: EasEventItem[], base: EasImportBaseEntry[],
-    expectedLocal?: EasEventItem[]): Promise<void> {
-    if (newSubjects.some((subject: EasTermSubject): boolean => subject.timetableId !== timetableId) ||
+    expectedLocal?: EasEventItem[], relink?: EasTimetable): Promise<void> {
+    if ((relink !== undefined && (relink.id !== timetableId || relink.code.length === 0 ||
+      !Number.isFinite(relink.startTime) || !Number.isFinite(relink.endTime) || relink.endTime <= relink.startTime)) ||
+      newSubjects.some((subject: EasTermSubject): boolean => subject.timetableId !== timetableId) ||
       inserts.concat(updates).some((event: EasEventItem): boolean => event.timetableId !== timetableId ||
         event.type !== EasEventType.CLASS || !Number.isFinite(event.from) || !Number.isFinite(event.to) ||
         event.to <= event.from)) {
@@ -466,6 +469,24 @@ export class RdbHelper {
         if (!table.goToFirstRow()) throw new Error('Timetable no longer exists');
         currentEnd = table.getLong(table.getColumnIndex('endTime'));
       } finally { table.close(); }
+      if (relink !== undefined) {
+        // 手建或 ICS 导入的课表关联到教务学期；同一学期只能对应一张课表。
+        const owners: relationalStore.ResultSet = await transaction.query(
+          new relationalStore.RdbPredicates('timetable').equalTo('code', relink.code), ['id']);
+        try {
+          while (owners.goToNextRow()) {
+            if (owners.getString(owners.getColumnIndex('id')) !== timetableId) throw new Error(RdbHelper.TERM_TAKEN);
+          }
+        } finally { owners.close(); }
+        currentEnd = Math.max(currentEnd, relink.endTime);
+        const linked: number = await transaction.update({
+          'code': relink.code,
+          'startTime': relink.startTime,
+          'endTime': currentEnd,
+          'scheduleStructure': EasTimetable.encodeStructure(relink.scheduleStructure)
+        }, new relationalStore.RdbPredicates('timetable').equalTo('id', timetableId));
+        if (linked !== 1) throw new Error('Timetable no longer exists');
+      }
       if (expectedLocal !== undefined) {
         // 计划按检查时的本地课程生成；之后改过、删过或重新导入过，就整份作废，不按旧快照覆盖。
         const current: EasEventItem[] = RdbHelper.readRows(await transaction.query(
@@ -481,9 +502,8 @@ export class RdbHelper {
         }
       }
       for (const subject of newSubjects) {
-        if (await transaction.insert('subject', RdbHelper.subjectValues(subject)) < 0) {
-          throw new Error('Subject insert failed');
-        }
+        // 关联学期时也会带上要修正类型的已有科目。
+        await RdbHelper.upsertRow(transaction, 'subject', RdbHelper.subjectValues(subject), 'id', subject.id);
       }
       for (const event of inserts) {
         if (await transaction.insert('events', RdbHelper.eventValues(event)) < 0) {
@@ -501,6 +521,51 @@ export class RdbHelper {
           .equalTo('timetableId', timetableId).equalTo('type', EasEventType.CLASS));
       }
       await RdbHelper.replaceImportBase(transaction, timetableId, base);
+      const lastEnd: number = inserts.reduce((end: number, event: EasEventItem): number =>
+        Math.max(end, event.to), currentEnd);
+      if (lastEnd > currentEnd) {
+        const updated: number = await transaction.update({ 'endTime': CourseDateSelection.weekEnd(lastEnd) },
+          new relationalStore.RdbPredicates('timetable').equalTo('id', timetableId));
+        if (updated !== 1) throw new Error('Timetable update failed');
+      }
+    });
+  }
+
+  /**
+   * 把日历文件合并进已有课表：新增科目和课次，按 id 改写同名同时间的课次，整体在一个事务里完成。
+   * 不删除任何日程，也不改教务基准，之后的教务更新把这些课当作用户添加或修改过的课。
+   */
+  async mergeImportedEvents(timetableId: string, newSubjects: EasTermSubject[], inserts: EasEventItem[],
+    updates: EasEventItem[]): Promise<void> {
+    if (newSubjects.some((subject: EasTermSubject): boolean => subject.timetableId !== timetableId) ||
+      inserts.concat(updates).some((event: EasEventItem): boolean => event.timetableId !== timetableId ||
+        !Number.isFinite(event.from) || !Number.isFinite(event.to) || event.to <= event.from)) {
+      throw new Error('Invalid timetable merge');
+    }
+    await this.writeTransaction(async (transaction: relationalStore.Transaction): Promise<void> => {
+      const table: relationalStore.ResultSet = await transaction.query(
+        new relationalStore.RdbPredicates('timetable').equalTo('id', timetableId), ['endTime']);
+      let currentEnd: number = 0;
+      try {
+        if (!table.goToFirstRow()) throw new Error('Timetable no longer exists');
+        currentEnd = table.getLong(table.getColumnIndex('endTime'));
+      } finally { table.close(); }
+      for (const subject of newSubjects) {
+        if (await transaction.insert('subject', RdbHelper.subjectValues(subject)) < 0) {
+          throw new Error('Subject insert failed');
+        }
+      }
+      for (const event of inserts) {
+        if (await transaction.insert('events', RdbHelper.eventValues(event)) < 0) {
+          throw new Error('Event insert failed');
+        }
+      }
+      for (const event of updates) {
+        const changed: number = await transaction.update(RdbHelper.eventValues(event),
+          new relationalStore.RdbPredicates('events').equalTo('id', event.id)
+            .equalTo('timetableId', timetableId).equalTo('type', event.type));
+        if (changed !== 1) throw new Error('Course changed during merge');
+      }
       const lastEnd: number = inserts.reduce((end: number, event: EasEventItem): number =>
         Math.max(end, event.to), currentEnd);
       if (lastEnd > currentEnd) {

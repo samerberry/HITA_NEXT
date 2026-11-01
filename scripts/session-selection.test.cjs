@@ -125,8 +125,12 @@ test('home and timetable import share session selection; active timetable action
   assert.match(home, /Blank\(\)\.height\(this\.dockPageInset\(\) \+ HitaDesign\.spaceLg\)/);
   const manager = read('pages/TimetableManagerPage.ets');
   const card = manager.slice(manager.indexOf('  private addCard()'));
-  for (const action of ['createEmptyTimetable', 'openImportPage', 'importIcs']) {
+  for (const action of ['createEmptyTimetable', 'openImportPage', 'chooseIcsTarget']) {
     assert.ok(card.includes(`this.${action}();`), action);
   }
+  // The ICS row asks for a target first, then imports into a new timetable or the current one.
+  const chooser = manager.slice(manager.indexOf('  private chooseIcsTarget()'), manager.indexOf('  private async importIcs('));
+  assert.match(chooser, /this\.importIcs\(undefined\)/);
+  assert.match(chooser, /this\.importIcs\(ret\.index === 1 \? current\.id : undefined\)/);
   assert.match(read('pages/TimetableDetailPage.ets'), /this\.confirmDeleteCourse\(row\)/);
 });

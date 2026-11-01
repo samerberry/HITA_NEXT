@@ -179,6 +179,63 @@ export class TimetableUpdateDiff {
     return plan;
   }
 
+  /**
+   * 把教务课表叠加到还没有教务来源的课表（手建或 ICS 导入）：同名且时间重叠的课换成教务版本（含教务的起止时间，
+   * 日历文件的作息常和教务差几分钟），其余教务课新增；本地其他课和日程都不动。base 记为教务现版本，之后按常规的
+   * 教务更新合并。
+   */
+  static overlay(local: EasEventItem[], remote: EasEventItem[]): TimetableMergePlan {
+    const plan: TimetableMergePlan = new TimetableMergePlan();
+    plan.local = TimetableUpdateDiff.classes(local);
+    plan.base = TimetableUpdateDiff.baseOf(remote);
+    const localByName: Map<string, EasEventItem[]> = new Map<string, EasEventItem[]>();
+    for (const event of plan.local) {
+      const list: EasEventItem[] | undefined = localByName.get(event.name);
+      if (list === undefined) {
+        localByName.set(event.name, [event]);
+      } else {
+        list.push(event);
+      }
+    }
+    const claimed: Set<string> = new Set<string>();
+    const handled: Set<string> = new Set<string>();
+    for (const event of TimetableUpdateDiff.classes(remote)) {
+      const key: string = TimetableUpdateDiff.keyOf(event);
+      if (handled.has(key)) {
+        continue;
+      }
+      handled.add(key);
+      const candidates: EasEventItem[] = localByName.get(event.name) ?? [];
+      // 起止时间完全相同的优先，其次是重叠最多的那一节。
+      let before: EasEventItem | undefined = undefined;
+      let overlap: number = 0;
+      for (const item of candidates) {
+        if (claimed.has(item.id)) {
+          continue;
+        }
+        const shared: number = Math.min(item.to, event.to) - Math.max(item.from, event.from);
+        const exact: boolean = item.from === event.from && item.to === event.to;
+        if (shared > 0 && (exact || shared > overlap)) {
+          before = item;
+          overlap = exact ? Number.MAX_SAFE_INTEGER : shared;
+        }
+      }
+      if (before === undefined) {
+        plan.inserts.push(event);
+        continue;
+      }
+      claimed.add(before.id);
+      if (before.from !== event.from || before.to !== event.to ||
+        TimetableUpdateDiff.signatureOf(before) !== TimetableUpdateDiff.signatureOf(event)) {
+        const updated: EasEventItem = TimetableUpdateDiff.withDetails(before, event);
+        updated.from = event.from;
+        updated.to = event.to;
+        plan.updates.push(updated);
+      }
+    }
+    return plan;
+  }
+
   /** 课次定位：课程名与起止时间。 */
   static keyOf(event: EasEventItem): string {
     return TimetableUpdateDiff.slotKey(event.name, event.from, event.to);

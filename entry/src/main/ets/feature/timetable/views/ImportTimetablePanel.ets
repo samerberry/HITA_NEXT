@@ -48,6 +48,9 @@ export struct ImportTimetablePanel {
   @State message: string = '';
   @State error: string = '';
   @State fadeOpacity: number = 0;
+  /** 当前课表是手建或 ICS 导入时，可把教务课表合并进去并让它随教务更新。 */
+  @State mergeTarget: EasTimetable | undefined = undefined;
+  @State mergeIntoCurrent: boolean = false;
   @StorageProp('hita_status_bar_vp') statusBarInset: number = STATUS_BAR_INSET_FALLBACK;
   @StorageProp('hita_nav_bar_vp') navBarInset: number = NAV_BAR_INSET_FALLBACK;
   private session: EasSession | undefined = undefined;
@@ -76,6 +79,7 @@ export struct ImportTimetablePanel {
       return;
     }
     try {
+      await this.loadMergeTarget(ctx);
       const provider: EasDataProvider = new EasDataProvider(new EasApiClient());
       this.terms = await provider.getAllTerms(this.session as EasSession);
       this.selectedTermIndex = 0;
@@ -91,6 +95,24 @@ export struct ImportTimetablePanel {
         '无法加载课表信息，请稍后重试');
     } finally {
       this.loading = false;
+    }
+  }
+
+  private async loadMergeTarget(ctx: common.Context): Promise<void> {
+    try {
+      await TimetableSelectionStore.getInstance().init(ctx);
+      const id: string = await TimetableSelectionStore.getInstance().load();
+      if (id.length === 0) {
+        return;
+      }
+      const rdb: RdbHelper = RdbHelper.getInstance();
+      await rdb.init(ctx);
+      const current: EasTimetable | undefined = await rdb.getTimetableById(id);
+      if (current !== undefined && !EasTimetableImporter.isEasTimetable(current)) {
+        this.mergeTarget = current;
+      }
+    } catch (_) {
+      // 读不到当前课表时只提供新建导入。
     }
   }
 
@@ -267,7 +289,8 @@ export struct ImportTimetablePanel {
         replaceAll: (reason: string): Promise<boolean> => this.askReplaceAll(reason)
       };
       const result: EasImportResult = await EasTimetableImporter.importCurrent(ctx,
-        this.selectedTerm() as EasTermItem, this.startTime, this.schedule, undefined, confirm);
+        this.selectedTerm() as EasTermItem, this.startTime, this.schedule, undefined, confirm,
+        this.mergeIntoCurrent && this.mergeTarget !== undefined ? this.mergeTarget.id : undefined);
       if (result.success && result.timetable !== undefined) {
         await TimetableSelectionStore.getInstance().init(ctx);
         await TimetableSelectionStore.getInstance().save(result.timetable.id);
@@ -367,6 +390,9 @@ export struct ImportTimetablePanel {
           Column({ space: 12 }) {
             Blank().height(HEADER_HEIGHT);
             this.termCard();
+            if (this.mergeTarget !== undefined) {
+              this.mergeCard();
+            }
             this.dateCard();
             this.scheduleCard();
             if (this.error.length > 0) {
@@ -472,6 +498,34 @@ export struct ImportTimetablePanel {
     .padding(HitaDesign.inset)
     .backgroundColor(CARD_BG)
     .borderRadius(HitaDesign.cardRadius);
+  }
+
+  @Builder
+  private mergeCard() {
+    Row({ space: HitaDesign.gap }) {
+      Column({ space: HitaDesign.space2xs }) {
+        Text('合并到当前课表')
+          .fontSize(HitaDesign.body)
+          .fontWeight(FontWeight.Medium)
+          .fontColor(TEXT_PRIMARY);
+        Text('“' + (this.mergeTarget as EasTimetable).name + '”里同名同时间的课换成教务版本，其余课程保留，之后随教务课表更新')
+          .fontSize(HitaDesign.caption)
+          .fontColor(TEXT_SECONDARY);
+      }
+      .layoutWeight(1)
+      .alignItems(HorizontalAlign.Start);
+      Toggle({ type: ToggleType.Switch, isOn: this.mergeIntoCurrent })
+        .selectedColor(HitaColors.primary)
+        .margin(0)
+        .enabled(!this.importing)
+        .accessibilityText('合并到当前课表')
+        .onChange((enabled: boolean) => { this.mergeIntoCurrent = enabled; });
+    }
+    .width('100%')
+    .padding(HitaDesign.inset)
+    .backgroundColor(CARD_BG)
+    .borderRadius(HitaDesign.cardRadius)
+    .alignItems(VerticalAlign.Center);
   }
 
   @Builder

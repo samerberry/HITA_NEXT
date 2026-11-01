@@ -915,3 +915,73 @@ test('task backup is a strict snapshot and restore rolls task rows back alongsid
     assert.deepEqual(exported, []);
   } finally { f.sql.close(); }
 });
+
+test('an ICS file merged into a timetable updates same-name same-time entries in place and adds the rest', async () => {
+  const f = database();
+  try {
+    await seed(f.db);
+    const selected = [];
+    const { TimetableIcsImporter } = load('feature/timetable/data/TimetableIcsImporter.ets', {
+      '../../../common/db/RdbHelper': { RdbHelper: { getInstance: () => f.db } },
+      './TimetableSelectionStore': { TimetableSelectionStore: {
+        getInstance: () => ({ init: async () => {}, save: async id => selected.push(id) })
+      } }
+    });
+    f.sql.exec("UPDATE events SET name = 'Math' WHERE id = 'old-one'");
+    const before = f.snapshot();
+    const stamp = ms => { const d = new Date(ms); const p = n => String(n).padStart(2, '0');
+      return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}T${p(d.getHours())}${p(d.getMinutes())}00`; };
+    const vevent = (uid, from, to, summary, extra = []) => ['BEGIN:VEVENT', 'UID:' + uid, 'DTSTART:' + stamp(from),
+      'DTEND:' + stamp(to), 'SUMMARY:' + summary, ...extra, 'END:VEVENT'];
+    const old = event('old-one');
+    const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0',
+      ...vevent('a', old.from, old.to, 'Math', ['LOCATION:B202', 'DESCRIPTION:教师：Li']),
+      ...vevent('b', old.from + 7 * day, old.to + 7 * day, 'Math'),
+      ...vevent('c', old.from + 2 * day, old.to + 2 * day, 'Physics'),
+      'END:VCALENDAR'].join('\r\n');
+    const result = await TimetableIcsImporter.importText({}, ics, 'Imported', 'a');
+    assert.equal(result.success, true, result.message);
+    assert.equal(result.timetableId, 'a');
+    assert.deepEqual(selected, [], 'merging keeps the current timetable selection');
+    const after = f.snapshot();
+    assert.equal(after[0].length, before[0].length, 'no timetable is created');
+    const replaced = after[2].find(row => row.id === 'old-one');
+    assert.equal(replaced.place, 'B202');
+    assert.equal(replaced.teacher, 'Li');
+    assert.equal(replaced.rowid, before[2].find(row => row.id === 'old-one').rowid, 'updated in place');
+    assert.equal(replaced.subjectId, 'math', 'the user subject is kept');
+    for (const id of ['old-two', 'exam', 'memo', 'other-table']) {
+      assert.deepEqual(after[2].find(row => row.id === id), before[2].find(row => row.id === id));
+    }
+    const added = after[2].filter(row => !before[2].some(old => old.id === row.id));
+    assert.deepEqual(added.map(row => row.name).sort(), ['Math', 'Physics']);
+    assert.equal(added.find(row => row.name === 'Math').subjectId, 'math', 'an existing subject is reused by name');
+    assert.deepEqual(after[1].filter(row => row.timetableId === 'a').map(row => row.name).sort(), ['Math', 'Physics']);
+    const again = await TimetableIcsImporter.importText({}, ics, 'Imported', 'a');
+    assert.equal(again.eventCount, 0, 'importing the same file twice changes nothing');
+    assert.equal(f.snapshot()[2].length, after[2].length);
+  } finally { f.sql.close(); }
+});
+
+test('linking a timetable to a term updates it with the merge and refuses a term held by another timetable', async () => {
+  const f = database();
+  try {
+    await seed(f.db);
+    const link = Object.assign(table('b'), { code: 'SHENZHEN:2026-20271', startTime: start + 7 * day,
+      endTime: start + 70 * day - 1 });
+    link.scheduleStructure = periods(benbuTimes);
+    const inserted = event('school', EasEventType.CLASS, 'b', 14 * day);
+    await f.db.applyTimetableMerge('b', [], [inserted], [], [], [entry(inserted)], undefined, link);
+    const row = f.sql.prepare('SELECT * FROM timetable WHERE id = ?').get('b');
+    assert.equal(row.code, 'SHENZHEN:2026-20271');
+    assert.equal(row.startTime, start + 7 * day);
+    assert.equal(row.endTime, start + 70 * day - 1);
+    assert.equal(row.name, 'Term b', 'the name stays');
+    assert.deepEqual(periodRows(EasTimetable.decodeStructure(row.scheduleStructure)), benbuTimes);
+    const before = f.snapshot();
+    const taken = Object.assign(table('b'), { code: 'BENBU:2026-20271' });
+    await assert.rejects(f.db.applyTimetableMerge('b', [], [event('x', EasEventType.CLASS, 'b', 21 * day)], [], [], [],
+      undefined, taken), /already holds this term/);
+    assert.deepEqual(f.snapshot(), before, 'a refused link writes nothing');
+  } finally { f.sql.close(); }
+});

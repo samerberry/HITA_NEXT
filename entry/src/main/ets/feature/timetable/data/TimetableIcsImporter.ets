@@ -30,8 +30,9 @@ export class IcsImportResult {
 }
 
 export class TimetableIcsImporter {
-  /** 选择并导入；用户取消选择时返回 undefined。 */
-  static async pickAndImport(context: common.UIAbilityContext): Promise<IcsImportResult | undefined> {
+  /** 选择并导入；传入 targetTimetableId 时合并到该课表。用户取消选择时返回 undefined。 */
+  static async pickAndImport(context: common.UIAbilityContext,
+    targetTimetableId?: string): Promise<IcsImportResult | undefined> {
     const options: picker.DocumentSelectOptions = new picker.DocumentSelectOptions();
     options.maxSelectNumber = 1;
     options.fileSuffixFilters = ['日历文件(.ics)|.ics'];
@@ -47,10 +48,12 @@ export class TimetableIcsImporter {
       result.message = '无法读取所选文件';
       return result;
     }
-    return await TimetableIcsImporter.importText(context, text, TimetableIcsImporter.fileTitle(uris[0]));
+    return await TimetableIcsImporter.importText(context, text, TimetableIcsImporter.fileTitle(uris[0]),
+      targetTimetableId);
   }
 
-  static async importText(context: common.Context, text: string, fallbackName: string): Promise<IcsImportResult> {
+  static async importText(context: common.Context, text: string, fallbackName: string,
+    targetTimetableId?: string): Promise<IcsImportResult> {
     const result: IcsImportResult = new IcsImportResult();
     if (text.indexOf('BEGIN:VCALENDAR') < 0) {
       result.message = '所选文件不是有效的 ICS 日历文件';
@@ -62,6 +65,9 @@ export class TimetableIcsImporter {
     if (events.length === 0) {
       result.message = calendar.skippedAllDay > 0 ? '文件中只有全天事件，没有可导入的课程' : '文件中没有可导入的课程';
       return result;
+    }
+    if (targetTimetableId !== undefined && targetTimetableId.length > 0) {
+      return await TimetableIcsImporter.mergeInto(context, targetTimetableId, events);
     }
 
     const timetable: EasTimetable = new EasTimetable();
@@ -114,6 +120,112 @@ export class TimetableIcsImporter {
     result.eventCount = events.length;
     result.message = '已导入 ' + subjects.size.toString() + ' 门课程，共 ' + events.length.toString() + ' 个课次';
     return result;
+  }
+
+  /**
+   * 合并到已有课表：同名、同起止时间的课次（或考试）换成文件里的地点、教师和节次，其余新增；
+   * 课表里其他课程和日程不动，不新建课表，也不改变当前课表。
+   */
+  private static async mergeInto(context: common.Context, timetableId: string,
+    events: IcsEventInstance[]): Promise<IcsImportResult> {
+    const result: IcsImportResult = new IcsImportResult();
+    const rdb: RdbHelper = RdbHelper.getInstance();
+    await rdb.init(context);
+    const timetable: EasTimetable | undefined = await rdb.getTimetableById(timetableId, true);
+    if (timetable === undefined) {
+      result.message = '要合并的课表已不存在';
+      return result;
+    }
+    const local: Map<string, EasEventItem> = new Map<string, EasEventItem>();
+    for (const event of await rdb.getEventsOfTimetable(timetableId, true)) {
+      const key: string = TimetableIcsImporter.keyOf(event.type, event.name, event.from, event.to);
+      if (!local.has(key)) {
+        local.set(key, event);
+      }
+    }
+    const subjects: Map<string, EasTermSubject> = new Map<string, EasTermSubject>();
+    for (const subject of await rdb.getSubjectsOfTimetable(timetableId)) {
+      if (!subjects.has(subject.name)) {
+        subjects.set(subject.name, subject);
+      }
+    }
+    const newSubjects: EasTermSubject[] = [];
+    const inserts: EasEventItem[] = [];
+    const updates: EasEventItem[] = [];
+    const handled: Set<string> = new Set<string>();
+    let unchanged: number = 0;
+    for (const ics of events) {
+      const type: EasEventType = /考试/.test(ics.summary) ? EasEventType.EXAM : EasEventType.CLASS;
+      const key: string = TimetableIcsImporter.keyOf(type, ics.summary, ics.from, ics.to);
+      if (handled.has(key)) {
+        continue;
+      }
+      handled.add(key);
+      const numbers: number[] = TimetableIcsImporter.periodNumbers(timetable.scheduleStructure, ics);
+      const teacher: string = TimetableIcsImporter.teacherOf(ics.description);
+      const before: EasEventItem | undefined = local.get(key);
+      if (before !== undefined) {
+        if (before.place === ics.location && before.teacher === teacher &&
+          before.fromNumber === numbers[0] && before.lastNumber === numbers[1]) {
+          unchanged++;
+          continue;
+        }
+        const updated: EasEventItem = new EasEventItem();
+        updated.id = before.id;
+        updated.type = before.type;
+        updated.name = before.name;
+        updated.subjectId = before.subjectId;
+        updated.timetableId = before.timetableId;
+        updated.from = before.from;
+        updated.to = before.to;
+        updated.createdAt = before.createdAt;
+        updated.color = before.color;
+        updated.place = ics.location;
+        updated.teacher = teacher;
+        updated.fromNumber = numbers[0];
+        updated.lastNumber = numbers[1];
+        updates.push(updated);
+        continue;
+      }
+      const event: EasEventItem = new EasEventItem();
+      event.type = type;
+      event.name = ics.summary;
+      event.place = ics.location;
+      event.teacher = teacher;
+      event.timetableId = timetableId;
+      event.from = ics.from;
+      event.to = ics.to;
+      event.fromNumber = numbers[0];
+      event.lastNumber = numbers[1];
+      if (type === EasEventType.CLASS) {
+        let subject: EasTermSubject | undefined = subjects.get(ics.summary);
+        if (subject === undefined) {
+          subject = new EasTermSubject();
+          subject.timetableId = timetableId;
+          subject.name = ics.summary;
+          subject.type = EasSubjectType.TAG;
+          subject.field = 'ics';
+          subjects.set(ics.summary, subject);
+          newSubjects.push(subject);
+        }
+        event.subjectId = subject.id;
+      }
+      inserts.push(event);
+    }
+    if (inserts.length > 0 || updates.length > 0) {
+      await rdb.mergeImportedEvents(timetableId, newSubjects, inserts, updates);
+    }
+    result.success = true;
+    result.timetableId = timetableId;
+    result.eventCount = inserts.length + updates.length;
+    result.message = inserts.length === 0 && updates.length === 0 ? '“' + timetable.name + '”已是文件里的版本' :
+      '已合并到“' + timetable.name + '”：更新 ' + updates.length.toString() + ' 个、新增 ' +
+        inserts.length.toString() + ' 个' + (unchanged > 0 ? '，' + unchanged.toString() + ' 个未变' : '');
+    return result;
+  }
+
+  private static keyOf(type: EasEventType, name: string, from: number, to: number): string {
+    return type.toString() + '|' + name + '|' + from.toString() + '|' + to.toString();
   }
 
   private static readText(uri: string): string {

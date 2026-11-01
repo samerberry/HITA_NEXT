@@ -462,3 +462,102 @@ test('week ranges and change rows stay readable', () => {
   assert.equal(Diff.detailText(removed), '周一 1-2节 第3-4周');
   assert.equal(Diff.describe(removed), '取消 未命名课程 周一 1-2节 第3-4周');
 });
+
+/** A timetable from an ICS file (or made by hand) that has no school source yet. */
+function icsTable(h) {
+  const table = Object.assign(new h.models.EasTimetable(), {
+    id: 'ics', code: 'ICS:ics', name: '我的课表', startTime: h.timetable.startTime,
+    endTime: h.timetable.startTime + 4 * WEEK - 1
+  });
+  table.scheduleStructure = h.models.EasTimetable.getDefaultTimeStructure();
+  const tables = new Map([[table.id, table]]);
+  const rdb = h.state.rdb;
+  rdb.getTimetableById = async id => tables.get(id);
+  rdb.getTimetableByEasCode = async code => [...tables.values()].find(item => item.code === code);
+  const merge = rdb.applyTimetableMerge;
+  rdb.applyTimetableMerge = async (id, newSubjects, inserts, updates, deletes, base, local, relink) => {
+    if (relink !== undefined) {
+      Object.assign(tables.get(id), { code: relink.code, startTime: relink.startTime,
+        scheduleStructure: relink.scheduleStructure });
+      h.state.relinked = relink;
+    }
+    await merge(id, newSubjects, inserts, updates, deletes, base);
+  };
+  const slot = (week, day, from, to) => {
+    const at = new Date(table.startTime);
+    at.setDate(at.getDate() + (week - 1) * 7 + day - 1);
+    return [at.getTime() + from * 60000, at.getTime() + to * 60000];
+  };
+  return { table, tables, slot };
+}
+
+test('merging a school term into an ICS timetable replaces matching classes and links it for later updates', async () => {
+  const h = setup();
+  await h.login();
+  const { table, slot } = icsTable(h);
+  // Shenzhen default periods 3-4 run 10:30-12:15; the file used 10:30-12:20 for week 1.
+  const [from1, to1] = slot(1, 2, 630, 740);
+  const [from2, to2] = slot(2, 2, 630, 735);
+  const own = Object.assign(new h.models.EasEventItem(), { id: 'own', name: '自习', timetableId: 'ics',
+    from: from1 + 7 * 3600000, to: from1 + 9 * 3600000 });
+  const exam = Object.assign(new h.models.EasEventItem(), { id: 'exam', type: h.models.EasEventType.EXAM,
+    name: '高等数学考试', timetableId: 'ics', from: from1 + 28 * 86400000, to: to1 + 28 * 86400000 });
+  h.state.subjects = [Object.assign(new h.models.EasTermSubject(), { id: 'math', timetableId: 'ics', name: '高等数学',
+    field: 'ics', type: 'TAG' })];
+  h.state.events = [
+    Object.assign(new h.models.EasEventItem(), { id: 'w1', name: '高等数学', timetableId: 'ics', subjectId: 'math',
+      from: from1, to: to1, place: '旧教室' }),
+    Object.assign(new h.models.EasEventItem(), { id: 'w2', name: '高等数学', timetableId: 'ics', subjectId: 'math',
+      from: from2, to: to2, place: '旧教室' }),
+    own, exam
+  ];
+  h.state.courses = [Object.assign(h.course('高等数学', 2, 3, range(1, 3), 'B202'), { courseProperty: '必修' }),
+    h.course('大学物理', 4, 1, [1])];
+
+  const result = await h.EasTimetableImporter.importCurrent({}, undefined, undefined, undefined, undefined, undefined,
+    'ics');
+  assert.equal(result.success, true, result.message);
+  assert.equal(result.timetable.id, 'ics', 'no new timetable is created');
+  assert.equal(h.state.saves.length, 0);
+  assert.equal(table.code, 'SHENZHEN:2026-20271', 'the timetable is linked to the term');
+  assert.equal(h.state.relinked.name, '我的课表', 'the user keeps their timetable name');
+  const math = h.find('高等数学', 1);
+  assert.deepEqual(math.map(event => [event.id, event.place, event.fromNumber]), [['w1', 'B202', 3]],
+    'an overlapping class with the same name is replaced in place, taking the school times');
+  assert.equal(h.find('高等数学', 2)[0].id, 'w2');
+  assert.equal(h.find('高等数学', 3).length, 1, 'missing weeks are added');
+  assert.equal(h.find('大学物理', 1).length, 1);
+  assert.ok(h.state.events.some(event => event.id === 'own'), 'other classes stay');
+  assert.ok(h.state.events.some(event => event.id === 'exam'), 'exams stay');
+  assert.equal(h.state.subjects.find(subject => subject.id === 'math').type, 'COM_A',
+    'a placeholder ICS subject takes the school category');
+  assert.equal(h.state.subjects.filter(subject => subject.name === '高等数学').length, 1);
+
+  // From now on the merged timetable follows the school like any imported one.
+  assert.equal(h.EasTimetableImporter.isEasTimetable(table), true);
+  assert.equal(await h.EasTimetableImporter.checkForUpdate({}, table), undefined);
+  h.state.courses[0].classroom = 'C303';
+  const update = await h.EasTimetableImporter.checkForUpdate({}, table);
+  assert.ok(update);
+  assert.deepEqual(update.changes.map(change => h.TimetableUpdateDiff.describe(change)),
+    ['变更 高等数学 周二 3-4节 第1-3周 · 地点 B202 → C303']);
+});
+
+test('merging refuses timetables of another term and terms already imported elsewhere', async () => {
+  const h = setup();
+  await h.login();
+  const { table, tables } = icsTable(h);
+  h.state.courses = [h.course('高等数学', 2, 3, [1])];
+  table.code = 'BENBU:2025-20262';
+  const other = await h.EasTimetableImporter.importCurrent({}, undefined, undefined, undefined, undefined, undefined, 'ics');
+  assert.equal(other.success, false);
+  assert.match(other.message, /其他教务学期/);
+  table.code = 'ICS:ics';
+  tables.set('eas', Object.assign(new h.models.EasTimetable(), { id: 'eas', name: '2026秋季', code: 'SHENZHEN:2026-20271' }));
+  const taken = await h.EasTimetableImporter.importCurrent({}, undefined, undefined, undefined, undefined, undefined, 'ics');
+  assert.equal(taken.success, false);
+  assert.match(taken.message, /已有教务课表/);
+  const missing = await h.EasTimetableImporter.importCurrent({}, undefined, undefined, undefined, undefined, undefined, 'gone');
+  assert.equal(missing.success, false);
+  assert.equal(h.state.merges.length + h.state.saves.length, 0, 'nothing is written');
+});
