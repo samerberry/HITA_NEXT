@@ -83,6 +83,23 @@ test('clock edits clear period metadata and date shifts preserve spacing and IDs
   const dateOnly=Batch.copy(anchor); dateOnly.from+=86400000; dateOnly.to+=86400000;
   assert.equal(Batch.update([anchor],anchor,dateOnly)[0].fromNumber,1);
 });
+
+test('period edits keep the chosen numbers while unrelated edits preserve occurrence variations', () => {
+  const anchor = event('a', 1), next = event('b', 2), edited = Batch.copy(anchor);
+  edited.from += 2 * 3600000; edited.to += 3 * 3600000;
+  const result = Batch.update([anchor, next], anchor, edited, [3, 4]);
+  for (const item of result) {
+    assert.equal(new Date(item.from).getHours(), 10);
+    assert.equal(new Date(item.to).getHours(), 12);
+    assert.equal(item.fromNumber, 3); assert.equal(item.lastNumber, 4);
+  }
+  assert.equal(result[1].from - result[0].from, 7 * 86400000);
+  const roomOnly = Batch.copy(anchor); roomOnly.place = 'B202';
+  next.from += 2 * 3600000; next.to += 2 * 3600000; next.fromNumber = 3; next.lastNumber = 4;
+  const unchanged = Batch.update([anchor, next], anchor, roomOnly, [1, 2]);
+  assert.equal(unchanged[1].from, next.from); assert.equal(unchanged[1].to, next.to);
+  assert.equal(unchanged[1].fromNumber, 3); assert.equal(unchanged[1].lastNumber, 4);
+});
 function database(items=series(), failAt=-1) {
   const rows={ timetable:[{id:'t',startTime:tt.startTime,endTime:tt.endTime}], subject:[{id:'s',timetableId:'t'}],
     events:items.map(item=>RdbHelper.eventValues(item)) };
@@ -178,6 +195,113 @@ function editor(choices = [1,0], writeFailure = false) {
   },showToast:message=>toasts.push(message)})});
   return {form,writes,changes,toasts,get saved(){return saved;}};
 }
+
+async function loadedEditor(sheetMode, customTime = false, missingTimetable = false) {
+  const timetable = Object.assign(new EasTimetable(), tt);
+  timetable.scheduleStructure = EasTimetable.getWeihaiTimeStructure();
+  const [from, to] = timetable.getTimestamps(1, 1, 3, 4);
+  // Stale or missing period metadata must never override the event's actual times.
+  const original = event('a', 1, { from: from + (customTime ? 2 * 60000 : 0),
+    to: to - (customTime ? 2 * 60000 : 0), fromNumber: 99, lastNumber: 99 });
+  const db = { init: async () => {}, getEventById: async () => original,
+    getTimetableById: async id => id === timetable.id && !missingTimetable ? timetable : undefined,
+    getEventsOfTimetable: async () => [original] };
+  const { EventEditorForm } = load('pages/AddEventPage.ets', { db });
+  const form = new EventEditorForm();
+  Object.assign(form, { sheetMode, eventId: sheetMode ? original.id : '' });
+  form.getUIContext = () => ({ getHostContext: () => ({}),
+    getRouter: () => ({ getParams: () => ({ id: original.id }) }) });
+  await form.aboutToAppear();
+  return { form, original, timetable };
+}
+
+test('page and sheet editors restore exact periods using the course timetable and actual timestamps', async () => {
+  for (const sheet of [false, true]) {
+    const { form, original } = await loadedEditor(sheet);
+    assert.equal(form.loadFailed, false); assert.equal(form.timeMode, 1);
+    assert.equal(form.fromPeriod, 3); assert.equal(form.toPeriod, 4);
+    assert.deepEqual(form.selectedTime(), [10 * 60 + 5, 11 * 60 + 50]);
+    assert.equal(form.dateText(), '2026-08-31');
+    assert.equal(form.originalCourse.from, original.from); assert.equal(form.canSave(), true);
+  }
+});
+
+test('custom course times remain exact on load and mode switches never reuse stale periods', async () => {
+  const { form } = await loadedEditor(true, true);
+  assert.equal(form.timeMode, 0);
+  assert.deepEqual(form.selectedTime(), [10 * 60 + 7, 11 * 60 + 48]);
+  form.selectTimeMode(1);
+  assert.equal(form.fromPeriod, 0); assert.equal(form.toPeriod, 0);
+  assert.equal(form.canSave(), false); assert.equal(form.validationHint(), '请选择上课节次');
+  form.selectTimeMode(0);
+  assert.deepEqual(form.selectedTime(), [10 * 60 + 7, 11 * 60 + 48]);
+  assert.equal(form.canSave(), true);
+  form.selectTimeMode(1); form.fromPeriod = 3; form.toPeriod = 4;
+  form.selectTimeMode(0);
+  assert.deepEqual(form.selectedTime(), [10 * 60 + 5, 11 * 60 + 50]);
+  form.acceptTime(true, 10, 8);
+  form.selectTimeMode(1);
+  assert.equal(form.fromPeriod, 0); assert.equal(form.toPeriod, 0);
+  form.selectTimeMode(0);
+  assert.deepEqual(form.selectedTime(), [10 * 60 + 8, 11 * 60 + 50]);
+});
+
+test('missing timetable leaves custom-time editing available but cannot save unresolvable periods', async () => {
+  const { form } = await loadedEditor(true, false, true);
+  assert.equal(form.timeMode, 0); assert.equal(form.canSave(), true);
+  form.selectTimeMode(1);
+  assert.equal(form.canSave(), false);
+  form.selectTimeMode(0);
+  assert.deepEqual(form.selectedTime(), [10 * 60 + 5, 11 * 60 + 50]);
+});
+
+test('period picker adjusts the opposite boundary and ignores acceptance after the editor closes', () => {
+  const { form } = editor();
+  let picker;
+  form.showCourseTextPicker = options => { picker = options; };
+  form.selectTimeMode(1);
+  form.choosePeriod(true); picker.onAccept({ index: 3 });
+  assert.equal(form.fromPeriod, 4); assert.equal(form.toPeriod, 4);
+  form.choosePeriod(false); picker.onAccept({ index: 1 });
+  assert.equal(form.fromPeriod, 2); assert.equal(form.toPeriod, 2);
+  const previous = form.selectedTime();
+  form.choosePeriod(true); form.aboutToDisappear(); picker.onAccept({ index: 5 });
+  assert.deepEqual(form.selectedTime(), previous);
+});
+
+test('editing periods persists actual schedule times and numbers for each selected occurrence scope', async () => {
+  for (const scope of [0, 1, 2]) {
+    const { form, writes } = editor();
+    const timetable = Object.assign(new EasTimetable(), tt);
+    timetable.scheduleStructure = EasTimetable.getWeihaiTimeStructure();
+    Object.assign(form, { courseTimetable: timetable, editScope: scope, selectedWeeks: [2],
+      timeMode: 1, fromPeriod: 3, toPeriod: 4 });
+    assert.equal(form.canSave(), true);
+    await form.save();
+    const after = writes[0].after;
+    assert.deepEqual(after.map(item => item.id), scope === 0 ? ['a'] : scope === 1 ? ['b'] : ['a', 'b']);
+    for (const item of after) {
+      const from = new Date(item.from), to = new Date(item.to);
+      assert.deepEqual([from.getHours(), from.getMinutes(), to.getHours(), to.getMinutes()], [10, 5, 11, 50]);
+      assert.equal(item.fromNumber, 3); assert.equal(item.lastNumber, 4);
+    }
+    if (scope === 2) assert.equal(after[1].from - after[0].from, 7 * 86400000);
+    assert.equal(form.saved, true);
+  }
+});
+
+test('invalid edit period ranges cannot write and period reschedules can be undone with all original metadata', async () => {
+  for (const [fromPeriod, toPeriod] of [[0, 0], [4, 3], [1, 99]]) {
+    const h = editor(); Object.assign(h.form, { timeMode: 1, fromPeriod, toPeriod });
+    assert.equal(h.form.canSave(), false);
+    await h.form.save(); assert.equal(h.writes.length, 0);
+  }
+  const h = editor([1, 1]); Object.assign(h.form, { timeMode: 1, fromPeriod: 3, toPeriod: 4 });
+  await h.form.save();
+  assert.equal(h.writes.length, 2);
+  assert.deepEqual(h.writes[1].after, h.writes[0].before);
+  assert.deepEqual(h.saved, h.writes[0].before);
+});
 test('editor confirms the affected scope and applies or undoes both reschedule and stop',async()=>{
   for(const stopping of [false,true])for(const undo of [false,true]) {
     const harness=editor([1,undo?1:0]);harness.form.stoppingCourse=stopping;

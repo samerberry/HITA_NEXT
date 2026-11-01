@@ -31,8 +31,9 @@ export class CourseBatchEdit {
     return item;
   }
 
-  /** Apply only changed fields; preserve variations between existing occurrences. */
-  static update(items: EasEventItem[], original: EasEventItem, edited: EasEventItem): EasEventItem[] {
+  /** Apply changed fields only; a time change also stores the explicitly selected period range. */
+  static update(items: EasEventItem[], original: EasEventItem, edited: EasEventItem,
+    periodRange: number[] = []): EasEventItem[] {
     const oldDay: Date = new Date(original.from);
     oldDay.setHours(0, 0, 0, 0);
     const newDay: Date = new Date(edited.from);
@@ -56,8 +57,8 @@ export class CourseBatchEdit {
         const end: Date = new Date(edited.to);
         from.setHours(start.getHours(), start.getMinutes(), 0, 0);
         to.setHours(end.getHours(), end.getMinutes(), 0, 0);
-        item.fromNumber = 0;
-        item.lastNumber = 0;
+        item.fromNumber = periodRange.length === 2 ? periodRange[0] : 0;
+        item.lastNumber = periodRange.length === 2 ? periodRange[1] : 0;
       }
       item.from = from.getTime();
       item.to = to.getTime();

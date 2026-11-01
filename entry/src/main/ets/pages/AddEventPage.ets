@@ -205,6 +205,10 @@ export struct EventEditorForm {
     const end: Date = new Date(ev.to);
     this.endHour = end.getHours();
     this.endMinute = end.getMinutes();
+    if (ev.type === EasEventType.CLASS) {
+      this.matchClockPeriods();
+      this.timeMode = this.fromPeriod > 0 ? 1 : 0;
+    }
     const todayMidnight: number = new Date(new Date().setHours(0, 0, 0, 0)).getTime();
     const fromMidnight: number = new Date(new Date(ev.from).setHours(0, 0, 0, 0)).getTime();
     // Editing an older record must not silently move its original date.
@@ -269,7 +273,38 @@ export struct EventEditorForm {
       mode === 0 || (mode === 1 && week % 2 === 1) || (mode === 2 && week % 2 === 0));
   }
 
-  private usesPeriods(): boolean { return this.typeIdx === 1 && this.editId.length === 0 && this.timeMode === 1; }
+  private usesPeriods(): boolean { return this.typeIdx === 1 && this.timeMode === 1; }
+
+  /** Match exact boundaries only; opening an editor must never round a custom course time. */
+  private matchClockPeriods(): void {
+    const periods = this.courseTimetable?.scheduleStructure;
+    const start: number = this.hour * 60 + this.minute;
+    const end: number = this.endHour * 60 + this.endMinute;
+    const fromIndex: number = periods?.findIndex((period): boolean =>
+      period.from.hour * 60 + period.from.minute === start) ?? -1;
+    const toIndex: number = periods?.findIndex((period): boolean =>
+      period.to.hour * 60 + period.to.minute === end) ?? -1;
+    const matched: boolean = fromIndex >= 0 && toIndex >= fromIndex;
+    this.fromPeriod = matched ? fromIndex + 1 : 0;
+    this.toPeriod = matched ? toIndex + 1 : 0;
+  }
+
+  private selectTimeMode(index: number): void {
+    if ((index !== 0 && index !== 1) || index === this.timeMode) return;
+    if (index === 0) {
+      const time: number[] = this.selectedTime();
+      if (time[0] >= 0 && time[1] > time[0]) {
+        this.hour = Math.floor(time[0] / 60);
+        this.minute = time[0] % 60;
+        this.endHour = Math.floor(time[1] / 60);
+        this.endMinute = time[1] % 60;
+      }
+    } else {
+      this.matchClockPeriods();
+    }
+    this.timeMode = index;
+    this.hint = '';
+  }
 
   private selectedTime(): number[] {
     if (!this.usesPeriods()) return [this.hour * 60 + this.minute, this.endHour * 60 + this.endMinute];
@@ -298,7 +333,8 @@ export struct EventEditorForm {
       selected: Math.max(0, (start ? this.fromPeriod : this.toPeriod) - 1),
       canLoop: false,
       onAccept: (result: TextPickerResult) => {
-        if (typeof result.index !== 'number' || result.index < 0 || result.index >= timetable.scheduleStructure.length) return;
+        if (!this.editorActive || typeof result.index !== 'number' || result.index < 0 ||
+          result.index >= timetable.scheduleStructure.length) return;
         if (start) {
           this.fromPeriod = result.index + 1;
           if (this.toPeriod < this.fromPeriod) this.toPeriod = this.fromPeriod;
@@ -520,10 +556,12 @@ export struct EventEditorForm {
     if (before.length === 0) { this.hint = '所选范围没有课次'; return; }
     const edited: EasEventItem = CourseBatchEdit.copy(original);
     edited.name = this.name.trim(); edited.place = this.place.trim(); edited.teacher = this.teacher.trim();
+    const time: number[] = this.selectedTime();
     const date: Date = new Date(this.todayBase + this.dayOffset * DAY_MS);
-    date.setHours(this.hour, this.minute, 0, 0); edited.from = date.getTime();
-    date.setHours(this.endHour, this.endMinute, 0, 0); edited.to = date.getTime();
-    const after: EasEventItem[] = this.stoppingCourse ? [] : CourseBatchEdit.update(before, original, edited);
+    date.setHours(Math.floor(time[0] / 60), time[0] % 60, 0, 0); edited.from = date.getTime();
+    date.setHours(Math.floor(time[1] / 60), time[1] % 60, 0, 0); edited.to = date.getTime();
+    const after: EasEventItem[] = this.stoppingCourse ? [] : CourseBatchEdit.update(before, original, edited,
+      this.usesPeriods() ? [this.fromPeriod, this.toPeriod] : []);
     const timetable: EasTimetable | undefined = this.courseTimetable;
     if (timetable !== undefined && after.some((item: EasEventItem): boolean =>
       item.from < EasTimetable.mondayMsOf(timetable.startTime))) {
@@ -1199,10 +1237,10 @@ export struct EventEditorForm {
         .fontSize(HitaDesign.caption)
         .fontWeight(FontWeight.Medium)
         .fontColor($r('app.color.hita_text_202b45'))
-      if (this.typeIdx === 1 && this.editId.length === 0) {
+      if (this.typeIdx === 1) {
         CourseModeSegment({
           labels: ['具体时间', '按节次'], selectedIndex: this.timeMode,
-          onSelect: (index: number) => { this.timeMode = index; this.hint = ''; }
+          onSelect: (index: number) => { this.selectTimeMode(index); }
         })
           .width('100%').margin({ top: HitaDesign.spaceSm })
       }
