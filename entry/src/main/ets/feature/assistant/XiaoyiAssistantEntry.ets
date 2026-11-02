@@ -2,9 +2,20 @@ import { BusinessError } from '@kit.BasicServicesKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { ButtonType, FunctionComponent, FunctionController } from '@kit.AgentFrameworkKit';
 import { HitaDesign } from '../../common/theme/HitaDesign';
+import { AssistantEntryParams } from './AssistantEntryParams';
 
 // Verified from the HITA Agent configuration URL on Xiaoyi Open Platform.
 const HITA_AGENT_ID: string = 'agent26e52f2a50ad42059267f9077d548b6c';
+
+/** Resolved dynamically by the Dock only on devices that provide AgentKit. */
+@Builder
+function xiaoyiAssistantBuilder(params: AssistantEntryParams) {
+  XiaoyiAssistantEntry({ glyphTint: params.glyphTint });
+}
+
+export function createXiaoyiAssistantBuilder(): WrappedBuilder<[AssistantEntryParams]> {
+  return wrapBuilder<[AssistantEntryParams]>(xiaoyiAssistantBuilder);
+}
 
 /** The system component owns the click and the half-screen dialog over HITA. */
 @Component

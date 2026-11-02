@@ -30,10 +30,11 @@ test('More omits the assistant and keeps news and campus links as registered rou
   const routes = JSON.parse(fs.readFileSync(path.join(root, '../resources/base/profile/main_pages.json'))).src;
   assert.doesNotMatch(more, /XiaoyiAssistantEntry|AssistantDockItem|title: '助手'/);
   const action = read('feature/assistant/AssistantDockItem.ets');
-  assert.match(action, /import lazy \{ XiaoyiAssistantEntry \}/);
+  assert.doesNotMatch(action, /import(?: lazy)?\s*\{[^}]*XiaoyiAssistantEntry[^}]*\}\s*from/);
+  assert.match(action, /await import\('\.\/XiaoyiAssistantEntry'\)/);
   assert.match(action, /canIUse\('SystemCapability\.AI\.Agent\.AgentKit'\)/);
   assert.match(action, /deviceInfo\.deviceType === 'phone' \|\| deviceInfo\.deviceType === 'tablet'/);
-  assert.match(action, /XiaoyiAssistantEntry\(\{ glyphTint: this\.glyphTint \}\)/);
+  assert.match(action, /this\.nativeEntry\.builder\(\{ glyphTint: this\.glyphTint \}\)/);
   assert.doesNotMatch(home, /openXiaoyi|VoiceAbility|com\.huawei\.hmos\.vassistant/);
   assert.ok(!routes.includes('pages/AssistantPage'));
   assert.doesNotMatch(home, /pages\/AssistantPage/);
