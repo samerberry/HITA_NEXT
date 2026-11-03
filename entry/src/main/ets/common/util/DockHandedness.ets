@@ -56,6 +56,23 @@ export function dockWideFoldScreen(width: number, height: number): boolean {
 /** Rail travel that fully clears the screen edge, including the material shadow. */
 export const DOCK_RAIL_EXIT: number = DOCK_SIDE_MARGIN + DOCK_RAIL_THICKNESS + 16;
 
+/** Phone assistant travel that fully clears the screen edge, including the material shadow. */
+export const DOCK_ACTION_EXIT: number = DOCK_SIDE_MARGIN + DOCK_ACTION_SIZE + 16;
+/** Smallest gap between the centred phone navigation and the assistant at the screen edge. */
+export const DOCK_PHONE_GAP: number = 8;
+
+/**
+ * The phone navigation stays centred; only on screens too narrow for the assistant beside it does it move
+ * away from the assistant, just enough to keep the gap and never past the opposite edge margin.
+ */
+export function dockPhoneNavShift(containerWidth: number, side: number): number {
+  if (!Number.isFinite(containerWidth) || containerWidth <= 0) return 0;
+  const room: number = containerWidth / 2 - DOCK_NAV_WIDTH / 2 - DOCK_SIDE_MARGIN - DOCK_ACTION_SIZE - DOCK_PHONE_GAP;
+  if (room >= 0) return 0;
+  const limit: number = Math.max(0, containerWidth / 2 - DOCK_NAV_WIDTH / 2 - DOCK_SIDE_MARGIN);
+  return (side < 0 ? 1 : -1) * Math.min(-room, limit);
+}
+
 /** Floating timetable controls centred on the rail column, inside the side gutter. */
 export const DOCK_GUTTER_ACTION_EDGE: number = DOCK_SIDE_MARGIN + DOCK_RAIL_THICKNESS / 2 - 24;
 

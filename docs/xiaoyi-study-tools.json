@@ -7,7 +7,7 @@
   "output": {
     "code": { "type": "Double", "description": "0执行成功；2参数错误；3执行失败；4工具或模式不支持。code=0仍需检查data中的status。" },
     "result": { "type": "Object", "children": {
-      "data": { "type": "String", "required": true, "description": "完整JSON文本，解析后读取status、records、operationId或task等字段；needs_confirmation不代表保存。" }
+      "data": { "type": "String", "required": true, "description": "完整JSON文本，解析后读取status、records、operationId、course或task等字段；needs_confirmation不代表保存。" }
     } }
   },
   "tools": [
@@ -26,11 +26,26 @@
       }
     },
     {
+      "intentName": "PrepareCourse",
+      "executeMode": "background",
+      "description": "向当前课表添加一节课程，准备草稿后调用ConfirmLearningOperation确认。允许课表中尚不存在的新课程，不要用PrepareHomework替代。只支持一次明确日期的课程，不直接保存。",
+      "inputs": {
+        "requestKey": { "type": "String", "required": true, "description": "每次新操作生成新的随机UUID，8至80位字母数字横线下划线，无固定缺省值。相同参数重试复用；参数改变或返回request_key_conflict时换新值。" },
+        "courseName": { "type": "String", "required": true, "description": "要添加的完整课程名称，最多120字符。无需先在已有课表中找到；同名唯一课程自动关联，否则新建课程。" },
+        "date": { "type": "String", "required": true, "description": "上课日期，如11月11日、明天、下周一或YYYY-MM-DD。未说年份就原样传，由HITA按手机时间计算，不要猜年份。" },
+        "startTime": { "type": "String", "required": true, "description": "课程开始时间，24小时HH:mm，如13:00。缺少时询问用户，不编造。" },
+        "endTime": { "type": "String", "required": true, "description": "同一天的课程结束时间，24小时HH:mm，如15:45，必须晚于startTime。" },
+        "place": { "type": "String", "description": "上课地点，如H702。未提供可以省略，不必追问。最多120字符。" },
+        "teacher": { "type": "String", "description": "教师姓名，仅用户明确提供时填写，最多120字符。" },
+        "subjectId": { "type": "String", "description": "仅同名课程歧义时使用candidates中用户选定的真实ID，不能编造。新课程省略。" }
+      }
+    },
+    {
       "intentName": "PrepareHomework",
       "executeMode": "background",
       "description": "为课程作业准备待确认草稿，不会直接保存。只给截止日期即可，不要求地点和具体时刻。拿到operationId后调用ConfirmLearningOperation。",
       "inputs": {
-        "requestKey": { "type": "String", "required": true, "description": "8至80位字母数字横线下划线；同一请求重试复用，改变内容则使用新值。" },
+        "requestKey": { "type": "String", "required": true, "description": "每次新操作生成新的随机UUID，8至80位字母数字横线下划线，无固定缺省值。相同参数重试复用；参数改变或返回request_key_conflict时换新值。" },
         "courseName": { "type": "String", "description": "关联课程名称，与subjectId至少提供一个；歧义时根据candidates请用户选择。" },
         "subjectId": { "type": "String", "description": "课程搜索返回的真实ID，优先于courseName；不能编造。" },
         "title": { "type": "String", "description": "作业名称，可省略，默认课程名加作业；最多120字符。" },
@@ -46,7 +61,7 @@
       "executeMode": "background",
       "description": "准备完成某条课程作业。先查询真实taskId，同名多条先请用户选择；准备不代表已经完成。",
       "inputs": {
-        "requestKey": { "type": "String", "required": true, "description": "本次唯一请求标识，8至80位字母数字横线下划线；重试复用。" },
+        "requestKey": { "type": "String", "required": true, "description": "本次新生成的随机UUID，8至80位字母数字横线下划线，无固定缺省值。相同参数重试复用；taskId改变或返回request_key_conflict时换新值。" },
         "taskId": { "type": "String", "required": true, "description": "StudyQuery返回的实际taskId；不得使用subjectId或编造ID。" }
       }
     },
@@ -61,7 +76,7 @@
     {
       "intentName": "ConfirmLearningOperation",
       "executeMode": "foreground",
-      "description": "打开HITA本机作业确认页，让用户确认添加或完成作业。返回needs_confirmation仅代表等待确认，不能报告已经保存。",
+      "description": "打开HITA本机确认页，让用户确认添加课程、添加作业或完成作业。operationId必须取自对应准备工具。返回needs_confirmation仅代表等待确认，不能报告已经保存。",
       "inputs": {
         "operationId": { "type": "String", "required": true, "description": "准备工具返回的原始operationId。" }
       }

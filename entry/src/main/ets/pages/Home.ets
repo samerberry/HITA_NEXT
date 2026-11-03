@@ -37,7 +37,9 @@ import { DOCK_HOLD_DELAY_MS, DockNavigationGuard } from '../common/util/DockNavi
 import { display as screenDisplay } from '@kit.ArkUI';
 import { DOCK_ITEM_COUNT, DOCK_HANDEDNESS_DURATION, DOCK_RAIL_INSET, DOCK_RAIL_THICKNESS, DOCK_SIDE_MARGIN, DOCK_WIDTH,
   DOCK_NAV_WIDTH, DOCK_NATIVE_PADDING, DOCK_ACTION_START, DOCK_ACTION_SIZE,
-  DOCK_GUTTER_ACTION_EDGE, DOCK_RAIL_EXIT, DOCK_RAIL_MASK_WIDTH, DOCK_RAIL_MIN_TABLET_WIDTH, dockRailMode, dockRailOnRight, dockWideFoldScreen, dockSideOffset } from '../common/util/DockHandedness';
+  DOCK_GUTTER_ACTION_EDGE, DOCK_RAIL_EXIT, DOCK_RAIL_MASK_WIDTH, DOCK_RAIL_MIN_TABLET_WIDTH, dockRailMode, dockRailOnRight, dockWideFoldScreen, dockSideOffset,
+  DOCK_ACTION_EXIT, dockPhoneNavShift } from '../common/util/DockHandedness';
+import { AssistantDockButton } from '../feature/assistant/AssistantDockButton';
 import { DockRail } from '../common/components/DockRail';
 import { FLOATING_ACTION_EXIT_DURATION, FLOATING_ACTION_GAP, floatingActionExitProgress } from '../feature/timetable/views/FloatingActionsMotion';
 import { HoldingHandObserver } from '../feature/timetable/data/HoldingHandObserver';
@@ -311,6 +313,12 @@ struct Home {
   @State railShift: number = 0;
   private railGeneration: number = 0;
   private railWasFollowing: boolean = false;
+  /** Phone dock: edge the assistant sits on, its slide while it changes edge, and the navigation's narrow-screen shift. */
+  @State phoneActionLeft: boolean = false;
+  @State phoneActionShift: number = 0;
+  @State phoneNavShift: number = 0;
+  private phoneActionGeneration: number = 0;
+  private phoneDockWasActive: boolean = false;
   @State homeWidth: number = 0;
   @State homeHeight: number = 0;
   /** Fully opened tri-fold or opened wide fold: the landscape rail follows the grip. */
@@ -1300,6 +1308,7 @@ struct Home {
       this.railShift = 0;
     }
     this.railWasFollowing = following;
+    this.placePhoneDock();
     // Re-evaluate whether this layout follows the grip when the window changes.
     if (this.pageVisible) this.startDockHandedness();
   }
@@ -2127,12 +2136,18 @@ struct Home {
         this.moveRailTo(side > 0);
         return;
       }
+      if (this.phoneDock()) {
+        this.dockSide = side;
+        this.movePhoneActionTo(side < 0);
+        return;
+      }
       this.getUIContext().animateTo({ duration: DOCK_HANDEDNESS_DURATION, curve: Curve.FastOutSlowIn }, () => {
         this.dockSide = side;
       });
     }, () => {
       this.dockSide = 0;
       if (this.railFollowsHand() && this.railRight) this.moveRailTo(false);
+      if (this.phoneDock() && this.phoneActionLeft) this.movePhoneActionTo(false);
     });
     this.dockHandednessActive = subscribed;
   }
@@ -2176,8 +2191,73 @@ struct Home {
     return this.homeWidth >= DOCK_RAIL_MIN_TABLET_WIDTH ? this.dockOffset() : 0;
   }
 
+  /**
+   * Narrow phone windows (API 26 split dock): centred navigation with the assistant alone on the holding-hand
+   * edge. Tablets, folds and wide windows keep the combined group and its existing grip offset.
+   */
+  private phoneDock(): boolean {
+    // API 23 keeps the blended FrostedDock, whose four items share one inverted layer.
+    return deviceInfo.apiAvailable('26.0.0') && deviceInfo.deviceType === 'phone' && !this.railMode() &&
+      !this.foldRailDevice && this.homeWidth > 0 && this.homeWidth < DOCK_RAIL_MIN_TABLET_WIDTH;
+  }
+
+  /** Re-anchor the phone assistant without a slide when the layout or width changes. */
+  private placePhoneDock(): void {
+    const active: boolean = this.phoneDock();
+    if (active && !this.phoneDockWasActive) {
+      this.phoneActionGeneration++;
+      this.phoneActionLeft = this.dockSide < 0;
+      this.phoneActionShift = 0;
+    }
+    this.phoneDockWasActive = active;
+    this.phoneNavShift = active ? dockPhoneNavShift(this.homeWidth, this.phoneActionLeft ? -1 : 1) : 0;
+  }
+
+  /**
+   * Same handoff as the evening / return controls: leave through the current edge with the bounded 180 ms
+   * exit, swap edges while offscreen, then spring in from the other edge.
+   */
+  private movePhoneActionTo(left: boolean): void {
+    const generation: number = ++this.phoneActionGeneration;
+    if (left === this.phoneActionLeft) {
+      // Reversed before the swap: come back from wherever the exit has reached.
+      this.springPhoneActionIn();
+      return;
+    }
+    this.getUIContext().animateTo({
+      duration: FLOATING_ACTION_EXIT_DURATION,
+      curve: curves.customCurve(floatingActionExitProgress),
+      onFinish: () => {
+        if (generation !== this.phoneActionGeneration) return;
+        this.phoneActionLeft = left;
+        this.phoneActionShift = left ? -DOCK_ACTION_EXIT : DOCK_ACTION_EXIT;
+        this.springPhoneActionIn();
+      }
+    }, () => {
+      this.phoneActionShift = this.phoneActionLeft ? -DOCK_ACTION_EXIT : DOCK_ACTION_EXIT;
+    });
+  }
+
+  private springPhoneActionIn(): void {
+    this.getUIContext().animateTo({
+      duration: FLOATING_ACTION_EXIT_DURATION,
+      curve: curves.interpolatingSpring(0, 1, 170, 17)
+    }, () => {
+      this.phoneActionShift = 0;
+      // Narrow screens nudge the navigation away from the assistant's new edge in the same spring.
+      this.phoneNavShift = dockPhoneNavShift(this.homeWidth, this.phoneActionLeft ? -1 : 1);
+    });
+  }
+
   private setBottomDockBounds(x: number, y: number): void {
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    if (this.phoneDock()) {
+      // Keep the 280 vp item grid so the three pages scrub as before; the assistant is its own button
+      // outside these bounds, so no position along the dock ever reaches the action slot.
+      this.dockNavigation.setBounds(x, y, DOCK_WIDTH, DOCK_ACTION_SIZE, DOCK_NATIVE_PADDING, false, true,
+        DOCK_NAV_WIDTH, DOCK_WIDTH + DOCK_ACTION_SIZE);
+      return;
+    }
     this.dockNavigation.setBounds(x, y, DOCK_WIDTH, DOCK_ACTION_SIZE,
       DOCK_NATIVE_PADDING, false, true, DOCK_NAV_WIDTH, DOCK_ACTION_START);
   }
@@ -2489,6 +2569,65 @@ struct Home {
         })
         .hitTestBehavior(HitTestMode.None);
     }
+    if (this.phoneDock()) {
+      this.phoneDockNav();
+      this.phoneDockAction();
+    } else {
+      this.wideDock();
+    }
+  }
+
+  /** Phones: the navigation alone, centred on the screen. */
+  @Builder
+  phoneDockNav() {
+    Stack({ alignContent: Alignment.TopStart }) {
+      SplitDock({
+        selectedIndex: this.selectedNav,
+        darkMode: this.darkMode,
+        assistant: false,
+        onSelect: (index: number) => this.requestDockClick(index)
+      });
+      DockLightOverlay({ controller: this.dockLight, navOnly: true })
+        .hitTestBehavior(HitTestMode.None);
+    }
+    .id(DOCK_GROUP_ID)
+    .width(DOCK_NAV_WIDTH)
+    .height(DOCK_ACTION_SIZE)
+    .margin({ bottom: HitaDesign.spaceSm + this.navBarInset })
+    .translate({ x: this.phoneNavShift, y: 0 })
+    .clip(false)
+    .hitTestBehavior(HitTestMode.Default)
+    .onAreaChange((_old: Area, area: Area) => {
+      this.setBottomDockBounds(Number(area.globalPosition.x), Number(area.globalPosition.y));
+    })
+    .onTouchIntercept((event: TouchEvent) => {
+      if (event.type === TouchType.Down) {
+        this.syncBottomDockBounds();
+        this.dockNavigation.begin(event, true);
+      }
+      return HitTestMode.Default;
+    })
+    .onTouch((event: TouchEvent) => this.observeDockTouch(event, true))
+    .onGestureRecognizerJudgeBegin((event: BaseGestureEvent, current: GestureRecognizer) => {
+      return this.judgePagePan(current, true);
+    }, true);
+  }
+
+  /** Phones: the assistant on the holding-hand edge, right when unknown. */
+  @Builder
+  phoneDockAction() {
+    AssistantDockButton({ darkMode: this.darkMode })
+      .position(this.phoneActionLeft ?
+        { left: DOCK_SIDE_MARGIN, bottom: HitaDesign.spaceSm + this.navBarInset } :
+        { right: DOCK_SIDE_MARGIN, bottom: HitaDesign.spaceSm + this.navBarInset })
+      .translate({ x: this.phoneActionShift, y: 0 })
+      .onGestureRecognizerJudgeBegin((event: BaseGestureEvent, current: GestureRecognizer) => {
+        return this.judgePagePan(current, true);
+      }, true);
+  }
+
+  @Builder
+  wideDock() {
     Stack({ alignContent: Alignment.TopStart }) {
       SplitDock({
         selectedIndex: this.selectedNav,
@@ -3778,8 +3917,64 @@ struct Home {
       courseColorEditing: $courseColorEditing, courseColorPreview: $courseColorPreview,
       onSaveColor: async (color: number) => { await this.saveCourseColor(event, color); },
       onEdit: () => { void this.editCourse(event); },
-      onDelete: () => { void this.confirmSkipCourse(event); }
+      onDelete: () => {
+        if (event.type === EasEventType.EXAM) void this.confirmDeleteExam(event);
+        else void this.confirmSkipCourse(event);
+      }
     })
+  }
+
+  /** Same confirmation and wording as the exam page; the exam leaves the grid once the sheet has closed. */
+  private async confirmDeleteExam(event: EasEventItem): Promise<void> {
+    if (this.skippingCourse || !this.pageVisible || !this.activeSheetVisible || !this.courseSheetOpen ||
+      this.selectedCourse?.id !== event.id || event.type !== EasEventType.EXAM) {
+      return;
+    }
+    this.skippingCourse = true;
+    const sheetGeneration: number = this.sheetRequestGeneration;
+    let deleted: boolean = false;
+    try {
+      const result = await this.getUIContext().getPromptAction().showDialog({
+        title: '删除考试',
+        message: '确定删除「' + event.name + '」吗？',
+        buttons: [
+          { text: '取消', color: $r('app.color.hita_text_secondary') },
+          { text: '删除', color: $r('app.color.hita_error') }
+        ]
+      });
+      if (result.index !== 1 || sheetGeneration !== this.sheetRequestGeneration || !this.pageVisible ||
+        !this.activeSheetVisible) {
+        return;
+      }
+      await RdbHelper.getInstance().deleteEvent(event.id);
+      deleted = true;
+      await this.closeCourseSheetBeforeSkip();
+      this.timetableEvents = this.timetableEvents.filter((item: EasEventItem): boolean => item.id !== event.id);
+      this.todayItems = this.todayItems.filter((item: EasEventItem): boolean => item.id !== event.id);
+      this.updateTodayHighlights();
+      this.drawTimetableNow();
+      if (this.pageVisible) this.getUIContext().getPromptAction().showToast({ message: '考试已删除' });
+    } catch (_) {
+      // Dismissing the dialog is cancellation; only a confirmed write can fail.
+      if (deleted === false && this.pageVisible && sheetGeneration === this.sheetRequestGeneration &&
+        this.activeSheetVisible) {
+        this.getUIContext().getPromptAction().showToast({ message: '删除失败，请重试' });
+      }
+    } finally {
+      this.skippingCourse = false;
+      if (deleted) {
+        NextClassWidgetService.scheduleRefresh();
+        if (this.classReminderEnabled || this.examReminderEnabled) {
+          try {
+            const host: common.UIAbilityContext = this.getUIContext().getHostContext() as common.UIAbilityContext;
+            await ClassReminderScheduler.sync(host, this.timetableEvents);
+          } catch (_) {
+            console.warn('Failed to update reminders after deleting an exam');
+          }
+        }
+        if (this.pageVisible) await this.refreshSummaries(true).catch(() => {});
+      }
+    }
   }
 
   private async editCourse(event: EasEventItem): Promise<void> {
@@ -3788,9 +3983,11 @@ struct Home {
     if (!this.pageVisible) return;
     this.returningFromCourseEditor = true;
     this.getUIContext().getRouter().pushUrl({ url: 'pages/AddEventPage',
-      params: { id: event.id, type: 'CLASS', timetableId: event.timetableId } }).catch(() => {
+      params: { id: event.id, type: event.type === EasEventType.EXAM ? 'EXAM' : 'CLASS',
+        timetableId: event.timetableId } }).catch(() => {
       this.returningFromCourseEditor = false;
-      this.getUIContext().getPromptAction().showToast({ message: '无法打开课程编辑，请重试' });
+      this.getUIContext().getPromptAction().showToast({
+        message: event.type === EasEventType.EXAM ? '无法打开考试编辑，请重试' : '无法打开课程编辑，请重试' });
     });
   }
 

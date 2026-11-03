@@ -1,6 +1,8 @@
 import { HitaDesign } from '../theme/HitaDesign';
 import { CompatibleMaterialModifier } from '../theme/CompatibleMaterialModifier';
 import { CompatibleSheetMaterial } from '../theme/CompatibleSheetMaterial';
+import { EasEventItem } from '../model/timetable/TimetableModels';
+import { LearningTaskLink } from '../../feature/learning/LearningTaskLink';
 import { ImmersiveHeader } from './ImmersiveHeader';
 
 /** Compact, trailing actions shared by course and exam detail sheets. */
@@ -8,6 +10,8 @@ import { ImmersiveHeader } from './ImmersiveHeader';
 export struct DetailActionBar {
   @Prop deleteLabel: string = '删除';
   @Prop busy: boolean = false;
+  /** Course or exam whose homework / review list opens from the leading button; omit to hide it. */
+  @Prop taskEvent: EasEventItem | undefined = undefined;
   onEdit: () => void = () => {};
   onDelete: () => void = () => {};
 
@@ -15,6 +19,9 @@ export struct DetailActionBar {
     Column() {
       ImmersiveHeader({ barHeight: 44, materialEnabled: CompatibleSheetMaterial.isEnabled() }) {
         Row({ space: 8 }) {
+          if (this.taskEvent !== undefined) {
+            LearningTaskLink({ event: this.taskEvent, disabled: this.busy });
+          }
           Button('编辑', { type: ButtonType.Capsule })
             .height(36).padding({ left: 16, right: 16 }).fontSize(HitaDesign.caption)
             .responseRegion({ x: 0, y: -4, width: '100%', height: 44 })

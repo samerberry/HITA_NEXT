@@ -28,19 +28,24 @@ function method(name) {
   }
   return home.slice(start, end);
 }
-function harness({ width = 720, rail = false, fold = false, available = true } = {}) {
+function harness({ width = 720, rail = false, fold = false, available = true, phone = false } = {}) {
   const animations = [], railMoves = [];
   const rendered = { x: 16, y: 648 };
   let onSide, unavailable, started = false;
   const globals = { ...geometry, TouchType, DockNavigationGuard,
     DOCK_GROUP_ID: 'home-dock-group', deviceInfo: { apiAvailable: () => true },
-    Curve: { FastOutSlowIn: 'fast-out-slow-in' } };
+    Curve: { FastOutSlowIn: 'fast-out-slow-in' },
+    curves: { customCurve: () => 'exit', interpolatingSpring: () => 'spring' },
+    FLOATING_ACTION_EXIT_DURATION: 180, floatingActionExitProgress: x => x };
   const Page = new Function(...Object.keys(globals), compile(`class Page {
-    ${['startDockHandedness', 'bottomDockOffset', 'dockOffset', 'setBottomDockBounds', 'syncBottomDockBounds'].map(method).join('\n')}
+    ${['startDockHandedness', 'bottomDockOffset', 'dockOffset', 'setBottomDockBounds', 'syncBottomDockBounds',
+      'placePhoneDock', 'movePhoneActionTo', 'springPhoneActionIn'].map(method).join('\n')}
   }`) + '; return Page;')(...Object.values(globals));
   const page = new Page();
   Object.assign(page, {
     homeWidth: width, dockSide: 0, foldRailDevice: fold, railRight: false,
+    phoneActionLeft: false, phoneActionShift: 0, phoneNavShift: 0, phoneActionGeneration: 0, phoneDockWasActive: false,
+    phoneDock: () => phone,
     dockNavigation: new DockNavigationGuard(4, 3),
     railMode: () => rail, railFollowsHand: () => rail && fold,
     moveRailTo: side => railMoves.push(side),
@@ -49,7 +54,8 @@ function harness({ width = 720, rail = false, fold = false, available = true } =
       animateTo: (options, change) => {
         const before = page.bottomDockOffset();
         change();
-        animations.push({ before, after: page.bottomDockOffset(), ...options });
+        animations.push({ before, after: page.bottomDockOffset(), shift: page.phoneActionShift,
+          left: page.phoneActionLeft, nav: page.phoneNavShift, ...options });
       },
       getFrameNodeById: id => {
         assert.equal(id, 'home-dock-group');
@@ -68,6 +74,7 @@ function harness({ width = 720, rail = false, fold = false, available = true } =
       stop() { started = false; }
     }
   });
+  page.placePhoneDock();
   page.startDockHandedness();
   return { page, animations, railMoves, rendered, grip: left => onSide(left), unavailable: () => unavailable() };
 }
@@ -135,5 +142,70 @@ test('during a grip slide the drawn group defines navigation, gap and assistant 
       assert.deepEqual(changes, target >= 0 ? [target] : [], 'assistant and gap never select a page');
       guard.reset();
     }
+  }
+});
+
+test('phones keep the navigation centred and send only the assistant to the holding-hand edge', () => {
+  const h = harness({ width: 378, phone: true });
+  assert.equal(h.page.phoneActionLeft, false, 'the assistant starts on the right');
+  assert.equal(h.page.phoneNavShift, 0, 'a 378 vp phone has room for the centred navigation');
+  h.grip(true);
+  // Leave through the right edge with the bounded exit, swap while offscreen, spring in from the left.
+  assert.deepEqual(h.animations.map(a => [a.curve, a.duration, a.shift, a.left]),
+    [['exit', 180, geometry.DOCK_ACTION_EXIT, false]]);
+  h.animations[0].onFinish();
+  assert.equal(h.page.phoneActionLeft, true);
+  assert.deepEqual(h.animations.slice(1).map(a => [a.curve, a.shift]), [['spring', 0]]);
+  assert.equal(h.page.bottomDockOffset(), 0, 'the navigation never follows the grip on phones');
+  h.unavailable();
+  assert.equal(h.animations[2].curve, 'exit', 'losing the sensor sends the assistant back to the right');
+  h.animations[2].onFinish();
+  assert.equal(h.page.phoneActionLeft, false);
+});
+
+test('a reversed grip before the swap springs back without changing edge, and stale exits are ignored', () => {
+  const h = harness({ width: 378, phone: true });
+  h.grip(true);
+  const exit = h.animations[0];
+  h.grip(false);
+  assert.deepEqual(h.animations.slice(1).map(a => [a.curve, a.shift, a.left]), [['spring', 0, false]]);
+  exit.onFinish();
+  assert.equal(h.page.phoneActionLeft, false, 'the superseded exit cannot swap edges');
+});
+
+test('narrow phones move the navigation just far enough from the assistant', () => {
+  const { dockPhoneNavShift, DOCK_NAV_WIDTH, DOCK_SIDE_MARGIN, DOCK_ACTION_SIZE, DOCK_PHONE_GAP } = geometry;
+  for (const width of [378, 400, 599]) {
+    assert.equal(dockPhoneNavShift(width, 1), 0);
+    assert.equal(dockPhoneNavShift(width, -1), 0);
+  }
+  for (const width of [320, 340, 360]) {
+    const right = dockPhoneNavShift(width, 1);
+    assert.ok(right < 0, 'moves left, away from a right-hand assistant');
+    assert.equal(dockPhoneNavShift(width, -1), -right);
+    const navRight = width / 2 + DOCK_NAV_WIDTH / 2 + right;
+    assert.ok(navRight + DOCK_PHONE_GAP <= width - DOCK_SIDE_MARGIN - DOCK_ACTION_SIZE + 1e-9);
+    assert.ok(width / 2 - DOCK_NAV_WIDTH / 2 + right >= DOCK_SIDE_MARGIN - 1e-9, 'never past the far margin');
+  }
+  assert.equal(dockPhoneNavShift(0, 1), 0);
+  assert.equal(dockPhoneNavShift(NaN, -1), 0);
+});
+
+test('phone navigation bounds keep the page grid and never reach the assistant slot', () => {
+  const h = harness({ width: 378, phone: true });
+  let stamp = 0;
+  h.rendered.x = 72;
+  h.page.syncBottomDockBounds();
+  for (const [x, target] of [[44, 0], [108, 1], [172, 2], [210, 2]]) {
+    const guard = h.page.dockNavigation;
+    const point = { id: 0, windowX: 72 + x, windowY: 676 };
+    const down = { type: TouchType.Down, timestamp: ++stamp, touches: [point], changedTouches: [point],
+      getHistoricalPoints: () => [] };
+    guard.begin(down, true);
+    guard.observe(down);
+    assert.equal(guard.actionTarget(), -1);
+    guard.observe({ ...down, type: TouchType.Up, timestamp: ++stamp, touches: [] });
+    assert.equal(guard.releaseTarget(), target);
+    guard.reset();
   }
 });

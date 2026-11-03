@@ -265,12 +265,18 @@ test('skip UI exists only in timetable class details and uses the red material h
   const actions = fs.readFileSync(path.join(root, 'common/components/DetailActionBar.ets'), 'utf8');
   assert.match(home, /CourseDetailContent\(\{/);
   assert.match(detail, /deleteLabel: string = '翘课'/);
-  assert.match(detail, /if \(this\.event\.type === EasEventType\.CLASS\)[\s\S]*DetailActionBar\(\{\s*deleteLabel: this\.deleteLabel/);
+  // Classes skip; exams opened from the timetable delete, like the exam page.
+  assert.match(detail, /if \(this\.event\.type === EasEventType\.CLASS \|\| this\.event\.type === EasEventType\.EXAM\)[\s\S]*DetailActionBar\(\{\s*deleteLabel: this\.event\.type === EasEventType\.EXAM \? '删除' : this\.deleteLabel/);
+  assert.match(detail, /taskEvent: this\.event,/);
+  assert.match(actions, /LearningTaskLink\(\{ event: this\.taskEvent, disabled: this\.busy \}\)[\s\S]*Button\('编辑'/);
   assert.match(actions, /Button\('编辑'[\s\S]*Button\(this\.deleteLabel/);
   assert.match(actions, /ImmersiveHeader\(\{ barHeight: 44/);
   assert.match(actions, /CompatibleMaterialModifier\(\$r\('app.color.hita_error_fill'\), true/);
   assert.match(actions, /\$r\('app.color.hita_error_fill'\), false\)/);
   assert.equal((actions.match(/\.height\(36\)/g) || []).length, 2);
+  const link = fs.readFileSync(path.join(root, 'feature/learning/LearningTaskLink.ets'), 'utf8');
+  // The homework / review button matches 编辑: same capsule height, type size and tinted material.
+  assert.match(link, /Button\(this\.label\(\), \{ type: ButtonType\.Capsule \}\)\s*\.height\(36\)[\s\S]*?\.fontSize\(HitaDesign\.caption\)[\s\S]*?new CompatibleMaterialModifier\(\$r\('app\.color\.hita_selected'\), false,/);
   assert.equal((actions.match(/\.fontSize\(HitaDesign.caption\)/g) || []).length, 2);
   assert.match(actions, /\.justifyContent\(FlexAlign\.End\)/);
   for (const file of ['TimetableDetailPage.ets', 'ExamPage.ets']) {

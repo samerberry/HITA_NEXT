@@ -41,7 +41,8 @@ struct StudyOperationConfirmPage {
   }
 
   private statusMessage(operation: StudyOperation): string {
-    return operation.status === 'saved' ? (operation.kind === 'complete' ? '已标记完成' : '已添加到学习待办') :
+    return operation.status === 'saved' ? (operation.kind === 'create_course' ? '已添加到课表' :
+      operation.kind === 'complete' ? '已标记完成' : '已添加到学习待办') :
       operation.status === 'cancelled' ? '已取消' : operation.status === 'expired' ? '操作已过期，请重新发起' : '';
   }
 
@@ -83,7 +84,8 @@ struct StudyOperationConfirmPage {
       ImmersiveHeader({ barHeight: HitaDesign.headerHeight }) {
         Row({ space: HitaDesign.gap }) {
           HeaderBackButton({ onBack: () => { if (!this.busy) this.close(); } })
-          Text(this.operation?.kind === 'complete' ? '确认完成作业' : '确认添加作业')
+          Text(this.operation?.kind === 'create_course' ? '确认添加课程' :
+            this.operation?.kind === 'complete' ? '确认完成作业' : '确认添加作业')
             .fontSize(HitaDesign.title).fontWeight(FontWeight.Medium)
             .fontColor(CompatibleMaterialModifier.foreground(HitaColors.onSurface))
         }.width('100%').padding({ left: HitaDesign.inset, right: HitaDesign.inset })
@@ -92,16 +94,27 @@ struct StudyOperationConfirmPage {
         Column({ space: HitaDesign.sectionGap }) {
           if (this.operation !== undefined) {
             Column({ space: HitaDesign.spaceLg }) {
-              Text(this.operation.task.title).fontSize(HitaDesign.title).fontWeight(FontWeight.Medium).fontColor(HitaColors.onSurface)
-              this.detail('课程', this.operation.task.courseName)
-              this.detail('课表', this.operation.timetableName)
-              this.detail('截止', this.operation.task.dueAt > 0 ? StudyAssistantService.date(this.operation.task.dueAt) +
-                (this.operation.task.allDay ? ' · 全天' : ' ' + StudyAssistantService.time(this.operation.task.dueAt)) : '未设置')
-              if (this.operation.task.remindAt > 0) {
-                this.detail('提醒', StudyAssistantService.date(this.operation.task.remindAt) + ' ' + StudyAssistantService.time(this.operation.task.remindAt))
-              }
-              if (this.operation.task.note.length > 0) {
-                Text(this.operation.task.note).fontSize(HitaDesign.body).fontColor(HitaColors.onSurfaceVariant).width('100%')
+              if (this.operation.kind === 'create_course') {
+                Text(this.operation.course.event.name).fontSize(HitaDesign.title).fontWeight(FontWeight.Medium).fontColor(HitaColors.onSurface)
+                this.detail('课表', this.operation.timetableName)
+                this.detail('日期', StudyAssistantService.date(this.operation.course.event.from))
+                this.detail('时间', StudyAssistantService.time(this.operation.course.event.from) + '—' + StudyAssistantService.time(this.operation.course.event.to))
+                this.detail('地点', this.operation.course.event.place || '未设置')
+                if (this.operation.course.event.teacher.length > 0) {
+                  this.detail('教师', this.operation.course.event.teacher)
+                }
+              } else {
+                Text(this.operation.task.title).fontSize(HitaDesign.title).fontWeight(FontWeight.Medium).fontColor(HitaColors.onSurface)
+                this.detail('课程', this.operation.task.courseName)
+                this.detail('课表', this.operation.timetableName)
+                this.detail('截止', this.operation.task.dueAt > 0 ? StudyAssistantService.date(this.operation.task.dueAt) +
+                  (this.operation.task.allDay ? ' · 全天' : ' ' + StudyAssistantService.time(this.operation.task.dueAt)) : '未设置')
+                if (this.operation.task.remindAt > 0) {
+                  this.detail('提醒', StudyAssistantService.date(this.operation.task.remindAt) + ' ' + StudyAssistantService.time(this.operation.task.remindAt))
+                }
+                if (this.operation.task.note.length > 0) {
+                  Text(this.operation.task.note).fontSize(HitaDesign.body).fontColor(HitaColors.onSurfaceVariant).width('100%')
+                }
               }
             }.width('100%').alignItems(HorizontalAlign.Start).padding(HitaDesign.spaceLg)
               .backgroundColor($r('app.color.hita_surface')).borderRadius(HitaDesign.cardRadius)
@@ -114,9 +127,9 @@ struct StudyOperationConfirmPage {
       Row({ space: HitaDesign.gap }) {
         if (this.operation?.status === 'pending') {
           HitaButton({ label: '取消', variant: HitaButtonVariant.NEUTRAL, disabled: this.busy,
-            onTap: () => { void this.finish(false); } }).layoutWeight(1)
+            onTap: () => { void this.finish(false); } }).width(0).layoutWeight(1)
           HitaButton({ label: this.busy ? '处理中' : this.operation.kind === 'complete' ? '确认完成' : '确认添加', disabled: this.busy,
-            onTap: () => { void this.finish(true); } }).layoutWeight(1)
+            onTap: () => { void this.finish(true); } }).width(0).layoutWeight(1)
         } else HitaButton({ label: '返回', disabled: this.busy, onTap: () => { this.close(); } })
       }.width('100%').padding(HitaDesign.inset)
     }.width('100%').height('100%').padding({ top: this.topInset, bottom: this.bottomInset })

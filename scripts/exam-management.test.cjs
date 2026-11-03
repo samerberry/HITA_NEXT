@@ -150,8 +150,8 @@ test('list keeps event identity, filters courses and sorts by time across timeta
   // Review tasks live in 学习待办; an exam keeps only its own link to them.
   assert.doesNotMatch(source, /reviewView|viewTab|LearningTasksPanel/);
   assert.match(source, /Text\('考试安排'\)/);
-  assert.match(detail, /LearningTaskLink\(\{ event: event \}\)/);
-  assert.match(detail, /DetailActionBar\(\{\s*deleteLabel: '删除',[\s\S]*?onEdit: \(\) => this\.openEditExam\(event\),[\s\S]*?onDelete: \(\) => this\.confirmDeleteExam\(event\)/);
+  // The review list opens from the button left of 编辑 in the shared action bar.
+  assert.match(detail, /DetailActionBar\(\{\s*deleteLabel: '删除',[\s\S]*?taskEvent: event,[\s\S]*?onEdit: \(\) => this\.openEditExam\(event\),[\s\S]*?onDelete: \(\) => this\.confirmDeleteExam\(event\)/);
   assert.ok(detail.indexOf('DetailActionBar({') > detail.lastIndexOf('this.examDetailRow('));
   const editor = read('pages/AddEventPage.ets');
   assert.match(editor, /\.layoutWeight\(1\)/);

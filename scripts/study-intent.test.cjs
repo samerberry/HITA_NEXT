@@ -6,7 +6,7 @@ const ts = require('typescript');
 const root = path.resolve(__dirname, '../entry/src/main/ets');
 
 function harness() {
-  const state = { writes: 0, opened: [], permission: true, finishCalls: [], failQuery: false, queryCalls: [],
+  const state = { writes: 0, opened: [], permission: true, finishCalls: [], failQuery: false, queryCalls: [], logs: [],
     operation: { id: 'operation', status: 'pending', kind: 'create', task: { title: '概率论作业', remindAt: 0 } } };
   const cache = new Map();
   class StudyInputError extends Error {}
@@ -17,7 +17,11 @@ function harness() {
       if (state.failQuery) throw Error('private SQL path');
       return { status: 'success', records: [] };
     },
-    prepare: async (_ctx, kind) => ({ status: 'needs_confirmation', kind, operationId: 'operation' }),
+    prepare: async (_ctx, kind) => {
+      if (state.invalidPrepare) throw new StudyInputError('requestKey 参数无效');
+      if (state.conflict) return { status: 'request_key_conflict', message: '请生成新的 requestKey' };
+      return { status: 'needs_confirmation', kind, operationId: 'operation' };
+    },
     operation: async () => ({ ...state.operation, task: { ...state.operation.task } }),
     operationView: op => ({ status: op.status === 'pending' ? 'needs_confirmation' : op.status, operationId: op.id }),
     finish: async (_ctx, id, confirm) => {
@@ -45,7 +49,9 @@ function harness() {
         state.onPermission?.(); return state.permission;
       } } };
       if (name === '@kit.AbilityKit') return { InsightIntentExecutor: class {} };
-      if (name === '@kit.PerformanceAnalysisKit') return { hilog: { info() {}, error() {} } };
+      if (name === '@kit.PerformanceAnalysisKit') return { hilog: {
+        info: (...args) => state.logs.push(args), error: (...args) => state.logs.push(args)
+      } };
       if (name.startsWith('@kit.') || name.includes('/theme/') || name.includes('/components/')) return {};
       return load(path.resolve(path.dirname(file), name + '.ets'));
     }, mod, mod.exports);
@@ -66,13 +72,28 @@ function harness() {
 
 test('background tools only read/prepare and cannot open or commit a confirmation, even with a forged confirm flag', async () => {
   const h = harness();
-  for (const name of ['StudyQuery', 'PrepareHomework', 'PrepareTaskCompletion', 'LearningOperation']) {
+  for (const name of ['StudyQuery', 'PrepareCourse', 'PrepareHomework', 'PrepareTaskCompletion', 'LearningOperation']) {
     const response = await h.executor.onExecuteInUIAbilityBackgroundMode(name, { action: 'tasks', confirm: true });
     assert.equal(response.code, 0);
   }
   assert.equal(h.state.writes, 0); assert.deepEqual(h.state.opened, []);
   assert.equal((await h.executor.onExecuteInUIAbilityBackgroundMode('ConfirmLearningOperation', {})).code, 4);
   assert.equal((await h.executor.onExecuteInUIAbilityForegroundMode('PrepareHomework', {}, {})).code, 4);
+  assert.equal((await h.executor.onExecuteInUIAbilityForegroundMode('PrepareCourse', {}, {})).code, 4);
+});
+
+test('course intent prepares the course kind and shares native confirmation without homework permission handling', async () => {
+  const h = harness();
+  const prepared = h.data(await h.executor.onExecuteInUIAbilityBackgroundMode('PrepareCourse', {
+    requestKey: 'new-course-key', courseName: '新课程', date: '11月11日', startTime: '13:00', endTime: '15:45'
+  }));
+  assert.equal(prepared.kind, 'create_course'); assert.equal(prepared.status, 'needs_confirmation');
+  assert.equal(h.state.writes, 0); assert.deepEqual(h.state.opened, []);
+  h.state.operation.kind = 'create_course'; h.state.permission = false;
+  await h.executor.onExecuteInUIAbilityForegroundMode('ConfirmLearningOperation', { operationId: prepared.operationId }, {});
+  assert.deepEqual(h.state.opened, ['operation']);
+  const page = h.page(); await page.finish(true);
+  assert.equal(h.state.writes, 1); assert.equal(page.message, '已添加到课表');
 });
 
 test('foreground confirmation returns pending rather than success and status query reflects only a later actual save', async () => {
@@ -90,10 +111,35 @@ test('read/startup failures do not become no homework and do not leak internal p
   const response = await h.executor.onExecuteInUIAbilityBackgroundMode('StudyQuery', { action: 'tasks' });
   assert.equal(response.code, 3); assert.equal(h.data(response).status, 'error');
   assert.doesNotMatch(response.result.data, /private SQL path/);
+  assert.doesNotMatch(JSON.stringify(h.state.logs), /private SQL path/);
+  assert.match(JSON.stringify(h.state.logs), /execution_failed/);
   const pending = Promise.withResolvers(); h.context.attach({}, pending.promise);
   const request = h.executor.onExecuteInUIAbilityBackgroundMode('StudyQuery', { action: 'courses' });
   h.context.attach({}, Promise.resolve()); pending.resolve();
   assert.equal((await request).code, 3); assert.equal(h.state.queryCalls.length, 1);
+});
+
+test('validation diagnostics expose only field types and fixed reasons, without logging user content', async () => {
+  const h = harness(); h.state.invalidPrepare = true;
+  const response = await h.executor.onExecuteInUIAbilityBackgroundMode('PrepareHomework', {
+    requestKey: 'private-request-123', title: 'private homework', note: 'private note',
+    courseName: 'private course', dueTime: '', dueDate: null, extra: 'private extra'
+  });
+  assert.equal(response.code, 2);
+  const log = JSON.stringify(h.state.logs);
+  assert.match(log, /requestKey 参数无效/);
+  assert.match(log, /requestKey=string/); assert.match(log, /dueTime=blank/); assert.match(log, /dueDate=null/);
+  assert.doesNotMatch(log, /private-request|private homework|private note|private course|private extra/);
+  assert.equal(h.state.writes, 0); assert.deepEqual(h.state.opened, []);
+});
+
+test('request key conflicts reach the model as a business status without opening or saving a different draft', async () => {
+  const h = harness(); h.state.conflict = true;
+  const response = await h.executor.onExecuteInUIAbilityBackgroundMode('PrepareHomework', { requestKey: 'reused-key' });
+  assert.equal(response.code, 0);
+  assert.equal(h.data(response).status, 'request_key_conflict');
+  assert.equal(h.data(response).operationId, undefined);
+  assert.equal(h.state.writes, 0); assert.deepEqual(h.state.opened, []);
 });
 
 test('confirmation waits for cold-start content and cannot use a detached UIAbility context', async () => {

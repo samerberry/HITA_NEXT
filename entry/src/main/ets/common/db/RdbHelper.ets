@@ -26,7 +26,8 @@ import { CourseDateSelection } from '../../feature/timetable/CourseDateSelection
 import { normalizeHtmlSpaces } from '../util/HtmlSpaces';
 import { ScheduleChangeSignal } from '../util/ScheduleChangeSignal';
 import { LearningContext, LearningTask, LearningTaskKind, LearningTaskRules } from '../model/learning/LearningTask';
-import { StudyOperation, studyOperationExpired, sameStudyOperationTarget } from '../model/learning/StudyOperation';
+import { StudyOperation, studyOperationExpired, sameStudyOperationTarget, normalizedCourseName,
+  sameStudyCourse, studyCourseValidation } from '../model/learning/StudyOperation';
 
 // The first prototype shipped a different schema under this name.  Use a
 // versioned store so an upgrade cannot keep an incompatible old table layout.
@@ -1135,7 +1136,39 @@ export class RdbHelper {
     return result;
   }
 
-  /** Task and operation receipt commit together; a retry cannot recreate a task or mark an edited task complete. */
+  /** Course, subject and receipt share the transaction; never overwrite an edited or deleted course. */
+  private async commitStudyCourse(tx: relationalStore.Transaction, operation: StudyOperation): Promise<void> {
+    const subject: EasTermSubject = operation.course.subject;
+    const event: EasEventItem = operation.course.event;
+    const table: EasTimetable | undefined = RdbHelper.firstRow(await tx.query(
+      new relationalStore.RdbPredicates('timetable').equalTo('id', event.timetableId)), RdbHelper.timetableMapper, true);
+    if (table === undefined) throw new Error('课表已被删除，请重新选择课表');
+    const message: string = studyCourseValidation(operation.course, table);
+    if (message.length > 0) throw new Error(message);
+    const events: EasEventItem[] = RdbHelper.readRows(await tx.query(
+      new relationalStore.RdbPredicates('events').equalTo('timetableId', table.id)), RdbHelper.eventMapper, true);
+    if (events.some(item => sameStudyCourse(item, event))) throw new Error('相同课程安排已存在，请查看课表');
+    const subjects: EasTermSubject[] = RdbHelper.readRows(await tx.query(
+      new relationalStore.RdbPredicates('subject').equalTo('timetableId', table.id)), RdbHelper.subjectMapper, true);
+    if (operation.course.newSubject) {
+      if (subjects.some(item => normalizedCourseName(item.name) === normalizedCourseName(subject.name))) {
+        throw new Error('已存在同名课程，请重新发起以关联最新课程');
+      }
+      if (await tx.insert('subject', RdbHelper.subjectValues(subject)) < 0) throw new Error('课程保存失败');
+    } else {
+      const current: EasTermSubject | undefined = subjects.find(item => item.id === subject.id);
+      if (current === undefined || current.name !== subject.name || current.code !== subject.code) {
+        throw new Error('关联课程已被修改或删除，请重新发起');
+      }
+    }
+    if (await tx.insert('events', RdbHelper.eventValues(event)) < 0) throw new Error('课程安排保存失败');
+    if (event.to > table.endTime && await tx.update({ endTime: CourseDateSelection.weekEnd(event.to) },
+      new relationalStore.RdbPredicates('timetable').equalTo('id', table.id)) !== 1) {
+      throw new Error('课表教学周更新失败');
+    }
+  }
+
+  /** Business writes and operation receipt commit together; a retry cannot duplicate a confirmed operation. */
   async finishStudyOperation(id: string, confirm: boolean): Promise<StudyOperation> {
     let result: StudyOperation | undefined = undefined;
     await this.writeTransaction(async (tx: relationalStore.Transaction): Promise<void> => {
@@ -1145,7 +1178,10 @@ export class RdbHelper {
       result = operation;
       if (operation.status !== 'pending') return;
       if (studyOperationExpired(operation, Date.now())) throw new Error('操作已过期，请重新发起');
-      if (confirm) {
+      if (confirm && operation.kind === 'create_course') {
+        await this.commitStudyCourse(tx, operation);
+        operation.status = 'saved';
+      } else if (confirm) {
         const task: LearningTask = LearningTaskRules.copy(operation.task);
         if (task.kind !== LearningTaskKind.HOMEWORK) throw new Error('此操作仅支持课程作业');
         const message: string = operation.kind === 'create' ? LearningTaskRules.validation(task) : LearningTaskRules.storedValidation(task);

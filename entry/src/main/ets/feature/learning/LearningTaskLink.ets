@@ -5,6 +5,7 @@ import { EasEventItem, EasEventType, EasTermSubject, newId } from '../../common/
 import { ScheduleChangeSignal } from '../../common/util/ScheduleChangeSignal';
 import { HitaDesign } from '../../common/theme/HitaDesign';
 import { CompatibleSheetMaterial } from '../../common/theme/CompatibleSheetMaterial';
+import { CompatibleMaterialModifier } from '../../common/theme/CompatibleMaterialModifier';
 import { CompatibleLightModifier } from '../../common/theme/CompatibleLightModifier';
 import { SheetContent } from '../../common/components/SheetContent';
 import { LearningTasksPanel } from './LearningTasksPanel';
@@ -13,6 +14,8 @@ import { LearningTasksPanel } from './LearningTasksPanel';
 @Component
 export struct LearningTaskLink {
   @Prop event: EasEventItem = new EasEventItem();
+  /** The surrounding detail sheet is deleting or opening its editor. */
+  @Prop disabled: boolean = false;
   @State visible: boolean = false;
   @State busy: boolean = false;
   @State count: number = 0;
@@ -69,16 +72,30 @@ export struct LearningTaskLink {
     }
   }
 
+  private label(): string {
+    const name: string = this.event.type === EasEventType.EXAM ? '复习' : '作业';
+    return this.count > 0 ? name + ' ' + this.count.toString() : name;
+  }
+
+  private describe(): string {
+    const name: string = this.event.type === EasEventType.EXAM ? '复习清单' : '作业待办';
+    return name + '，' + (this.failed ? '读取失败，点击重试' : this.count > 0 ? this.count.toString() + ' 项未完成' :
+      this.total > 0 ? '已全部完成' : '暂无，点击添加');
+  }
+
+  /** Sits left of 编辑 in DetailActionBar and shares its capsule, material and touch region. */
   build() {
-    Row({ space: 12 }) {
-      SymbolGlyph($r('sys.symbol.checkmark_circle_fill')).fontSize(HitaDesign.iconMd)
-        .fontColor([$r('app.color.hita_primary')]).width(38)
-      Text(this.event.type === EasEventType.EXAM ? '复习清单' : '作业待办').fontSize(HitaDesign.body)
-        .fontColor($r('app.color.hita_text')).layoutWeight(1)
-      Text(this.failed ? '重试' : this.count > 0 ? this.count.toString() + ' 项未完成' : this.total > 0 ? '已全部完成' : '添加')
-        .fontSize(HitaDesign.caption).fontColor($r('app.color.hita_text_secondary'))
-      SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(HitaDesign.iconSm).fontColor([$r('app.color.hita_text_secondary')])
-    }.width('100%').constraintSize({ minHeight: 52 }).padding({ top: 8, bottom: 8 })
+    Button(this.label(), { type: ButtonType.Capsule })
+      .height(36).padding({ left: 16, right: 16 }).fontSize(HitaDesign.caption)
+      .responseRegion({ x: 0, y: -4, width: '100%', height: 44 })
+      .fontWeight(FontWeight.Medium)
+      .fontColor(CompatibleSheetMaterial.isEnabled() ?
+        CompatibleMaterialModifier.foreground($r('app.color.hita_primary')) : $r('app.color.hita_primary'))
+      .backgroundColor($r('app.color.hita_selected'))
+      .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_selected'), false,
+        CompatibleSheetMaterial.isEnabled()))
+      .accessibilityText(this.describe())
+      .enabled(!this.disabled)
       .onClick(() => {
         if (this.failed) { void this.refresh(); return; }
         if (this.busy || this.visible) return;

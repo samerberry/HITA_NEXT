@@ -1,6 +1,5 @@
 import { HitaDesign } from '../../../common/theme/HitaDesign';
 import { DetailActionBar } from '../../../common/components/DetailActionBar';
-import { LearningTaskLink } from '../../learning/LearningTaskLink';
 import { EasEventItem, EasEventType } from '../../../common/model/timetable/TimetableModels';
 import { EasTimeTools } from '../../../common/util/EasTimeTools';
 import { ImmersiveHeader } from '../../../common/components/ImmersiveHeader';
@@ -109,10 +108,11 @@ export struct CourseDetailContent {
       } else {
         this.courseDetailRow($r('sys.symbol.repeat_1'), '课程进度', this.progressText);
       }
-      if (this.event.type === EasEventType.CLASS) {
-        LearningTaskLink({ event: this.event });
+      if (this.event.type === EasEventType.CLASS || this.event.type === EasEventType.EXAM) {
+        // Exams are deleted outright; only a class can be skipped.
         DetailActionBar({
-          deleteLabel: this.deleteLabel, busy: this.busy,
+          deleteLabel: this.event.type === EasEventType.EXAM ? '删除' : this.deleteLabel, busy: this.busy,
+          taskEvent: this.event,
           onEdit: () => this.onEdit(), onDelete: () => this.onDelete()
         });
       }

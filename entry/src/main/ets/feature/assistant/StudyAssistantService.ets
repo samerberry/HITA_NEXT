@@ -1,8 +1,8 @@
 import { common } from '@kit.AbilityKit';
 import { RdbHelper } from '../../common/db/RdbHelper';
 import { LearningContext, LearningTask, LearningTaskKind, LearningTaskRules } from '../../common/model/learning/LearningTask';
-import { StudyOperation } from '../../common/model/learning/StudyOperation';
-import { EasTermSubject, EasTimetable } from '../../common/model/timetable/TimetableModels';
+import { StudyOperation, normalizedCourseName, sameStudyCourse, studyCourseValidation } from '../../common/model/learning/StudyOperation';
+import { EasEventItem, EasEventType, EasTermSubject, EasTimetable } from '../../common/model/timetable/TimetableModels';
 import { TimetableSelectionStore } from '../timetable/data/TimetableSelectionStore';
 import { TimetableResolver } from '../timetable/data/TimetableResolver';
 import { LocalTimetableApi } from './LocalTimetableApi';
@@ -13,6 +13,7 @@ export class StudyInputError extends Error {}
 class StudyScope {
   table: EasTimetable = new EasTimetable();
   subjects: EasTermSubject[] = [];
+  events: EasEventItem[] = [];
 }
 
 /** Device-side study tools. No model-generated field can bypass the on-device confirmation. */
@@ -38,6 +39,7 @@ export class StudyAssistantService {
     const scope: StudyScope = new StudyScope();
     scope.table = table;
     scope.subjects = data.subjects.filter(item => item.timetableId === table.id);
+    scope.events = data.events.filter(item => item.timetableId === table.id);
     return scope;
   }
 
@@ -73,7 +75,7 @@ export class StudyAssistantService {
     return date.getHours().toString().padStart(2, '0') + ':' + date.getMinutes().toString().padStart(2, '0');
   }
 
-  /** Yearless deadlines use the next occurrence on the device calendar; a date alone is an all-day deadline. */
+  /** Yearless dates use the next occurrence on the device calendar. */
   static day(value: string, now: number = Date.now()): number {
     const partial: RegExpMatchArray | null = value.match(/^(\d{1,2})(?:月|-)(\d{1,2})日?$/);
     if (partial !== null) {
@@ -82,7 +84,7 @@ export class StudyAssistantService {
       const day: number = Number(partial[2]);
       // Validate before rolling forward; February 30 must never normalize into March.
       const initial: Date = new Date(year, month - 1, day);
-      if (initial.getMonth() !== month - 1 || initial.getDate() !== day) throw new StudyInputError('截止日期不存在，请提供完整日期');
+      if (initial.getMonth() !== month - 1 || initial.getDate() !== day) throw new StudyInputError('日期不存在，请提供完整日期');
       if (initial.getTime() < LearningTaskRules.dayStart(now)) year++;
       return StudyAssistantService.day(year.toString() + '-' + month.toString().padStart(2, '0') + '-' + day.toString().padStart(2, '0'), now);
     }
@@ -143,11 +145,75 @@ export class StudyAssistantService {
   }
 
   static operationView(operation: StudyOperation): Record<string, Object> {
-    return { 'status': operation.status === 'pending' ? 'needs_confirmation' : operation.status,
+    const result: Record<string, Object> = { 'status': operation.status === 'pending' ? 'needs_confirmation' : operation.status,
       'operationId': operation.id, 'kind': operation.kind, 'timetableName': operation.timetableName,
-      'task': StudyAssistantService.taskView(operation.task), 'expiresAt': operation.createdAt + 30 * 60000,
+      'expiresAt': operation.createdAt + 30 * 60000,
       'message': operation.status === 'pending' ? '草稿尚未保存。调用 ConfirmLearningOperation 打开 HITA 确认页，再查询操作结果。' :
         operation.status === 'saved' ? '操作已保存' : '操作已取消或过期，未执行新的写入' };
+    if (operation.kind === 'create_course') result['course'] = StudyAssistantService.classView(operation.course.event);
+    else result['task'] = StudyAssistantService.taskView(operation.task);
+    return result;
+  }
+
+  private static classView(event: EasEventItem): Record<string, Object> {
+    return { 'eventId': event.id, 'subjectId': event.subjectId, 'timetableId': event.timetableId,
+      'name': event.name, 'type': event.type, 'date': StudyAssistantService.date(event.from),
+      'startTime': StudyAssistantService.time(event.from), 'endTime': StudyAssistantService.time(event.to),
+      'place': event.place, 'teacher': event.teacher };
+  }
+
+  private static async prepareCourse(context: common.Context, parameters: Record<string, Object>): Promise<Record<string, Object>> {
+    const key: string = StudyAssistantService.text(parameters, 'requestKey', 80);
+    if (!/^[a-zA-Z0-9_-]{8,80}$/.test(key)) throw new StudyInputError('requestKey 需要8至80位字母、数字、横线或下划线；重试复用同一值');
+    const name: string = StudyAssistantService.text(parameters, 'courseName');
+    const subjectId: string = StudyAssistantService.text(parameters, 'subjectId');
+    const date: string = StudyAssistantService.text(parameters, 'date');
+    const start: string = StudyAssistantService.text(parameters, 'startTime');
+    const end: string = StudyAssistantService.text(parameters, 'endTime');
+    const place: string = StudyAssistantService.text(parameters, 'place');
+    const teacher: string = StudyAssistantService.text(parameters, 'teacher');
+    const signature: string = JSON.stringify({ kind: 'create_course', courseName: name, subjectId: subjectId,
+      date: date, startTime: start, endTime: end, place: place, teacher: teacher });
+    const db: RdbHelper = RdbHelper.getInstance();
+    await db.init(context);
+    const previous: StudyOperation | undefined = await db.getStudyOperation(key, true);
+    if (previous !== undefined) {
+      if (previous.signature !== signature) return { 'status': 'request_key_conflict',
+        'message': 'requestKey 已用于其他内容，本次未创建草稿。请为当前请求生成新的 requestKey 后重试一次。' };
+      return StudyAssistantService.operationView(previous);
+    }
+    if (name.length === 0) throw new StudyInputError('请提供要添加的课程名称');
+    if (date.length === 0 || start.length === 0 || end.length === 0) throw new StudyInputError('添加课程需要明确的上课日期、开始时间和结束时间');
+    const day: number = StudyAssistantService.day(date);
+    const from: number = StudyAssistantService.at(day, start);
+    const to: number = StudyAssistantService.at(day, end);
+    if (to <= from) throw new StudyInputError('结束时间需要晚于开始时间，暂不支持跨日课程');
+    const scope: StudyScope = await StudyAssistantService.scope(context);
+    // A new course does not need to exist in the timetable. Only exact names reuse a subject.
+    const candidates: EasTermSubject[] = scope.subjects.filter(item => subjectId.length > 0 ? item.id === subjectId :
+      normalizedCourseName(item.name) === normalizedCourseName(name));
+    if (subjectId.length > 0 && (candidates.length !== 1 || normalizedCourseName(candidates[0].name) !== normalizedCourseName(name))) {
+      throw new StudyInputError('所选课程已变化或不属于当前课表，请重新查询');
+    }
+    if (candidates.length > 1) return { 'status': 'needs_selection', 'message': '有多个同名课程，请用户选择后用 subjectId 重试',
+      'candidates': candidates.map(StudyAssistantService.courseView) };
+    const operation: StudyOperation = new StudyOperation();
+    operation.kind = 'create_course'; operation.requestKey = key; operation.signature = signature;
+    operation.timetableName = scope.table.name;
+    operation.course.termStart = scope.table.startTime;
+    operation.course.newSubject = candidates.length === 0;
+    if (candidates.length === 1) operation.course.subject = candidates[0];
+    else { operation.course.subject.name = name; operation.course.subject.timetableId = scope.table.id; }
+    const event: EasEventItem = operation.course.event;
+    event.id = 'study-course-' + operation.id; event.type = EasEventType.CLASS;
+    event.name = operation.course.subject.name; event.subjectId = operation.course.subject.id;
+    event.timetableId = scope.table.id; event.from = from; event.to = to; event.place = place; event.teacher = teacher;
+    const message: string = studyCourseValidation(operation.course, scope.table);
+    if (message.length > 0) throw new StudyInputError(message);
+    const duplicate: EasEventItem | undefined = scope.events.find(item => sameStudyCourse(item, event));
+    if (duplicate !== undefined) return { 'status': 'already_exists', 'message': '相同课程安排已存在，没有重复添加',
+      'course': StudyAssistantService.classView(duplicate) };
+    return StudyAssistantService.operationView(await db.prepareStudyOperation(operation));
   }
 
   static async operation(context: common.Context, id: string): Promise<StudyOperation> {
@@ -160,6 +226,7 @@ export class StudyAssistantService {
   }
 
   static async prepare(context: common.Context, kind: string, parameters: Record<string, Object>): Promise<Record<string, Object>> {
+    if (kind === 'create_course') return StudyAssistantService.prepareCourse(context, parameters);
     if (kind !== 'create' && kind !== 'complete') throw new StudyInputError('不支持此操作');
     const key: string = StudyAssistantService.text(parameters, 'requestKey', 80);
     if (!/^[a-zA-Z0-9_-]{8,80}$/.test(key)) throw new StudyInputError('requestKey 需要8至80位字母、数字、横线或下划线；重试复用同一值');
@@ -178,7 +245,10 @@ export class StudyAssistantService {
     await db.init(context);
     const previous: StudyOperation | undefined = await db.getStudyOperation(key, true);
     if (previous !== undefined) {
-      if (previous.signature !== signature) throw new StudyInputError('requestKey 已用于其他操作，请重新发起');
+      // A model may reuse a key from an example or a previous turn. Return a business result so it
+      // can correct the key, without exposing, replacing or confirming the unrelated operation.
+      if (previous.signature !== signature) return { 'status': 'request_key_conflict',
+        'message': 'requestKey 已用于其他内容，本次未创建草稿。请为当前请求生成新的 requestKey 后重试一次。' };
       return StudyAssistantService.operationView(previous);
     }
     const scope: StudyScope = await StudyAssistantService.scope(context);

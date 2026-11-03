@@ -23,6 +23,8 @@ export struct DockLightOverlay {
   /** Side rail: draw the same track top-to-bottom. */
   vertical: boolean = false;
   itemPadding: number = DOCK_NATIVE_PADDING;
+  /** The phone dock has no assistant beside the navigation, so the light never leaves the capsule. */
+  navOnly: boolean = false;
   private canvas: CanvasRenderingContext2D = new CanvasRenderingContext2D(new RenderingContextSettings(true));
   private generation: number = 0;
   private ready: boolean = false;
@@ -128,7 +130,7 @@ export struct DockLightOverlay {
     const radius: number = DOCK_ACTION_SIZE / 2;
     const navEnd: number = this.vertical ? this.slot(2) + radius : DOCK_NAV_WIDTH;
     const actionStart: number = this.slot(3) - radius;
-    const action: boolean = center >= (navEnd + actionStart) / 2;
+    const action: boolean = !this.navOnly && center >= (navEnd + actionStart) / 2;
     const left: number = action ? actionStart : (this.vertical ? this.slot(0) - radius : 0);
     const right: number = action ? actionStart + DOCK_ACTION_SIZE : navEnd;
     this.canvas.beginPath();

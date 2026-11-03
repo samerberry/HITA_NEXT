@@ -341,7 +341,7 @@ test('the timetable closes its detail sheet before opening the editor and preser
   const method=source.slice(source.indexOf('  private async editCourse('),source.indexOf('  private static canvasColorCss'));
   const js=ts.transpileModule('class Host {'+method+'};module.exports=Host',{
     compilerOptions:{target:ts.ScriptTarget.ES2020}}).outputText;
-  const mod={exports:{}};new Function('module',js)(mod);
+  const mod={exports:{}};new Function('module','EasEventType',js)(mod,EasEventType);
   const host=new mod.exports();host.pageVisible=true;host.skippingCourse=false;
   let close;const routes=[];
   host.closeCourseSheetBeforeSkip=()=>new Promise(resolve=>{close=resolve;});
@@ -351,4 +351,7 @@ test('the timetable closes its detail sheet before opening the editor and preser
   assert.equal(routes[0].params.id,'a');assert.equal(host.returningFromCourseEditor,true);
   host.pageVisible=true;const late=host.editCourse(event('b',2));host.pageVisible=false;close();await late;
   assert.equal(routes.length,1);
+  // An exam opened from the timetable edits as an exam, not as a class.
+  host.pageVisible=true;const exam=host.editCourse(event('c',1,{type:'EXAM'}));close();await exam;
+  assert.equal(routes[0].params.type,'CLASS');assert.equal(routes[1].params.type,'EXAM');
 });

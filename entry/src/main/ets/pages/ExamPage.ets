@@ -1,7 +1,6 @@
 import { HitaDesign } from '../common/theme/HitaDesign';
 import { SheetContent } from '../common/components/SheetContent';
 import { DetailActionBar } from '../common/components/DetailActionBar';
-import { LearningTaskLink } from '../feature/learning/LearningTaskLink';
 import { LearningTask } from '../common/model/learning/LearningTask';
 import { ScheduleChangeSignal } from '../common/util/ScheduleChangeSignal';
 /**
@@ -942,9 +941,8 @@ export struct ExamPage {
         this.examDetailRow($r('sys.symbol.checkmark'), '状态',
           ExamSchedule.remainingLabel(event.from, event.to, Date.now()))
 
-        LearningTaskLink({ event: event })
         DetailActionBar({
-          deleteLabel: '删除', busy: this.pendingDeleteId.length > 0 || this.openingEditor,
+          deleteLabel: '删除', busy: this.pendingDeleteId.length > 0 || this.openingEditor, taskEvent: event,
           onEdit: () => this.openEditExam(event), onDelete: () => this.confirmDeleteExam(event)
         })
       }

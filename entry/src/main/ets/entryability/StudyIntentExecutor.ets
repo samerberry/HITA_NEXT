@@ -8,9 +8,10 @@ import { StudyAssistantService, StudyInputError } from '../feature/assistant/Stu
 export default class StudyIntentExecutor extends InsightIntentExecutor {
   async onExecuteInUIAbilityBackgroundMode(name: string,
     parameters: Record<string, Object>): Promise<insightIntent.ExecuteResult> {
-    if (['StudyQuery', 'PrepareHomework', 'PrepareTaskCompletion', 'LearningOperation'].indexOf(name) < 0) {
+    if (['StudyQuery', 'PrepareCourse', 'PrepareHomework', 'PrepareTaskCompletion', 'LearningOperation'].indexOf(name) < 0) {
       return StudyIntentExecutor.result(4, { 'status': 'unsupported', 'message': '不支持此后台工具' });
     }
+    StudyIntentExecutor.logInput(name, 'background', parameters);
     try {
       const execution: TimetableExecutionContext = await StudyIntentExecutor.execution();
       let result: Record<string, Object>;
@@ -19,7 +20,7 @@ export default class StudyIntentExecutor extends InsightIntentExecutor {
         result = StudyAssistantService.operationView(await StudyAssistantService.operation(execution.context,
           StudyAssistantService.text(parameters, 'operationId')));
       } else result = await StudyAssistantService.prepare(execution.context,
-        name === 'PrepareHomework' ? 'create' : 'complete', parameters);
+        name === 'PrepareCourse' ? 'create_course' : name === 'PrepareHomework' ? 'create' : 'complete', parameters);
       hilog.info(0x0000, 'HitaStudy', 'tool=%{public}s status=%{public}s', name, String(result['status']));
       return StudyIntentExecutor.result(0, result);
     } catch (error) { return StudyIntentExecutor.failure(error as Error); }
@@ -28,6 +29,7 @@ export default class StudyIntentExecutor extends InsightIntentExecutor {
   async onExecuteInUIAbilityForegroundMode(name: string, parameters: Record<string, Object>,
     _pageLoader: window.WindowStage): Promise<insightIntent.ExecuteResult> {
     if (name !== 'ConfirmLearningOperation') return StudyIntentExecutor.result(4, { 'status': 'unsupported', 'message': '不支持此前台工具' });
+    StudyIntentExecutor.logInput(name, 'foreground', parameters);
     try {
       const execution: TimetableExecutionContext = await StudyIntentExecutor.execution();
       const operation = await StudyAssistantService.operation(execution.context, StudyAssistantService.text(parameters, 'operationId'));
@@ -46,9 +48,21 @@ export default class StudyIntentExecutor extends InsightIntentExecutor {
 
   private static failure(error: Error): insightIntent.ExecuteResult {
     const invalid: boolean = error instanceof StudyInputError;
-    hilog.error(0x0000, 'HitaStudy', 'tool failed validation=%{public}s', String(invalid));
+    // Validation messages come from our fixed rules; never log parameter values or internal exceptions.
+    hilog.error(0x0000, 'HitaStudy', 'tool failed validation=%{public}s reason=%{public}s',
+      String(invalid), invalid ? error.message : 'execution_failed');
     return StudyIntentExecutor.result(invalid ? 2 : 3, { 'status': 'error',
       'message': invalid ? error.message : '学习工具执行失败，请打开 HITA 后重试；本次不能视为操作成功' });
+  }
+
+  private static logInput(name: string, mode: string, parameters: Record<string, Object>): void {
+    const keys: string[] = ['action', 'requestKey', 'courseName', 'subjectId', 'title', 'note', 'dueDate', 'dueTime',
+      'remindDate', 'remindTime', 'taskId', 'operationId', 'date', 'startTime', 'endTime', 'place', 'teacher'];
+    const shape: string = keys.map((key: string): string => {
+      const value: Object | undefined = parameters[key];
+      return key + '=' + (value === null ? 'null' : typeof value === 'string' && value.trim().length === 0 ? 'blank' : typeof value);
+    }).join(',');
+    hilog.info(0x0000, 'HitaStudy', 'begin tool=%{public}s mode=%{public}s fields=%{public}s', name, mode, shape);
   }
 
   private static result(code: number, data: Record<string, Object>): insightIntent.ExecuteResult {

@@ -10,6 +10,8 @@ import { DOCK_WIDTH, DOCK_NAV_WIDTH, DOCK_NATIVE_PADDING, DOCK_ACTION_SIZE,
 export struct SplitDock {
   @Prop selectedIndex: number = 0;
   @Prop darkMode: boolean = false;
+  /** Phones place the assistant on its own at the screen edge; the group is then the navigation alone. */
+  @Prop assistant: boolean = true;
   onSelect: (index: number) => void = () => {};
 
   private glyphColor(index: number): ResourceColor {
@@ -67,10 +69,12 @@ export struct SplitDock {
       .clip(false)
       .hitTestBehavior(HitTestMode.Transparent);
 
-      AssistantDockButton({ darkMode: this.darkMode })
-        .position({ x: DOCK_ACTION_START, y: 0 });
+      if (this.assistant) {
+        AssistantDockButton({ darkMode: this.darkMode })
+          .position({ x: DOCK_ACTION_START, y: 0 });
+      }
     }
-    .width(DOCK_WIDTH)
+    .width(this.assistant ? DOCK_WIDTH : DOCK_NAV_WIDTH)
     .height(DOCK_ACTION_SIZE)
     .clip(false)
     .hitTestBehavior(HitTestMode.Default);
