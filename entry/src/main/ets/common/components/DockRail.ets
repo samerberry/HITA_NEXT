@@ -2,7 +2,7 @@ import { deviceInfo } from '@kit.BasicServicesKit';
 import { HitaDesign } from '../theme/HitaDesign';
 import { CompatibleRailModifier } from '../theme/CompatibleRailModifier';
 import { ImmersiveHeader } from './ImmersiveHeader';
-import { DOCK_RAIL_THICKNESS, DOCK_WIDTH, dockItemCenter } from '../util/DockHandedness';
+import { DOCK_RAIL_THICKNESS, DOCK_WIDTH, DOCK_LEGACY_NAV_WIDTH, dockItemCenter } from '../util/DockHandedness';
 import { AssistantDockItem } from '../../feature/assistant/AssistantDockItem';
 
 const RAIL_PADDING: number = 4;
@@ -14,6 +14,8 @@ const RAIL_OVERFLOW: number = 16;
 export struct DockRail {
   @Prop selectedIndex: number = 0;
   @Prop darkMode: boolean = false;
+  @Prop assistant: boolean = true;
+  @Prop assistantExitX: number = 0;
   onSelect: (index: number) => void = () => {};
   onRailTouch: (event: TouchEvent) => void = () => {};
   onRailAreaChanged: (area: Area) => void = () => {};
@@ -73,23 +75,26 @@ export struct DockRail {
       .position({ x: 0, y: dockItemCenter(0, RAIL_PADDING) - DOCK_RAIL_THICKNESS / 2 })
       .borderRadius(DOCK_RAIL_THICKNESS / 2)
       .attributeModifier(new CompatibleRailModifier(this.darkMode));
-      Stack() {
-        if (this.systemGlass) {
-          AssistantDockItem({ glyphTint: this.glyphColor(-1) }).height(HitaDesign.buttonHeight);
-        } else {
-          AssistantDockItem({ glyphTint: this.glyphColor(-1) })
-            .height(HitaDesign.buttonHeight)
-            .blendMode(BlendMode.DIFFERENCE, BlendApplyType.OFFSCREEN);
+      if (this.assistant) {
+        Stack() {
+          if (this.systemGlass) {
+            AssistantDockItem({ glyphTint: this.glyphColor(-1) }).height(HitaDesign.buttonHeight);
+          } else {
+            AssistantDockItem({ glyphTint: this.glyphColor(-1) })
+              .height(HitaDesign.buttonHeight)
+              .blendMode(BlendMode.DIFFERENCE, BlendApplyType.OFFSCREEN);
+          }
         }
+        .width(DOCK_RAIL_THICKNESS)
+        .height(DOCK_RAIL_THICKNESS)
+        .position({ x: 0, y: dockItemCenter(3, RAIL_PADDING) - DOCK_RAIL_THICKNESS / 2 })
+        .borderRadius(DOCK_RAIL_THICKNESS / 2)
+        .attributeModifier(new CompatibleRailModifier(this.darkMode))
+        .transition(TransitionEffect.translate({ x: this.assistantExitX }));
       }
-      .width(DOCK_RAIL_THICKNESS)
-      .height(DOCK_RAIL_THICKNESS)
-      .position({ x: 0, y: dockItemCenter(3, RAIL_PADDING) - DOCK_RAIL_THICKNESS / 2 })
-      .borderRadius(DOCK_RAIL_THICKNESS / 2)
-      .attributeModifier(new CompatibleRailModifier(this.darkMode));
     }
     .width(DOCK_RAIL_THICKNESS)
-    .height(DOCK_WIDTH)
+    .height(this.assistant ? DOCK_WIDTH : DOCK_LEGACY_NAV_WIDTH)
     .onAreaChange((_old: Area, area: Area) => this.onRailAreaChanged(area))
     .onTouch((event: TouchEvent) => this.onRailTouch(event))
   }
@@ -121,7 +126,7 @@ export struct DockRail {
         .hitTestBehavior(HitTestMode.Transparent)
       }
       .width(DOCK_RAIL_THICKNESS)
-      .height(DOCK_WIDTH)
+      .height(this.assistant ? DOCK_WIDTH : DOCK_LEGACY_NAV_WIDTH)
       .clip(false)
       .hitTestBehavior(HitTestMode.Transparent)
     } else {

@@ -37,10 +37,11 @@ export class DockNavigationGuard {
   private splitSurfaces: boolean = false;
   private navigationEnd: number = 0;
   private actionStart: number = 0;
+  private assistant: boolean = true;
 
   setBounds(left: number, top: number, width: number, height: number, padding: number = 0,
     vertical: boolean = false, splitSurfaces: boolean = false, navigationEnd: number = 0,
-    actionStart: number = 0): void {
+    actionStart: number = 0, assistant: boolean = true): void {
     if (!Number.isFinite(left) || !Number.isFinite(top) || !Number.isFinite(width) ||
       !Number.isFinite(height) || (vertical ? height : width) <= padding * 2 || (vertical ? width : height) <= 0) {
       return;
@@ -54,6 +55,7 @@ export class DockNavigationGuard {
     this.splitSurfaces = splitSurfaces;
     this.navigationEnd = navigationEnd;
     this.actionStart = actionStart;
+    this.assistant = assistant;
   }
 
   private length(): number {
@@ -148,7 +150,8 @@ export class DockNavigationGuard {
       this.targetIndex = -1;
       return;
     }
-    const itemLength: number = (this.length() - this.padding * 2) / this.itemCount;
+    const count: number = this.assistant ? this.itemCount : this.pageCount;
+    const itemLength: number = (this.length() - this.padding * 2) / count;
     const position: number = this.along(touch) + this.padding;
     if (this.splitSurfaces) {
       const navEnd: number = this.navigationEnd > 0 ? this.navigationEnd :
@@ -160,7 +163,7 @@ export class DockNavigationGuard {
           Math.max(0, Math.min(this.pageCount - 1, Math.floor(this.along(touch) / itemLength))));
       return;
     }
-    this.targetIndex = Math.max(0, Math.min(this.itemCount - 1, Math.floor(this.along(touch) / itemLength)));
+    this.targetIndex = Math.max(0, Math.min(count - 1, Math.floor(this.along(touch) / itemLength)));
   }
 
   activateHold(nowMs: number = Date.now()): boolean {

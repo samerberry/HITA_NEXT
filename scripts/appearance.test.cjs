@@ -286,7 +286,7 @@ test('appearance matches surrounding settings rows and reveals choices only when
   // Every More row goes through HitaListRow, so the appearance row cannot drift from its neighbours, and
   // @Prop text keeps labels and the arrow bound to state (builder value parameters would freeze them).
   assert.doesNotMatch(setting, /moreNavigationRow|Stack\(\) \{\s*SymbolGlyph/);
-  for (const builder of ['  desktopWidgetSettings()', '  classReminderSettings()']) {
+  for (const builder of ['  desktopWidgetSettings()', '  classReminderSettings()', '  assistantDockSettings()']) {
     const start = home.indexOf(builder);
     // The header row is the builder's first child; the expanded panel starts at the next if.
     assert.match(home.slice(start, home.indexOf('if (this.', start)),
@@ -305,8 +305,16 @@ test('appearance matches surrounding settings rows and reveals choices only when
   }
   assert.match(row, /\.rotate\(\{ angle: this\.accessory === HitaRowAccessory\.DISCLOSURE && this\.expanded \? 90 : 0 \}\)/);
   assert.match(row, /this\.expanded \? '已展开' : '已收起'/);
-  const choices = home.slice(home.indexOf('  appearanceOption('), home.indexOf('  userCard()'));
-  assert.match(choices, /Radio\(\{ value: mode, group: 'appearance_mode' \}\)/);
+  const appearanceChoice = home.slice(home.indexOf('  appearanceOption('), home.indexOf('  userCard()'));
+  assert.match(appearanceChoice, /MoreSettingChoice\(\{ group: 'appearance_mode', value: mode,/);
+  const assistant = home.slice(home.indexOf('  assistantDockSettings()'), home.indexOf('  appearanceSettings()'));
+  assert.match(assistant, /subtitle: this\.assistantDockVisible \? '已开启' : '已关闭'/);
+  assert.match(assistant, /if \(this\.assistantDockExpanded\)[\s\S]*ImmersiveHeader/);
+  assert.match(assistant, /MoreSettingChoice\(\{ group: 'assistant_dock', value: 'on', label: '开启',[\s\S]*?setAssistantDockVisible\(true\)/);
+  assert.match(assistant, /MoreSettingChoice\(\{ group: 'assistant_dock', value: 'off', label: '关闭',[\s\S]*?setAssistantDockVisible\(false\)/);
+  const choices = home.slice(home.indexOf('struct MoreSettingChoice'), home.indexOf('@Entry'));
+  assert.match(choices, /Radio\(\{ value: this\.value, group: this\.group \}\)/);
+  assert.match(choices, /@Prop selected: boolean[\s\S]*\.checked\(this\.selected\)/);
   assert.match(choices, /\.width\(0\)\s*\.layoutWeight\(1\)/);
   assert.doesNotMatch(choices, /\.layoutWeight\(mode/);
   assert.doesNotMatch(choices, /appearanceExpanded/);

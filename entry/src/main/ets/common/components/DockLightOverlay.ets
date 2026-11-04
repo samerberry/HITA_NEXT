@@ -24,7 +24,7 @@ export struct DockLightOverlay {
   vertical: boolean = false;
   itemPadding: number = DOCK_NATIVE_PADDING;
   /** The phone dock has no assistant beside the navigation, so the light never leaves the capsule. */
-  navOnly: boolean = false;
+  @Prop navOnly: boolean = false;
   private canvas: CanvasRenderingContext2D = new CanvasRenderingContext2D(new RenderingContextSettings(true));
   private generation: number = 0;
   private ready: boolean = false;

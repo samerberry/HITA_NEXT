@@ -112,11 +112,11 @@ test('smart grip wiring: observer lifecycle, and API 26 light / API 23 dock foll
   assert.match(start, /this\.dockHandednessActive = subscribed;/);
   // The shared parent carries both surfaces and the light.
   assert.match(home, /this\.homeWidth >= DOCK_RAIL_MIN_TABLET_WIDTH \? this\.dockOffset\(\) : 0/);
-  assert.match(home, /\.translate\(\{ x: this\.bottomDockOffset\(\), y: 0 \}\)/);
-  assert.match(home, /FrostedDock\(\{[\s\S]*?sideOffset: this\.dockOffset\(\),/);
+  assert.match(home, /\.translate\(\{ x: this\.bottomDockOffset\(\) \+/);
+  assert.match(home, /FrostedDock\(\{[\s\S]*?sideOffset: this\.dockOffset\(\) \+/);
   const dock = read('common/components/FrostedDock.ets');
   assert.match(dock, /\.offset\(\{ x: this\.sideOffset, y: 0 \}\)/);
-  assert.match(dock, /const left: number = \(this\.areaWidth - DOCK_WIDTH\) \/ 2 \+ this\.sideOffset;/);
+  assert.match(dock, /const left: number = \(this\.areaWidth - width\) \/ 2 \+ this\.sideOffset;/);
 });
 
 test('the API 26 canvas owns light timing while later APIs can retain native white feedback', () => {

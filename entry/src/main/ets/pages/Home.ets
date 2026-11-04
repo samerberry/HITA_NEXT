@@ -36,7 +36,7 @@ import { DockLightController } from '../common/util/DockLightEffect';
 import { DOCK_HOLD_DELAY_MS, DockNavigationGuard } from '../common/util/DockNavigationGuard';
 import { display as screenDisplay } from '@kit.ArkUI';
 import { DOCK_ITEM_COUNT, DOCK_HANDEDNESS_DURATION, DOCK_RAIL_INSET, DOCK_RAIL_THICKNESS, DOCK_SIDE_MARGIN, DOCK_WIDTH,
-  DOCK_NAV_WIDTH, DOCK_NATIVE_PADDING, DOCK_ACTION_START, DOCK_ACTION_SIZE,
+  DOCK_NAV_WIDTH, DOCK_LEGACY_NAV_WIDTH, DOCK_NATIVE_PADDING, DOCK_ACTION_START, DOCK_ACTION_SIZE,
   DOCK_GUTTER_ACTION_EDGE, DOCK_RAIL_EXIT, DOCK_RAIL_MASK_WIDTH, DOCK_RAIL_MIN_TABLET_WIDTH, dockRailMode, dockRailOnRight, dockWideFoldScreen, dockSideOffset,
   DOCK_ACTION_EXIT, dockPhoneNavShift } from '../common/util/DockHandedness';
 import { AssistantDockButton } from '../feature/assistant/AssistantDockButton';
@@ -168,6 +168,51 @@ class TimetableMarqueeCallback extends FrameCallback {
   }
 }
 
+@Component
+struct MoreSettingChoice {
+  group: string = '';
+  value: string = '';
+  label: string = '';
+  accessibilityLabel: string = '';
+  @Prop selected: boolean = false;
+  @Prop available: boolean = true;
+  onSelect: () => void = () => {};
+
+  build() {
+    Row({ space: HitaDesign.space2xs }) {
+      Radio({ value: this.value, group: this.group })
+        .checked(this.selected)
+        .width(18)
+        .height(18)
+        .margin(0)
+        .radioStyle({ checkedBackgroundColor: COLOR_PRIMARY })
+        .enabled(this.available)
+        .accessibilityText(this.accessibilityLabel)
+        .onChange((checked: boolean) => {
+          if (checked) {
+            this.onSelect();
+          }
+        });
+      Text(this.label)
+        .fontSize(HitaDesign.caption)
+        .fontColor(CompatibleSheetMaterial.isEnabled() ? CompatibleMaterialModifier.foreground(COLOR_TEXT_PRIMARY) :
+          COLOR_TEXT_PRIMARY)
+        .maxLines(1);
+    }
+    .width(0)
+    .layoutWeight(1)
+    .height(44)
+    .padding({ left: HitaDesign.spaceXs, right: HitaDesign.spaceXs })
+    .justifyContent(FlexAlign.Center)
+    .backgroundColor(this.selected ? COLOR_NAV_ACTIVE : $r('app.color.hita_control'))
+    .borderRadius(HitaDesign.radiusMd)
+    .attributeModifier(new CompatibleMaterialModifier(this.selected ? COLOR_NAV_ACTIVE :
+      $r('app.color.hita_control'), false, CompatibleSheetMaterial.isEnabled()))
+    .enabled(this.available)
+    .onClick(() => this.onSelect());
+  }
+}
+
 @Entry
 @Component
 struct Home {
@@ -175,6 +220,7 @@ struct Home {
   @StorageProp('hita_appearance_dark') @Watch('onAppearanceChanged') darkMode: boolean = false;
   @State appearanceBusy: boolean = false;
   @State appearanceExpanded: boolean = false;
+  @State assistantDockExpanded: boolean = false;
   @State widgetMenuExpanded: boolean = false;
   @State widgetBackgroundSet: boolean = false;
   @State widgetBackgroundSheetOpen: boolean = false;
@@ -237,6 +283,8 @@ struct Home {
   private remindersReady: boolean = false;
   private reminderOpening: boolean = false;
   @State classReminderEnabled: boolean = false;
+  @State assistantDockVisible: boolean = true;
+  @State assistantDockSaving: boolean = false;
   @State reminderBusy: boolean = false;
   @State reminderExpanded: boolean = false;
   @State reminderMaterialHeight: number = 231;
@@ -329,6 +377,7 @@ struct Home {
 
   async aboutToAppear(): Promise<void> {
     this.pageVisible = true;
+    this.assistantDockVisible = AppearanceStore.getInstance().showsAssistantDock();
     this.getUIContext().setKeyboardAvoidMode(KeyboardAvoidMode.NONE);
     const ctx: common.Context = this.getUIContext().getHostContext() as common.Context;
     await EasSessionStore.getInstance().init(ctx);
@@ -496,6 +545,32 @@ struct Home {
     this.timetableWallpaperPixels = pixels;
     this.timetableBackdropKey = '';
     this.drawTimetableNow();
+  }
+
+  private applyAssistantDockVisibility(visible: boolean): void {
+    this.resetDockInteraction();
+    this.getUIContext().animateTo({
+      duration: FLOATING_ACTION_EXIT_DURATION,
+      curve: visible ? curves.interpolatingSpring(0, 1, 170, 17) : curves.customCurve(floatingActionExitProgress)
+    }, () => {
+      this.assistantDockVisible = visible;
+    });
+  }
+
+  private async setAssistantDockVisible(visible: boolean): Promise<void> {
+    if (this.assistantDockSaving || this.assistantDockVisible === visible) return;
+    this.assistantDockSaving = true;
+    this.applyAssistantDockVisibility(visible);
+    try {
+      await AppearanceStore.getInstance().setAssistantDockVisible(visible);
+    } catch (_) {
+      this.applyAssistantDockVisibility(!visible);
+      if (this.pageVisible) {
+        this.getUIContext().getPromptAction().showToast({ message: '助手入口设置未保存，请重试' });
+      }
+    } finally {
+      this.assistantDockSaving = false;
+    }
   }
 
   private async selectAppearance(mode: AppearanceMode): Promise<void> {
@@ -2251,6 +2326,11 @@ struct Home {
 
   private setBottomDockBounds(x: number, y: number): void {
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    if (!this.assistantDockVisible) {
+      this.dockNavigation.setBounds(x, y, DOCK_NAV_WIDTH, DOCK_ACTION_SIZE,
+        DOCK_NATIVE_PADDING, false, false, 0, 0, false);
+      return;
+    }
     if (this.phoneDock()) {
       // Keep the 280 vp item grid so the three pages scrub as before; the assistant is its own button
       // outside these bounds, so no position along the dock ever reaches the action slot.
@@ -2290,7 +2370,8 @@ struct Home {
 
   private updateDockBounds(area: Area, padding: number = 0, vertical: boolean = false): void {
     this.dockNavigation.setBounds(Number(area.globalPosition.x), Number(area.globalPosition.y),
-      Number(area.width), Number(area.height), padding, vertical, true);
+      Number(area.width), Number(area.height), padding, vertical, this.assistantDockVisible, 0, 0,
+      this.assistantDockVisible);
   }
 
   private observeDockTouch(event: TouchEvent, fromDock: boolean = false): void {
@@ -2527,10 +2608,12 @@ struct Home {
     if (!(this.selectedNav === TAB_TIMETABLE && this.hasTimetableBackground())) {
       this.dockRailMask();
     }
-    Stack() {
+    Stack({ alignContent: Alignment.Top }) {
       DockRail({
         selectedIndex: this.selectedNav,
         darkMode: this.darkMode,
+        assistant: this.assistantDockVisible,
+        assistantExitX: this.railOnRight() ? DOCK_RAIL_EXIT : -DOCK_RAIL_EXIT,
         onRailAreaChanged: (area: Area) => this.updateDockBounds(area, 4, true),
         onRailTouch: (event: TouchEvent) => {
           this.dockNavigation.begin(event, true);
@@ -2542,7 +2625,8 @@ struct Home {
       })
       if (this.dockLightEnabled()) {
         // The bottom-dock light drawn along the upright rail: slot 0 is the top item.
-        DockLightOverlay({ controller: this.dockLight, vertical: true, itemPadding: 4 })
+        DockLightOverlay({ controller: this.dockLight, vertical: true, itemPadding: 4,
+          navOnly: !this.assistantDockVisible })
           .hitTestBehavior(HitTestMode.None)
       }
     }
@@ -2571,7 +2655,9 @@ struct Home {
     }
     if (this.phoneDock()) {
       this.phoneDockNav();
-      this.phoneDockAction();
+      if (this.assistantDockVisible) {
+        this.phoneDockAction();
+      }
     } else {
       this.wideDock();
     }
@@ -2621,6 +2707,7 @@ struct Home {
         { left: DOCK_SIDE_MARGIN, bottom: HitaDesign.spaceSm + this.navBarInset } :
         { right: DOCK_SIDE_MARGIN, bottom: HitaDesign.spaceSm + this.navBarInset })
       .translate({ x: this.phoneActionShift, y: 0 })
+      .transition(TransitionEffect.translate({ x: this.phoneActionLeft ? -DOCK_ACTION_EXIT : DOCK_ACTION_EXIT }))
       .onGestureRecognizerJudgeBegin((event: BaseGestureEvent, current: GestureRecognizer) => {
         return this.judgePagePan(current, true);
       }, true);
@@ -2632,16 +2719,19 @@ struct Home {
       SplitDock({
         selectedIndex: this.selectedNav,
         darkMode: this.darkMode,
+        assistant: this.assistantDockVisible,
+        assistantExitX: this.homeWidth / 2 + DOCK_ACTION_EXIT - this.bottomDockOffset(),
         onSelect: (index: number) => this.requestDockClick(index)
       });
-      DockLightOverlay({ controller: this.dockLight })
+      DockLightOverlay({ controller: this.dockLight, navOnly: !this.assistantDockVisible })
         .hitTestBehavior(HitTestMode.None);
     }
     .id(DOCK_GROUP_ID)
-    .width(DOCK_WIDTH)
+    .width(this.assistantDockVisible ? DOCK_WIDTH : DOCK_NAV_WIDTH)
     .height(DOCK_ACTION_SIZE)
     .margin({ bottom: HitaDesign.spaceSm + this.navBarInset })
-    .translate({ x: this.bottomDockOffset(), y: 0 })
+    .translate({ x: this.bottomDockOffset() +
+      (this.assistantDockVisible ? 0 : (DOCK_NAV_WIDTH - DOCK_WIDTH) / 2), y: 0 })
     .clip(false)
     .hitTestBehavior(HitTestMode.Default)
     .onAreaChange((_old: Area, area: Area) => {
@@ -2667,8 +2757,10 @@ struct Home {
         selectedIndex: this.selectedNav,
         bottomInset: this.navBarInset,
         darkMode: this.darkMode,
+        assistant: this.assistantDockVisible,
+        assistantExitX: this.homeWidth / 2 + DOCK_ACTION_EXIT - this.dockOffset(),
         hideMask: this.selectedNav === TAB_TIMETABLE && this.hasTimetableBackground(),
-        sideOffset: this.dockOffset(),
+        sideOffset: this.dockOffset() + (this.assistantDockVisible ? 0 : (DOCK_LEGACY_NAV_WIDTH - DOCK_WIDTH) / 2),
         onDockAreaChanged: (area: Area) => this.updateDockBounds(area, 4),
         onDockTouch: (event: TouchEvent) => {
           this.dockNavigation.begin(event, true);
@@ -3610,6 +3702,7 @@ struct Home {
           Column() {
             this.classReminderSettings();
             this.appearanceSettings();
+            this.assistantDockSettings();
           }
           .width('100%')
           .padding({ top: HitaDesign.space2xs, bottom: HitaDesign.space2xs })
@@ -3783,6 +3876,40 @@ struct Home {
   }
 
   @Builder
+  assistantDockSettings() {
+    Column() {
+      HitaListRow({ symbol: $r('sys.symbol.AI_message'), title: '显示底部助手入口',
+        subtitle: this.assistantDockVisible ? '已开启' : '已关闭',
+        accessory: HitaRowAccessory.DISCLOSURE, expanded: this.assistantDockExpanded, divider: true, onTap: () => {
+          this.getUIContext().animateTo({ duration: 300, curve: Curve.EaseInOut }, () => {
+            this.assistantDockExpanded = !this.assistantDockExpanded;
+          });
+        } });
+      if (this.assistantDockExpanded) {
+        Column() {
+          ImmersiveHeader({ barHeight: 60, materialEnabled: CompatibleSheetMaterial.isEnabled() }) {
+            Row({ space: HitaDesign.spaceXs }) {
+              MoreSettingChoice({ group: 'assistant_dock', value: 'on', label: '开启',
+                accessibilityLabel: '显示底部助手入口：开启', selected: this.assistantDockVisible,
+                available: !this.assistantDockSaving, onSelect: () => { void this.setAssistantDockVisible(true); } });
+              MoreSettingChoice({ group: 'assistant_dock', value: 'off', label: '关闭',
+                accessibilityLabel: '显示底部助手入口：关闭', selected: !this.assistantDockVisible,
+                available: !this.assistantDockSaving, onSelect: () => { void this.setAssistantDockVisible(false); } });
+            }
+            .width('100%')
+            .padding({ left: HitaDesign.spaceMd, right: HitaDesign.spaceMd, top: HitaDesign.space2xs,
+              bottom: HitaDesign.spaceSm })
+          }
+        }
+        .width('100%')
+        .transition(TransitionEffect.OPACITY);
+      }
+    }
+    .width('100%')
+    .alignItems(HorizontalAlign.Start);
+  }
+
+  @Builder
   appearanceSettings() {
     Column() {
       HitaListRow({ symbol: $r('sys.symbol.moon'), title: '深色模式',
@@ -3815,39 +3942,9 @@ struct Home {
 
   @Builder
   appearanceOption(mode: AppearanceMode, label: string) {
-    Row({ space: 4 }) {
-      Radio({ value: mode, group: 'appearance_mode' })
-        .checked(this.appearanceMode === mode)
-        .width(18)
-        .height(18)
-        .margin(0)
-        .radioStyle({ checkedBackgroundColor: COLOR_PRIMARY })
-        .enabled(!this.appearanceBusy)
-        .accessibilityText('深色模式：' + label)
-        .onChange((checked: boolean) => {
-          if (checked) {
-            void this.selectAppearance(mode);
-          }
-        });
-      Text(label)
-        .fontSize(HitaDesign.caption)
-        .fontColor(CompatibleSheetMaterial.isEnabled() ? CompatibleMaterialModifier.foreground(COLOR_TEXT_PRIMARY) :
-          COLOR_TEXT_PRIMARY)
-        .maxLines(1);
-    }
-    .width(0)
-    .layoutWeight(1)
-    .height(44)
-    .padding({ left: HitaDesign.spaceXs, right: HitaDesign.spaceXs })
-    .justifyContent(FlexAlign.Center)
-    .backgroundColor(this.appearanceMode === mode ? COLOR_NAV_ACTIVE : $r('app.color.hita_control'))
-    .borderRadius(HitaDesign.radiusMd)
-    .attributeModifier(new CompatibleMaterialModifier(this.appearanceMode === mode ? COLOR_NAV_ACTIVE :
-      $r('app.color.hita_control'), false, CompatibleSheetMaterial.isEnabled()))
-    .enabled(!this.appearanceBusy)
-    .onClick(() => {
-      void this.selectAppearance(mode);
-    });
+    MoreSettingChoice({ group: 'appearance_mode', value: mode, label: label, accessibilityLabel: '深色模式：' + label,
+      selected: this.appearanceMode === mode, available: !this.appearanceBusy,
+      onSelect: () => { void this.selectAppearance(mode); } });
   }
 
   @Builder

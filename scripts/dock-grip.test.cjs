@@ -39,13 +39,15 @@ function harness({ width = 720, rail = false, fold = false, available = true, ph
     FLOATING_ACTION_EXIT_DURATION: 180, floatingActionExitProgress: x => x };
   const Page = new Function(...Object.keys(globals), compile(`class Page {
     ${['startDockHandedness', 'bottomDockOffset', 'dockOffset', 'setBottomDockBounds', 'syncBottomDockBounds',
-      'placePhoneDock', 'movePhoneActionTo', 'springPhoneActionIn'].map(method).join('\n')}
+      'placePhoneDock', 'movePhoneActionTo', 'springPhoneActionIn', 'applyAssistantDockVisibility'].map(method).join('\n')}
   }`) + '; return Page;')(...Object.values(globals));
   const page = new Page();
   Object.assign(page, {
     homeWidth: width, dockSide: 0, foldRailDevice: fold, railRight: false,
+    assistantDockVisible: true,
     phoneActionLeft: false, phoneActionShift: 0, phoneNavShift: 0, phoneActionGeneration: 0, phoneDockWasActive: false,
     phoneDock: () => phone,
+    resetDockInteraction: () => {},
     dockNavigation: new DockNavigationGuard(4, 3),
     railMode: () => rail, railFollowsHand: () => rail && fold,
     moveRailTo: side => railMoves.push(side),
@@ -95,6 +97,16 @@ test('rapid grip reversals retarget immediately without waiting for the prior 30
   assert.equal(h.animations.length, 3, 'duplicate readings and area changes cannot restart the slide');
 });
 
+test('toggling the assistant uses the grip exit and re-entry curves without shifting phone navigation', () => {
+  const h = harness({ phone: true, width: 390 });
+  const nav = h.page.phoneNavShift;
+  h.page.applyAssistantDockVisibility(false);
+  assert.equal(h.page.assistantDockVisible, false);
+  h.page.applyAssistantDockVisibility(true);
+  assert.equal(h.page.assistantDockVisible, true);
+  assert.deepEqual(h.animations.map(a => [a.curve, a.nav]), [['exit', nav], ['spring', nav]]);
+});
+
 test('folding centres the complete group; unfolding reuses its most recent grip', () => {
   const h = harness();
   h.grip(false);
@@ -142,6 +154,24 @@ test('during a grip slide the drawn group defines navigation, gap and assistant 
       assert.deepEqual(changes, target >= 0 ? [target] : [], 'assistant and gap never select a page');
       guard.reset();
     }
+  }
+});
+
+test('hiding the assistant preserves the three page targets and clears the old assistant hit area', () => {
+  const h = harness();
+  h.page.assistantDockVisible = false;
+  h.page.syncBottomDockBounds();
+  const guard = h.page.dockNavigation;
+  for (const [x, target] of [[44, 0], [108, 1], [172, 2], [252, -1]]) {
+    const point = { id: 0, windowX: h.rendered.x + x, windowY: h.rendered.y + 28 };
+    const down = { type: TouchType.Down, timestamp: 1, touches: [point], changedTouches: [point],
+      getHistoricalPoints: () => [] };
+    guard.begin(down, true);
+    guard.observe(down);
+    assert.equal(guard.actionTarget(), -1);
+    guard.observe({ ...down, type: TouchType.Up, timestamp: 2, touches: [] });
+    assert.equal(guard.releaseTarget(), target);
+    guard.reset();
   }
 });
 

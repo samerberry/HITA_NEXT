@@ -1,5 +1,5 @@
 import { HitaDesign } from '../theme/HitaDesign';
-import { DOCK_WIDTH, DOCK_ACTION_SIZE, dockItemCenter } from '../util/DockHandedness';
+import { DOCK_WIDTH, DOCK_LEGACY_NAV_WIDTH, DOCK_ACTION_SIZE, dockItemCenter } from '../util/DockHandedness';
 import { CompatibleRailModifier } from '../theme/CompatibleRailModifier';
 import { AssistantDockItem } from '../../feature/assistant/AssistantDockItem';
 /** API 23 dock: backdrop blur and alpha-preserving foreground inversion. */
@@ -9,6 +9,8 @@ export struct FrostedDock {
   @Prop bottomInset: number = 24;
   @Prop darkMode: boolean = false;
   @Prop hideMask: boolean = false;
+  @Prop assistant: boolean = true;
+  @Prop assistantExitX: number = 0;
   /** Horizontal shift toward the holding hand; the parent animates it. */
   @Prop sideOffset: number = 0;
   onSelect: (index: number) => void = () => {};
@@ -58,13 +60,16 @@ export struct FrostedDock {
           .borderRadius(DOCK_ACTION_SIZE / 2)
           .attributeModifier(new CompatibleRailModifier(this.darkMode))
           .hitTestBehavior(HitTestMode.None)
-        Column()
-          .width(DOCK_ACTION_SIZE)
-          .height(DOCK_ACTION_SIZE)
-          .position({ x: dockItemCenter(3, 4) - DOCK_ACTION_SIZE / 2, y: 0 })
-          .borderRadius(DOCK_ACTION_SIZE / 2)
-          .attributeModifier(new CompatibleRailModifier(this.darkMode))
-          .hitTestBehavior(HitTestMode.None)
+        if (this.assistant) {
+          Column()
+            .width(DOCK_ACTION_SIZE)
+            .height(DOCK_ACTION_SIZE)
+            .position({ x: dockItemCenter(3, 4) - DOCK_ACTION_SIZE / 2, y: 0 })
+            .borderRadius(DOCK_ACTION_SIZE / 2)
+            .attributeModifier(new CompatibleRailModifier(this.darkMode))
+            .hitTestBehavior(HitTestMode.None)
+            .transition(TransitionEffect.translate({ x: this.assistantExitX }))
+        }
         Column()
           .width(DOCK_ACTION_SIZE)
           .height(48)
@@ -74,19 +79,29 @@ export struct FrostedDock {
           .animation({ duration: 300, curve: Curve.FastOutSlowIn })
           .hitTestBehavior(HitTestMode.None)
         Row() {
-          this.item($r('sys.symbol.calendar'), '今日', 0)
-          this.item($r('sys.symbol.doc_plaintext'), '时间表', 1)
-          this.item($r('sys.symbol.more'), '更多', 2)
-          AssistantDockItem({ glyphTint: this.unselectedColor }).layoutWeight(1)
+          Row() {
+            this.item($r('sys.symbol.calendar'), '今日', 0)
+            this.item($r('sys.symbol.doc_plaintext'), '时间表', 1)
+            this.item($r('sys.symbol.more'), '更多', 2)
+          }
+          .width(DOCK_LEGACY_NAV_WIDTH - 8)
+          if (this.assistant) {
+            AssistantDockItem({ glyphTint: this.unselectedColor })
+              .width(DOCK_WIDTH - DOCK_LEGACY_NAV_WIDTH)
+              .transition(TransitionEffect.translate({ x: this.assistantExitX }))
+          }
         }
         .width(DOCK_WIDTH - 8)
+        .clip(false)
+        .hitTestBehavior(HitTestMode.Transparent)
         .height(48)
         .position({ x: 4, y: 4 })
-        // One foreground inversion pass for all four transparent Dock items.
+        // One foreground inversion pass for the visible dock items.
         .blendMode(BlendMode.DIFFERENCE, BlendApplyType.OFFSCREEN)
       }
-      .width(DOCK_WIDTH)
+      .width(this.assistant ? DOCK_WIDTH : DOCK_LEGACY_NAV_WIDTH)
       .height(56)
+      .clip(false)
       .margin({ bottom: 12 + this.bottomInset })
       .offset({ x: this.sideOffset, y: 0 })
       .onAreaChange((_old: Area, area: Area) => this.onDockAreaChanged(area))
@@ -103,11 +118,12 @@ export struct FrostedDock {
         return HitTestMode.Transparent;
       }
       const touch: TouchObject = event.touches[0];
-      const left: number = (this.areaWidth - DOCK_WIDTH) / 2 + this.sideOffset;
+      const width: number = this.assistant ? DOCK_WIDTH : DOCK_LEGACY_NAV_WIDTH;
+      const left: number = (this.areaWidth - width) / 2 + this.sideOffset;
       const bottom: number = this.areaHeight - 12 - this.bottomInset;
       // Consume only capsule hits; never send a dock tap to the course/list
       // behind it, while the rest of this bottom strip stays touch-transparent.
-      return touch.x >= left && touch.x <= left + DOCK_WIDTH && touch.y >= bottom - 56 && touch.y <= bottom
+      return touch.x >= left && touch.x <= left + width && touch.y >= bottom - 56 && touch.y <= bottom
         ? HitTestMode.Default : HitTestMode.Transparent;
     })
   }

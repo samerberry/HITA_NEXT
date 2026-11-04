@@ -11,6 +11,7 @@ export enum AppearanceMode {
 
 export const APPEARANCE_MODE_KEY: string = 'hita_appearance_mode';
 export const APPEARANCE_DARK_KEY: string = 'hita_appearance_dark';
+const ASSISTANT_DOCK_KEY: string = 'showAssistantDock';
 
 export function validAppearanceMode(value: preferences.ValueType): AppearanceMode {
   if (value === AppearanceMode.DARK) {
@@ -40,6 +41,7 @@ export class AppearanceStore {
   private mainWindow: window.Window | undefined = undefined;
   private mode: AppearanceMode = AppearanceMode.SYSTEM;
   private dark: boolean = false;
+  private assistantDockVisible: boolean = true;
   private contentReady: boolean = false;
   private saving: boolean = false;
   private barUpdate: Promise<void> = Promise.resolve();
@@ -58,9 +60,11 @@ export class AppearanceStore {
     try {
       this.store = preferences.getPreferencesSync(context, { name: 'hita_appearance' });
       this.mode = validAppearanceMode(this.store.getSync('mode', AppearanceMode.SYSTEM));
+      this.assistantDockVisible = this.store.getSync(ASSISTANT_DOCK_KEY, true) !== false;
     } catch (_) {
       this.store = undefined;
       this.mode = AppearanceMode.SYSTEM;
+      this.assistantDockVisible = true;
     }
     this.dark = this.mode === AppearanceMode.DARK ||
       (this.mode === AppearanceMode.SYSTEM &&
@@ -71,6 +75,28 @@ export class AppearanceStore {
   attachWindow(mainWindow: window.Window): void {
     this.mainWindow = mainWindow;
     this.updateBars();
+  }
+
+  showsAssistantDock(): boolean {
+    return this.assistantDockVisible;
+  }
+
+  async setAssistantDockVisible(visible: boolean): Promise<void> {
+    const store = this.store;
+    if (store === undefined) throw new Error('APPEARANCE_NOT_READY');
+    try {
+      await store.put(ASSISTANT_DOCK_KEY, visible);
+      await store.flush();
+      this.assistantDockVisible = visible;
+    } catch (_) {
+      try {
+        await store.put(ASSISTANT_DOCK_KEY, this.assistantDockVisible);
+        await store.flush();
+      } catch (_) {
+        hilog.warn(0x0000, 'HitaAppearance', 'Unable to restore assistant dock preference');
+      }
+      throw new Error('ASSISTANT_DOCK_SAVE_FAILED');
+    }
   }
 
   detachWindow(): void {

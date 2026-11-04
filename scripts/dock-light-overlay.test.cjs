@@ -38,6 +38,7 @@ function harness() {
     fillRect() { draws.push({ time: clock.now, ...this.fillStyle }); }
   }
   const source = read('common/components/DockLightOverlay.ets').replace('@Component', '')
+    .replace('@Prop ', '')
     .replace('export struct', 'export class');
   const mod = { exports: {} };
   new Function('require', 'module', 'exports', 'CanvasRenderingContext2D',

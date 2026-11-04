@@ -12,6 +12,7 @@ export struct SplitDock {
   @Prop darkMode: boolean = false;
   /** Phones place the assistant on its own at the screen edge; the group is then the navigation alone. */
   @Prop assistant: boolean = true;
+  @Prop assistantExitX: number = 0;
   onSelect: (index: number) => void = () => {};
 
   private glyphColor(index: number): ResourceColor {
@@ -71,7 +72,8 @@ export struct SplitDock {
 
       if (this.assistant) {
         AssistantDockButton({ darkMode: this.darkMode })
-          .position({ x: DOCK_ACTION_START, y: 0 });
+          .position({ x: DOCK_ACTION_START, y: 0 })
+          .transition(TransitionEffect.translate({ x: this.assistantExitX }));
       }
     }
     .width(this.assistant ? DOCK_WIDTH : DOCK_NAV_WIDTH)

@@ -133,7 +133,7 @@ test('wiring: the rail replaces the bottom dock and every surface keeps clear of
   assert.match(rail, /this\.updateDockBounds\(area, 4, true\)/);
   assert.match(rail, /this\.observeDockTouch\(event, true\)/);
   // Drawn upright on its own canvas: a rotated 212×56 canvas was squeezed by the 56 vp column first.
-  assert.ok(rail.includes('DockLightOverlay({ controller: this.dockLight, vertical: true, itemPadding: 4 })'));
+  assert.match(rail, /DockLightOverlay\(\{ controller: this\.dockLight, vertical: true, itemPadding: 4,/);
   assert.ok(!rail.includes('.rotate('));
   const light = read('common/components/DockLightOverlay.ets');
   assert.ok(light.includes('if (this.vertical) this.canvas.setTransform(0, 1, -1, 0, 56, 0);'));
@@ -223,14 +223,14 @@ test('bottom navigation, assistant and light share one grip transform', () => {
   const home = read('pages/Home.ets');
   const shared = home.slice(home.indexOf('  splitDock() {'), home.indexOf('  compatibleDock() {'));
   assert.match(shared, /Stack\([\s\S]*?SplitDock\([\s\S]*?DockLightOverlay\([\s\S]*?\.id\(DOCK_GROUP_ID\)/);
-  assert.match(shared, /\.translate\(\{ x: this\.bottomDockOffset\(\), y: 0 \}\)/);
+  assert.match(shared, /\.translate\(\{ x: this\.bottomDockOffset\(\) \+\s*\(this\.assistantDockVisible \? 0 : \(DOCK_NAV_WIDTH - DOCK_WIDTH\) \/ 2\)/);
   assert.match(shared, /\.margin\(\{ bottom: HitaDesign\.spaceSm \+ this\.navBarInset \}\)/);
   assert.match(shared, /\.hitTestBehavior\(HitTestMode\.Default\)/);
   assert.doesNotMatch(home, /trackDockBar|findDockCapsule|dockCapsuleX|dockBarModifier/);
   const ui = read('common/components/SplitDock.ets');
   assert.match(ui, /ImmersiveHeader\([\s\S]*?new CompatibleRailModifier\(this\.darkMode\)/);
   assert.match(ui, /AssistantDockButton\([\s\S]*?\.position\(\{ x: DOCK_ACTION_START, y: 0 \}\)/);
-  assert.doesNotMatch(ui, /sideOffset|dockSide|animateTo|\.translate\(/);
+  assert.doesNotMatch(ui, /sideOffset|dockSide|animateTo|(?<!TransitionEffect)\.translate\(/);
   assert.match(home, /group\.getPositionToWindowWithTransform\(\)/);
   assert.match(home, /this\.syncBottomDockBounds\(\);\s*this\.dockNavigation\.begin\(event, true\);/);
 });

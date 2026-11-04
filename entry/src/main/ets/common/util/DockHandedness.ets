@@ -1,6 +1,8 @@
 /** Three page tabs followed by the native assistant action. */
 export const DOCK_ITEM_COUNT: number = 4;
 export const DOCK_WIDTH: number = 280;
+/** Three slots plus the two 4 vp margins of the fallback dock and side rail. */
+export const DOCK_LEGACY_NAV_WIDTH: number = 212;
 /** Centre the navigation capsule, gap and independent action as one 280 vp group. */
 export const DOCK_NAV_WIDTH: number = 216;
 export const DOCK_NATIVE_PADDING: number = 12;
