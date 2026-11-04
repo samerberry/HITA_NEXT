@@ -339,12 +339,15 @@ test('registers both sizes, second-level timer updates and periodic provider ref
   assert.match(ui, /this\.teacher = nextView\.teacher/);
   assert.match(ui, /this\.progressPercent = nextView\.progressPercent/);
   assert.match(ui, /Text\(Math\.floor\(this\.progressPercent\)\.toString\(\) \+ '%'\)/);
-  assert.match(ui, /Text\(this\.timeLabel\)/);
-  assert.match(ui, /Text\(this\.title\)/);
+  assert.match(ui, /Marquee\(\{ src: this\.timeLabel, start: true,/);
+  assert.match(ui, /Marquee\(\{ src: this\.title, start: true,/);
+  assert.match(ui, /Marquee\(\{ src: this\.countdown, start: true,/);
+  assert.match(ui, /Marquee\(\{ src: this\.countdownUnit, start: true,/);
+  assert.doesNotMatch(ui, /TextOverflow\.Ellipsis/);
   assert.match(ui, /this\.title = nextView\.title;\s*this\.timeLabel = nextView\.timeLabel;\s*this\.place = nextView\.place;\s*this\.teacher = nextView\.teacher;/);
   // Builder string parameters are by value; the metadata rows must read state directly.
   assert.match(ui, /metadataRow\(icon: Resource, isTeacher: boolean, compact: boolean\)/);
-  assert.match(ui, /Text\(isTeacher \? this\.teacher : this\.place\)/);
+  assert.match(ui, /Marquee\(\{ src: isTeacher \? this\.teacher : this\.place, start: true,/);
   assert.doesNotMatch(ui, /metadataRow\([^)]*this\.(place|teacher)/);
   assert.doesNotMatch(ui, /this\.view\.(title|timeLabel)/);
   assert.match(ui, /Progress\(\{ value: this\.progressPercent, total: 100, type: ProgressType\.Ring \}\)/);

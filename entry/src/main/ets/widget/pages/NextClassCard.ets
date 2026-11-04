@@ -1,6 +1,7 @@
 import { NextClassModel, NextClassView } from '../../feature/widget/NextClassModel';
 
 const storage: LocalStorage = new LocalStorage();
+const MARQUEE_STEP: number = 2.5;
 
 @Entry(storage)
 @Component
@@ -92,22 +93,20 @@ struct NextClassCard {
     Row({ space: compact ? 8 : 12 }) {
       // Keep the countdown on the left and reserve the right side for the fixed-size ring.
       Column({ space: 2 }) {
-        Text(this.countdown)
+        Marquee({ src: this.countdown, start: true, step: MARQUEE_STEP })
           .fontSize(compact ? 24 : 32)
-          .minFontSize(compact ? 16 : 18)
-          .maxFontSize(compact ? 24 : 32)
+          .allowScale(true)
           .fontWeight(FontWeight.Bold)
           .fontColor('#182230')
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .align(Alignment.Start)
           .width('100%')
           .height(compact ? 28 : 38)
-        Text(this.countdownUnit)
+        Marquee({ src: this.countdownUnit, start: true, step: MARQUEE_STEP })
           .fontSize(10)
+          .allowScale(true)
           .fontWeight(FontWeight.Medium)
           .fontColor('#515A67')
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .align(Alignment.Start)
           .width('100%')
           .height(14)
       }
@@ -151,12 +150,12 @@ struct NextClassCard {
         .fontColor(['#687180'])
         .width(compact ? 14 : 17)
         .height(compact ? 14 : 18)
-      Text(isTeacher ? this.teacher : this.place)
+      Marquee({ src: isTeacher ? this.teacher : this.place, start: true, step: MARQUEE_STEP })
         .fontSize(compact ? 10 : 12)
+        .allowScale(true)
         .fontWeight(FontWeight.Medium)
         .fontColor('#515A67')
-        .maxLines(1)
-        .textOverflow({ overflow: TextOverflow.Ellipsis })
+        .align(Alignment.Start)
         .layoutWeight(1)
     }
     .width('100%')
@@ -173,12 +172,12 @@ struct NextClassCard {
           .fontColor(['#687180'])
           .width(compact ? 14 : 17)
           .height(compact ? 18 : 20)
-        Text(this.title)
+        Marquee({ src: this.title, start: true, step: MARQUEE_STEP })
           .fontSize(compact ? 14 : 16)
+          .allowScale(true)
           .fontWeight(FontWeight.Bold)
           .fontColor('#182230')
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .align(Alignment.Start)
           .layoutWeight(1)
       }
       .width('100%')
@@ -208,12 +207,12 @@ struct NextClassCard {
             .fontColor(['#687180'])
             .width(compact ? 14 : 17)
             .height(compact ? 14 : 16)
-          Text(this.timeLabel)
+          Marquee({ src: this.timeLabel, start: true, step: MARQUEE_STEP })
             .fontSize(compact ? 10 : 11)
+            .allowScale(true)
             .fontWeight(FontWeight.Medium)
             .fontColor('#515A67')
-            .maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .align(Alignment.Start)
             .layoutWeight(1)
         }
         .width('100%')
