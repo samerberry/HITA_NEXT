@@ -129,7 +129,8 @@ test('authentication cards use translucent theme backgrounds below the documente
   assert.equal((login.match(/CompatibleSheetMaterial.bodyColor/g) || []).length, 2);
   assert.match(login, /\.forceDarkAccess\(false\)/);
   const home = read('ets/pages/Home.ets');
-  assert.equal((home.match(/CompatibleSheetMaterial.cardColor/g) || []).length, 2);
+  const importSheet = home.slice(home.indexOf('  sessionSheet()'), home.indexOf('  sessionCampusButton('));
+  assert.match(importSheet, /\.backgroundColor\(CompatibleSheetMaterial\.cardColor\(/);
 });
 
 test('Home retains one sheet lifecycle for authentication, timetable and calendar confirmation materials', () => {
@@ -235,11 +236,11 @@ test('appearance options keep selection, accessibility and saving guards with ex
 test('session sheet login actions keep solid fills so white text stays readable in light mode', () => {
   const home = read('ets/pages/Home.ets');
   const sheet = home.slice(home.indexOf('  sessionSheet()'), home.indexOf('  sessionCampusButton('));
-  for (const [label, variant] of [['网页登录', 'PRIMARY'], ['重新登录', 'SECONDARY'], ['退出登录', 'DANGER']]) {
-    const start = sheet.indexOf(`HitaButton({ label: '${label}'`);
-    assert.ok(start >= 0, label);
+  for (const [label, variant] of [['重新导入', 'PRIMARY'], ['重新导入', 'SECONDARY'], ['删除数据', 'DANGER'],
+    ['从本地导入数据', 'SECONDARY']]) {
+    const start = sheet.indexOf(`HitaButton({ label: '${label}', variant: HitaButtonVariant.${variant}`);
+    assert.ok(start >= 0, `${label} ${variant}`);
     const button = sheet.slice(start, sheet.indexOf('})', start));
-    assert.match(button, new RegExp(`variant: HitaButtonVariant\\.${variant}`), label);
     // Inside the material sheet a nested material hides the fill in both themes.
     assert.doesNotMatch(button, /attributeModifier|CompatibleMaterialModifier/, label);
   }

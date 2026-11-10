@@ -7,10 +7,10 @@ export function scoreErrorMessage(message: string): string {
   const known: string[] = [
     '该校区研究生成绩接口暂未接入，请到教务网站查询',
     '未获取到学期列表，请稍后重试', '成绩响应解析失败，请稍后重试',
-    '教务未返回有效成绩列表，请稍后重试', '未识别到成绩表，请确认教务登录状态后重试',
-    '教务会话已过期，请在“更多”的教务账号中重新登录', '成绩查询失败，请检查网络或稍后重试'
+    '教务未返回有效成绩列表，请稍后重试', '未识别到成绩表，请确认教务会话后重试',
+    '教务会话已过期，请从“更多”顶部入口打开校方网页', '成绩查询失败，请检查网络或稍后重试'
   ];
-  if (known.includes(message) || /^请先在“更多 → 教务账号”登录(深圳|本部|威海)教务$/.test(message)) return message;
+  if (known.includes(message) || /^请从“更多”顶部入口打开(深圳|本部|威海)校区的校方网页$/.test(message)) return message;
   return EasUserMessages.fromError(message, '成绩查询失败，请检查网络或稍后重试');
 }
 

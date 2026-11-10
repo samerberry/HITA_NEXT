@@ -149,7 +149,7 @@ export class EasWebLoginController {
     this.session.campus = campus;
     this.session.setStudentType(this.cfg.studentType);
     this.setError('');
-    this.setPhase(EasLoginPhase.LOADING, '正在进入 ' + this.cfg.displayName + ' 统一认证…');
+    this.setPhase(EasLoginPhase.LOADING, '正在打开校方网页…');
     this.setProgress(10);
 
     const wc: webview.WebviewController | undefined = this.webController;
@@ -625,8 +625,8 @@ export class EasWebLoginController {
       return;
     }
     if (++this.portalOpenAttempts > 3) {
-      this.setPhase(EasLoginPhase.ERROR, '认证跳转未完成');
-      this.setError('认证反复返回登录入口，请重置网页登录后重试');
+      this.setPhase(EasLoginPhase.ERROR, '网页跳转未完成');
+      this.setError('校方网页反复返回入口，请重置网页后重试');
       return;
     }
     this.autoOpeningJwts = true;
@@ -691,8 +691,8 @@ export class EasWebLoginController {
     if (this.cookieRetryCount >= COOKIE_RETRY_COUNT_MAX) {
       this.cookiePollingActive = false;
       hilog.warn(DOMAIN, TAG, 'Cookie polling reached retry limit');
-      this.setPhase(EasLoginPhase.ERROR, '登录验证超时');
-      this.setError('登录验证超时，请确认教务页面已完成登录后重试');
+      this.setPhase(EasLoginPhase.ERROR, '教务会话读取超时');
+      this.setError('教务会话读取超时，请按校方网页提示操作后重试');
       return;
     }
 
@@ -710,7 +710,7 @@ export class EasWebLoginController {
 
     if (this.cfg.campus === EasCampus.BENBU && this.cfg.studentType !== '2') {
       // 本部本科：先经 jwts 桥接取得 sjjx 实验教学会话，再走 EELAB token
-      this.setPhase(EasLoginPhase.SUCCESS_PROBE, '登录成功，正在获取实验教学会话…');
+      this.setPhase(EasLoginPhase.SUCCESS_PROBE, '正在读取实验教学会话…');
       // 全流程共用时限，跳转、Cookie 读取和 Token 请求均不得延长主登录等待。
       const generation: number = this.loginGeneration;
       this.experimentTimeoutTimer = setTimeout(() => {
@@ -724,12 +724,12 @@ export class EasWebLoginController {
     }
 
     if (this.cfg.campus === EasCampus.WEIHAI && hasWeihaiVpnTicket(cookies)) {
-      this.setPhase(EasLoginPhase.SUCCESS_PROBE, '登录成功，正在同步威海教务会话…');
+      this.setPhase(EasLoginPhase.SUCCESS_PROBE, '正在同步威海教务会话…');
       this.fetchWeihaiVpnCookies(cookies, url);
       return;
     }
 
-    this.setPhase(EasLoginPhase.SUCCESS_PROBE, '登录成功，正在采集会话…');
+    this.setPhase(EasLoginPhase.SUCCESS_PROBE, '正在读取教务会话…');
     this.finish(cookies, url, '');
   }
 
@@ -782,7 +782,7 @@ export class EasWebLoginController {
       this.startCookiePolling();
     } else {
       this.setPhase(EasLoginPhase.ERROR, '本部教务会话验证未完成');
-      this.setError('本部教务会话尚未就绪，请确认已进入教务后刷新；仍失败可重置登录');
+      this.setError('本部教务会话尚未就绪，进入教务页面后可刷新或重置网页');
     }
   }
 
@@ -903,7 +903,7 @@ export class EasWebLoginController {
       return;
     }
     this.setPhase(EasLoginPhase.ERROR, '威海教务会话验证未完成');
-    this.setError('已连接威海网关，但教务会话尚未就绪，请刷新或重置网页登录后重试');
+    this.setError('已连接威海网关，但教务会话尚未就绪，请刷新或重置网页后重试');
   }
 
   private async mergeWeihaiBrowserCookies(cookies: Map<string, string>): Promise<void> {
@@ -967,7 +967,7 @@ export class EasWebLoginController {
     if (this.pendingSjjxCookies.size > 0) {
       s.sjjxCookies = this.pendingSjjxCookies;
     }
-    this.setPhase(EasLoginPhase.DONE, '登录成功');
+    this.setPhase(EasLoginPhase.DONE, '教务会话已就绪');
     this.setProgress(100);
     this.onFinished(s);
   }

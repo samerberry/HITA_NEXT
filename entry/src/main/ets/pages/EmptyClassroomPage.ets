@@ -122,7 +122,7 @@ export struct EmptyClassroomPage {
       await store.init(context);
       const session: EasSession | undefined = await store.loadPreferred();
       if (generation !== this.generation) { return; }
-      if (session === undefined) { throw new ClassroomQueryError('AUTH', '请先登录教务系统'); }
+      if (session === undefined) { throw new ClassroomQueryError('AUTH', '请先从“更多”顶部入口打开校方网页'); }
       EmptyClassroomService.assertSession(session);
       this.session = session;
       await this.cache.init(context);
@@ -301,8 +301,8 @@ export struct EmptyClassroomPage {
     this.returningFromLogin = true;
     try {
       this.getUIContext().getRouter().pushUrl({ url: 'pages/Home', params: { 'openSession': '1' } })
-        .catch(() => { this.error = '无法打开登录页面，请返回“更多”登录教务'; });
-    } catch (e) { this.error = '无法打开登录页面，请返回“更多”登录教务'; }
+        .catch(() => { this.error = '无法打开教务入口，请返回“更多”后重试'; });
+    } catch (e) { this.error = '无法打开教务入口，请返回“更多”后重试'; }
   }
 
   private roomState(room: ClassroomRoom): string {

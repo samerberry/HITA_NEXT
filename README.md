@@ -4,9 +4,9 @@
 
 # HITA NEXT
 
-当前版本：**0.4.3**。
+当前版本：**1.0.0**。
 
-HITA NEXT 是基于开源项目 [HITA Android](https://github.com/HIT-A/HITA_Android) 开发的 HarmonyOS NEXT 客户端，采用 ArkTS 与 ArkUI 原生实现，为哈尔滨工业大学一校三区学生提供课表查看、教务登录和本地学习信息管理功能。
+HITA NEXT 是基于开源项目 [HITA Android](https://github.com/HIT-A/HITA_Android) 开发的 HarmonyOS NEXT 客户端，采用 ArkTS 与 ArkUI 原生实现，为哈尔滨工业大学一校三区学生提供课表查看、教务数据导入和本地学习信息管理功能。
 
 项目在功能逻辑上参考 HITA Android，在界面结构与交互体验上同时参考 [HITA Aura](https://github.com/HIT-A/HITA-Aura)，尽量保持不同平台之间一致的使用习惯。
 
@@ -35,30 +35,30 @@ HITA NEXT 是基于开源项目 [HITA Android](https://github.com/HIT-A/HITA_And
 
 ### 教务
 
-- 提供深圳、本部和威海校区的 ArkWeb 网页登录入口。
-- 保存登录会话，并在再次启动应用时恢复当前登录状态。
+- 通过 ArkWeb 打开深圳、本部和威海校区的校方网页。
+- 在本机保存教务会话，并在再次启动应用时恢复。
 - 支持深圳、威海和本部本科生课表导入。
 - 自动获取当前学期，将课程、科目和每周课次写入本地数据库。
 - 支持三校区本科成绩查询、学期和类型选择；分别展示教务官方统计与当前列表的本地统计。
-- 学分查询沿用安卓端逻辑：深圳读取教务培养方案完成度、学分类别要求、培养课组与课程成绩明细；本部、威海及未登录时按本地课表去重统计分类学分，支持设置目标和查看领域、课程明细。本地统计不等同于已获学分或毕业审核结果。
+- 学分查询沿用安卓端逻辑。深圳读取教务培养方案完成度、学分类别要求、培养课组与课程成绩明细。本部、威海或没有教务会话时，按本地课表去重统计分类学分，支持设置目标和查看领域、课程明细。本地统计仅供个人参考。
 - 支持本部、威海本科教务考试查询，合并期末、期中与补考安排；保留深圳查询及手动考试管理，已确定时间的考试可导入当前课表。
 - 支持三校区本科教务空教室查询：沿用安卓 3.0.0 的教学楼／学期／周次自动查询、双列教室卡片及底部每日节次详情。
 
 ### 更多
 
 - 查看当前账号、校区和会话状态。
-- 按校区管理会话并退出登录。
+- 按校区查看和清除会话。
 - 管理课表、手动添加课程，以及导入和导出 ICS 课表。
 - 一键将当前课表导出至手机系统日历，重复导出更新已有日程。
 - 添加桌面服务卡片，显示下一节课的开始倒计时、地点和教师（见 [桌面服务卡片说明](docs/desktop-service-widget.md)）。
 - 查看版本更新、服务与故障公告。
-- “关于”页列出制作者与鸣谢，并提供隐私政策；文案集中在 `feature/about/AboutContent.ets`。隐私政策正文与[华为协议托管服务上的版本](https://agreement-drcn.hispace.dbankcloud.cn/index.html?lang=zh&agreementId=2056866492535841728)一致，修改托管版本后需同步更新该文件。
+- “关于”页列出制作者与鸣谢，并提供隐私政策。应用内正文在 `feature/about/AboutContent.ets`，提交新版本前请将同一文案同步到[华为协议托管服务](https://agreement-drcn.hispace.dbankcloud.cn/index.html?lang=zh&agreementId=2056866492535841728)。
 
 ## 技术基线
 
 - UI：ArkUI 声明式界面。
 - 开发语言：ArkTS。
-- 网页登录：ArkWeb。
+- 校方网页使用 ArkWeb。
 - 网络访问：HarmonyOS NetworkKit。
 - 本地课表：RelationalStore 关系型数据库。
 - 会话与轻量配置：Preferences。
@@ -89,7 +89,7 @@ HitaNEXT/
 │       ├── ets/
 │       │   ├── entryability/         # EntryAbility 应用入口
 │       │   ├── pages/                # 今日、时间表、更多及功能页面
-│       │   ├── feature/eas/          # 登录、会话、教务请求与课表导入
+│       │   ├── feature/eas/          # 校方网页、会话、教务请求与课表导入
 │       │   ├── feature/timetable/    # 周课表绘制、课表选择与 ICS 导入
 │       │   └── common/               # 数据库、模型与通用工具
 │       └── resources/                # 字符串、颜色、图标等资源
@@ -102,7 +102,7 @@ HitaNEXT/
 主要入口：
 
 - `entry/src/main/ets/pages/Home.ets`：今日、时间表、更多三个主页面。
-- `entry/src/main/ets/feature/eas/webLogin/`：ArkWeb 登录和 Cookie 会话采集。
+- `entry/src/main/ets/feature/eas/webLogin/` 管理校方网页与 Cookie 会话。
 - `entry/src/main/ets/feature/eas/EasDataProvider.ets`：深圳、本部本科与威海课表数据适配。
 - `entry/src/main/ets/feature/eas/ScoreService.ets`：三校区成绩及官方统计查询；本部、威海研究生接口尚未接入。
 - `entry/src/main/ets/feature/eas/EasTimetableImporter.ets`：远端课程到本地课表的转换与写入。
@@ -163,6 +163,7 @@ node scripts/static-checks.cjs
 
 使用和验证说明：
 
+- [1.0.0 商店简介与审核说明](docs/release-1.0.0.md)
 - [0.4.0 版本说明](docs/release-0.4.0.md)
 - [0.3.0 版本说明](docs/release-0.3.0.md)
 - [0.2.1 版本说明](docs/release-0.2.1.md)
@@ -173,10 +174,10 @@ node scripts/static-checks.cjs
 
 ## 数据与隐私
 
-- 教务登录和数据请求直接访问哈尔滨工业大学各校区的统一认证及教务系统。
-- 登录后的 Cookie 和会话信息当前保存在应用本地 Preferences 中，尚未接入 HUKS 加密，用于恢复登录状态和请求教务数据。
+- 用户使用本人账号在对应校区的校方网页按提示操作，应用从该校区的教务系统读取数据。
+- 校方返回的 Cookie 和会话信息保存在应用本地 Preferences 中，尚未接入 HUKS 加密，用于恢复教务会话和请求教务数据。
 - 本地备份包含课表、科目和事件信息，请妥善保管，不要公开分享。
-- 校方页面、认证方式或接口发生变化时，相关功能可能需要同步适配。
+- 校方页面或接口发生变化时，相关功能可能需要同步适配。
 
 本项目不是哈尔滨工业大学官方应用。教务数据的所有权与使用规则以学校相关规定为准。
 

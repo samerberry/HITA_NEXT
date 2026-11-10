@@ -129,7 +129,7 @@ test('academic errors expose only known user messages, never internal diagnostic
     assert.equal(EasUserMessages.fromError(detail, fallback), fallback);
   }
   assert.equal(EasUserMessages.fromError(' 深圳教务会话已失效，请重新登录 ', fallback),
-    '教务登录已过期，请重新登录后重试');
+    '教务会话已过期，请按校方网页提示操作后重试');
   assert.equal(EasUserMessages.fromError('当前校区暂不支持成绩查询', fallback),
     '当前校区暂不支持成绩查询，请到学校教务网站查看');
   assert.equal(EasUserMessages.fromError('课表请求网络失败', fallback),

@@ -7,6 +7,7 @@
     "pages/PortalsPage",
     "pages/NoticesPage",
     "pages/AppAboutPage",
+    "pages/AppExplanationPage",
     "pages/PrivacyPolicyPage",
     "pages/ScorePage",
     "pages/CreditPage",

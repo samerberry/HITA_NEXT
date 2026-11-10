@@ -120,7 +120,7 @@ export class BenbuExperimentService {
   static async getElectronicExperiments(session: EasSession, warnings: string[] = []): Promise<EasCourseItem[]> {
     if (!session.electronicExpToken.trim()) {
       hilog.warn(0x0000, 'HitaEasImport', 'electronic experiment token unavailable');
-      warnings.push('未取得电子实验会话，相关实验课可能缺失，请重新登录教务后导入');
+      warnings.push('未取得电子实验会话，部分实验课可能缺失，请按校方网页提示操作后重新导入');
       return [];
     }
     try {
@@ -144,7 +144,7 @@ export class BenbuExperimentService {
     } catch (_) {
       hilog.warn(0x0000, 'HitaEasImport', 'electronic experiment request failed');
     }
-    warnings.push('电子实验课表暂未读取成功，请重新登录教务后导入');
+    warnings.push('暂未读取到电子实验课表，请按校方网页提示操作后重新导入');
     return [];
   }
 }

@@ -1,3 +1,11 @@
 {
-  "notices": []
+  "notices": [
+    {
+      "id": "hita-next-1-0-0-release",
+      "kind": "version",
+      "severity": "info",
+      "title": "HITA NEXT 1.0.0 正式发布",
+      "body": "在 HITA NEXT，你可以查看课表和考试安排、设置课前提醒，也可以记录作业和复习待办。\n\n感谢参与试用、提出建议的同学！\n\n交流与反馈 QQ 群：1093659013"
+    }
+  ]
 }

@@ -15,7 +15,7 @@ const MAX_PAGES: number = 50;
 type RequestFields = Record<string, string | number | null>;
 
 export function creditErrorMessage(message: string): string {
-  const known: string[] = ['请先在“更多 → 教务账号”登录深圳教务', '教务系统未返回学号或入学年级',
+  const known: string[] = ['请从“更多”顶部入口打开深圳校区的校方网页', '教务系统未返回学号或入学年级',
     '教务系统未返回学籍标识', '当前成绩学期读取失败', '个人培养方案读取失败',
     '培养方案完成度读取失败，请稍后重试', '培养方案完成度解析失败，请稍后重试',
     '课组课程读取失败，请重试', '学分目标读取失败', '本地学分读取失败，请重试'];
@@ -72,7 +72,7 @@ export class CreditService {
     active: () => boolean = () => true): Promise<OfficialCreditProgress> {
     this.ensureActive(active);
     if (session.campus !== EasCampus.SHENZHEN || !session.hasShenzhenWebSession()) {
-      throw new Error('请先在“更多 → 教务账号”登录深圳教务');
+      throw new Error('请从“更多”顶部入口打开深圳校区的校方网页');
     }
     const identityResponse = await this.request(session, '/UserManager/queryxsxx', {}, false, active, '/authentication/main');
     const identity = Parser.identity(identityResponse.statusCode === 200 ? identityResponse.body : '');

@@ -1,6 +1,6 @@
 import { HitaDesign } from '../common/theme/HitaDesign';
 /**
- * AppAboutPage.ets — 关于：应用信息、制作者、鸣谢与隐私政策入口。
+ * AppAboutPage.ets — 应用信息、制作者、鸣谢、隐私政策与说明入口。
  * 结构参考 HITA Aura 的“关于 HITA Aura”与 HITA Android 的关于页，文案集中在 AboutContent。
  */
 import { bundleManager } from '@kit.AbilityKit';
@@ -9,7 +9,7 @@ import { ImmersiveHeader } from '../common/components/ImmersiveHeader';
 import { HeaderFadeMask } from '../common/components/HeaderFadeMask';
 import { HeaderFade } from '../common/theme/HeaderFade';
 import { STATUS_BAR_INSET_FALLBACK } from '../common/theme/StatusBarInset';
-import { AboutContent, AboutContributor, AboutCredit } from '../feature/about/AboutContent';
+import { AboutContent, AboutContributor, AboutCredit, AboutExplanation } from '../feature/about/AboutContent';
 
 const HEADER_HEIGHT: number = 60;
 const PAGE_BG: ResourceColor = $r('app.color.hita_page_f6f7fa');
@@ -48,6 +48,10 @@ struct AppAboutPage {
     this.getUIContext().getRouter().pushUrl({ url: 'pages/PrivacyPolicyPage' });
   }
 
+  private openExplanation(sectionId: string): void {
+    this.getUIContext().getRouter().pushUrl({ url: 'pages/AppExplanationPage', params: { sectionId } });
+  }
+
   build() {
     Stack({ alignContent: Alignment.Top }) {
       Scroll(this.scroller) {
@@ -69,7 +73,7 @@ struct AppAboutPage {
           this.sectionTitle('鸣谢');
           Column() {
             ForEach(AboutContent.projectCredits(), (credit: AboutCredit) => {
-              this.creditRow(credit);
+              this.detailRow(credit.title, credit.detail, () => this.openLink(credit.title, credit.url));
             }, (credit: AboutCredit) => credit.title);
           }
           .width('100%')
@@ -77,10 +81,17 @@ struct AppAboutPage {
           .backgroundColor(CARD_BG)
           .borderRadius(HitaDesign.cardRadius);
 
-          Text(AboutContent.DISCLAIMER)
-            .fontSize(HitaDesign.caption)
-            .fontColor(TEXT_SECONDARY)
-            .margin({ top: 24, bottom: 32 });
+          this.sectionTitle('说明');
+          Column() {
+            ForEach(AboutContent.explanations(), (explanation: AboutExplanation) => {
+              this.detailRow(explanation.title, explanation.summary, () => this.openExplanation(explanation.id));
+            }, (explanation: AboutExplanation) => explanation.id);
+          }
+          .width('100%')
+          .padding({ top: HitaDesign.space2xs, bottom: HitaDesign.space2xs })
+          .backgroundColor(CARD_BG)
+          .borderRadius(HitaDesign.cardRadius)
+          .margin({ bottom: HitaDesign.spaceXl });
         }
         .width('100%')
         .padding({ left: 16, right: 16 });
@@ -143,6 +154,7 @@ struct AppAboutPage {
       Text(AboutContent.TAGLINE)
         .fontSize(HitaDesign.caption)
         .fontColor(TEXT_SECONDARY)
+        .textAlign(TextAlign.Center)
         .margin({ top: HitaDesign.spaceSm });
       Text('隐私政策')
         .fontSize(HitaDesign.caption)
@@ -209,28 +221,28 @@ struct AppAboutPage {
   }
 
   @Builder
-  creditRow(credit: AboutCredit) {
+  detailRow(title: string, detail: string, onTap: () => void) {
     Row() {
       Column() {
-        Text(credit.title)
+        Text(title)
           .fontSize(HitaDesign.caption)
           .fontColor(TEXT_PRIMARY);
-        Text(credit.detail)
+        Text(detail)
           .fontSize(HitaDesign.caption)
           .fontColor(TEXT_SECONDARY)
-          .margin({ top: 4 });
+          .margin({ top: HitaDesign.space2xs });
       }
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start);
       SymbolGlyph($r('sys.symbol.chevron_right'))
         .fontSize(HitaDesign.iconXs)
         .fontColor([TEXT_SECONDARY])
-        .width(16).height(24).flexShrink(0)
+        .width(HitaDesign.iconSm).height(HitaDesign.iconLg).flexShrink(0)
         .accessibilityLevel('no');
     }
     .width('100%')
-    .padding({ left: 16, right: 16, top: 12, bottom: 12 })
+    .padding({ left: HitaDesign.inset, right: HitaDesign.inset, top: HitaDesign.spaceSm, bottom: HitaDesign.spaceSm })
     .alignItems(VerticalAlign.Center)
-    .onClick(() => this.openLink(credit.title, credit.url));
+    .onClick(onTap);
   }
 }

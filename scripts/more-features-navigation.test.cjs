@@ -21,7 +21,7 @@ function campusPortals() {
 test('More omits the assistant and keeps news and campus links as registered routes', () => {
   const home = read('pages/Home.ets');
   const more = home.slice(home.indexOf('  tabMine()'), home.indexOf('  userCard()'));
-  const academic = more.indexOf("this.moreSectionTitle('教务功能')");
+  const academic = more.indexOf("this.moreSectionTitle('辅助功能')");
   const settings = more.indexOf("this.moreSectionTitle('设置')");
   const extras = more.indexOf("this.moreSectionTitle('更多')");
   assert.ok(academic >= 0 && academic < settings && settings < extras);

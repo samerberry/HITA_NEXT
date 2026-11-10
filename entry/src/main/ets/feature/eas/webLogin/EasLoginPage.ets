@@ -46,7 +46,7 @@ export struct EasLoginPage {
   @State progressValue: number = 0;
   @State errorText: string = '';
   @State initialUrl: string = '';
-  @State campusDisplayName: string = '统一认证登录';
+  @State campusDisplayName: string = '校方网页';
   @State webReady: boolean = false;
   @State canGoBack: boolean = false;
   @State recoveryBusy: boolean = false;
@@ -123,7 +123,7 @@ export struct EasLoginPage {
       this.webReady = true;
       this.recoveryPending = false;
       this.recoveryBusy = false;
-      this.errorText = '页面加载时间较长，可刷新或重置网页登录';
+      this.errorText = '页面加载较慢，可刷新或重置网页';
     }, 20000);
   }
 
@@ -172,9 +172,9 @@ export struct EasLoginPage {
       return;
     }
     this.getUIContext().getPromptAction().showDialog({
-      title: '重置网页登录',
-      message: '将清除本应用内网页的登录状态和缓存。',
-      buttons: [{ text: '取消', color: $r('app.color.hita_text_secondary_6b7a90') }, { text: '重置登录', color: $r('app.color.hita_primary') }]
+      title: '重置网页',
+      message: '将清除应用内网页的会话和缓存。',
+      buttons: [{ text: '取消', color: $r('app.color.hita_text_secondary_6b7a90') }, { text: '重置', color: $r('app.color.hita_primary') }]
     }).then((result) => {
       if (result.index === 1 && this.pageActive) {
         this.beginRecovery();
@@ -202,7 +202,7 @@ export struct EasLoginPage {
       this.recoveryPending = false;
       this.recoveryBusy = false;
       this.webReady = true;
-      this.errorText = '无法重置网页登录，请退出登录窗口后重试';
+      this.errorText = '无法重置网页，请返回后重试';
     }
   }
 
@@ -219,7 +219,7 @@ export struct EasLoginPage {
         this.callbackGeneration++;
         this.recoveryBusy = false;
         this.webReady = true;
-        this.errorText = '重置网页登录超时，请退出登录窗口后重试';
+        this.errorText = '重置网页超时，请返回后重试';
       }
     }, 15000);
     try {
@@ -237,7 +237,7 @@ export struct EasLoginPage {
       if (this.pageActive && generation === this.callbackGeneration) {
         this.recoveryBusy = false;
         this.webReady = true;
-        this.errorText = '无法重置网页登录，请退出登录窗口后重试';
+        this.errorText = '无法重置网页，请返回后重试';
       }
     } finally {
       if (generation === this.callbackGeneration && this.recoveryTimer >= 0) {
@@ -282,7 +282,7 @@ export struct EasLoginPage {
           });
 
           Column() {
-            Text('统一认证登录')
+            Text('校方网页')
               .fontSize(HitaDesign.section)
               .fontWeight(FontWeight.Medium)
               .fontColor(HitaColors.onSurface)
@@ -327,7 +327,7 @@ export struct EasLoginPage {
           .flexShrink(0)
           .backgroundColor(Color.Transparent)
           .attributeModifier(new CompatibleMaterialModifier(Color.Transparent))
-          .accessibilityText('刷新认证网页')
+          .accessibilityText('刷新校方网页')
           .enabled(!this.recoveryBusy)
           .onClick(() => {
             try {
@@ -358,12 +358,12 @@ export struct EasLoginPage {
       // 错误提示条
       if (this.errorText.length > 0 || this.recoveryBusy) {
         Row() {
-          Text(this.recoveryBusy ? '正在重置网页登录' : this.errorText)
+          Text(this.recoveryBusy ? '正在重置网页' : this.errorText)
             .fontSize(HitaDesign.caption)
             .fontColor($r('app.color.hita_error_b91c1c'))
             .layoutWeight(1)
           if (!this.recoveryBusy) {
-            Button('重置登录')
+            Button('重置网页')
               .fontSize(HitaDesign.caption)
               .fontColor(HitaColors.primary)
               .backgroundColor(Color.Transparent)
@@ -463,7 +463,7 @@ export struct EasLoginPage {
                     this.recoveryBusy = false;
                   }
                   this.webReady = true;
-                  this.errorText = '认证页面加载失败，可刷新或重置网页登录';
+                  this.errorText = '校方网页加载失败，可刷新或重置网页';
                 }
               }
             })
@@ -494,7 +494,7 @@ export struct EasLoginPage {
               .height(28)
               .color(HitaColors.primary)
               .margin({ top: HitaDesign.spaceMd, bottom: HitaDesign.spaceSm });
-            Text('正在打开统一认证页面')
+            Text('正在打开校方网页')
               .fontSize(HitaDesign.body)
               .fontWeight(FontWeight.Medium)
               .fontColor(HitaColors.onSurface);

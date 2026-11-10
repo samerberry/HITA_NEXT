@@ -320,7 +320,7 @@ test('Benbu term failure persists expiry, updates the session revision and displ
     EasApiClient.doHttp = async () => response(benbuVpnVerify);
     const provider = new Provider(new EasApiClient());
     await assert.rejects(provider.getAllTerms(saved), error => {
-      assert.equal(EasUserMessages.fromError(error.message, '稍后再试'), '教务登录已过期，请重新登录后重试');
+      assert.equal(EasUserMessages.fromError(error.message, '稍后再试'), '教务会话已过期，请按校方网页提示操作后重试');
       return true;
     });
     const persisted = await store.load(Campus.BENBU);
@@ -551,5 +551,5 @@ test('a marked session keeps a readable reason until the next successful login c
   }
   const home = fs.readFileSync(path.join(root, 'pages/Home.ets'), 'utf8');
   const sheet = home.slice(home.indexOf('  sessionSheet()'), home.indexOf('  sessionCampusButton('));
-  assert.match(sheet, /if \(this\.sessionSheetStatus === EasSessionStatus\.EXPIRED && this\.sessionSheetInfo\.expiredReason\.length > 0\) \{\s*Text\('失效原因：' \+ this\.sessionSheetInfo\.expiredReason\)/);
+  assert.match(sheet, /if \(this\.sessionSheetStatus === EasSessionStatus\.EXPIRED && this\.sessionSheetInfo\.expiredReason\.length > 0\) \{\s*Text\('失效原因：' \+ this\.sessionSheetInfo\.expiredReason\b/);
 });

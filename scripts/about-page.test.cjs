@@ -17,10 +17,10 @@ function loadContent() {
   return mod.exports.AboutContent;
 }
 
-test('More lists 教务功能, then 设置, then 更多 with notices and about at the end', () => {
+test('More lists 辅助功能, then 设置, then 更多 with notices and about at the end', () => {
   const home = read('ets/pages/Home.ets');
   const more = home.slice(home.indexOf('  tabMine()'), home.indexOf('  userCard()'));
-  const order = ['课表工具', '教务功能', '设置', '更多'].map(title => more.indexOf(`moreSectionTitle('${title}')`));
+  const order = ['课表工具', '辅助功能', '设置', '更多'].map(title => more.indexOf(`moreSectionTitle('${title}')`));
   assert.ok(order.every(index => index >= 0), 'every section exists');
   assert.deepEqual([...order].sort((a, b) => a - b), order, 'sections appear in order');
 
@@ -64,7 +64,7 @@ test('about lists the three contributors in order with real names, GitHub nickna
     assert.equal(fs.readFileSync(file).subarray(1, 4).toString(), 'PNG', file);
   }
   const about = read('ets/pages/AppAboutPage.ets');
-  const row = about.slice(about.indexOf('  contributorRow('), about.indexOf('  creditRow('));
+  const row = about.slice(about.indexOf('  contributorRow('), about.indexOf('  detailRow('));
   assert.match(row, /Image\(person\.avatar\)/);
   assert.match(row, /Text\(person\.name\)[\s\S]*Text\(person\.github\)/);
   assert.doesNotMatch(row, /person\.role|person\.initial/);
