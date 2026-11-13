@@ -90,7 +90,7 @@ export struct ScorePage {
       if (generation !== this.generation) return;
       this.session = session;
       if (session === undefined || !session.isLogin()) {
-        throw new Error('请从“更多”顶部入口打开' + CAMPUS_NAMES[this.campusIndex] + '校区的校方网页');
+        throw new Error('请先在“更多 → 教务账号”登录' + CAMPUS_NAMES[this.campusIndex] + '教务');
       }
       if (session.campus !== EasCampus.SHENZHEN && session.getStudentType() === '2') {
         throw new Error('该校区研究生成绩接口暂未接入，请到教务网站查询');

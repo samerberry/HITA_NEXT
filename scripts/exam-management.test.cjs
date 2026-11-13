@@ -517,16 +517,16 @@ test('the native loading branch precedes both cached lists and empty/error resul
   assert.match(build, /Text\(this\.queryWarning \? '考试查询失败' : '暂无考试安排'\)/);
 });
 
-test('query without a session points to the school website', async () => {
+test('query without a session asks the user to log in', async () => {
   const { page, calls } = setup();
   await page.queryEasExams();
-  assert.ok(calls.toasts.includes('请先从“更多”顶部入口打开校方网页'));
+  assert.ok(calls.toasts.includes('请先登录教务后再查询考试'));
   assert.equal(page.remoteExams.length, 0);
 });
 
 test('failed exam queries show actionable messages without internal error details', async () => {
   const failures = [
-    ['教务会话已失效，请重新登录', '教务会话已过期，请按校方网页提示操作后重试'],
+    ['教务会话已失效，请重新登录', '教务登录已过期，请重新登录后重试'],
     ['当前校区暂不支持考试查询，请手动添加考试', '当前校区暂不支持考试查询，请手动添加考试'],
     ['HTTP 500: <html>internal server error</html>', '考试查询失败，请稍后重试']
   ];

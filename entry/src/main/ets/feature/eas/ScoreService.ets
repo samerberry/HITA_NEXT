@@ -54,7 +54,7 @@ export class ScoreService {
       spec.fields.forEach((value: string, key: string) => pairs.push(encodeURIComponent(key) + '=' + encodeURIComponent(value)));
       const response = await this.request(session, spec.path, pairs.join('&'));
       const items = parseLegacyScores(response.body, term);
-      if (items === undefined) throw new Error('未识别到成绩表，请确认教务会话后重试');
+      if (items === undefined) throw new Error('未识别到成绩表，请确认教务登录状态后重试');
       result.items = items;
     }
     try {
@@ -92,7 +92,7 @@ export class ScoreService {
       options.extraHeaders.set('Referer', EasApiClient.joinUrl(EasCampusUrls.WEIHAI_EAS_PREFIX, path));
     }
     const response = await this.api.request(session, easWebLoginConfigFor(session.campus, session.getStudentType()), path, options);
-    if (isExpiredEasResponse(response)) throw new Error('教务会话已过期，请从“更多”顶部入口打开校方网页');
+    if (isExpiredEasResponse(response)) throw new Error('教务会话已过期，请在“更多”的教务账号中重新登录');
     if (response.statusCode < 200 || response.statusCode >= 300) throw new Error('成绩查询失败，请检查网络或稍后重试');
     return response;
   }

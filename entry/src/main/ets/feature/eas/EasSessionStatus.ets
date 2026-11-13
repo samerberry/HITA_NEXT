@@ -6,7 +6,7 @@ export interface EasSessionResponse {
 }
 
 export enum EasSessionStatus {
-  SAVED = '会话可用',
+  SAVED = '已登录',
   CHECKING = '验证中',
   CONNECTED = '已连接',
   EXPIRED = '已过期',

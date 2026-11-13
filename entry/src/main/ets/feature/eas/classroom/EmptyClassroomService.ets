@@ -18,7 +18,7 @@ export class EmptyClassroomService {
     if (!session.isLogin() || session.webCookies.size === 0 ||
       (session.campus === EasCampus.SHENZHEN &&
         (!session.hasShenzhenWebSession() || session.webBaseUrl.length === 0))) {
-      throw new ClassroomQueryError('AUTH', '请先打开所选校区的校方网页并按提示操作');
+      throw new ClassroomQueryError('AUTH', '请先登录所选校区的教务系统');
     }
     if (session.campus === EasCampus.BENBU && session.getStudentType() === '2') {
       throw new ClassroomQueryError('UNSUPPORTED', '本部研究生教务接口暂未接入，请到学校教务网站查询');
@@ -221,11 +221,11 @@ export class EmptyClassroomService {
       easWebLoginConfigFor(session.campus, session.getStudentType()), path, options);
     if (response.statusCode === 401 || response.statusCode === 302 ||
       response.statusCode === 303 || EmptyClassroomService.isLoginResponse(response.body)) {
-      throw new ClassroomQueryError('AUTH', '教务会话已过期，请按校方网页提示操作后重试');
+      throw new ClassroomQueryError('AUTH', '教务登录已过期，请重新登录后重试');
     }
     if (response.statusCode === 403) {
       // Refused, not signed out: the session stays as it is.
-      throw new ClassroomQueryError('HTTP', '教务系统拒绝了访问，请稍后重试，必要时通过校方网页更新会话');
+      throw new ClassroomQueryError('HTTP', '教务系统拒绝了访问，请稍后重试，必要时重新登录');
     }
     if (response.statusCode === 0) {
       throw new ClassroomQueryError('NETWORK', '无法连接教务系统，请检查网络后重试');

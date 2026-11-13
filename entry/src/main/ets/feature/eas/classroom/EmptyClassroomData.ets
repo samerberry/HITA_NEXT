@@ -96,7 +96,7 @@ export class EmptyClassroomData {
     const code: string = EmptyClassroomData.text(obj, ['code', 'statusCode']);
     if (obj['success'] === false || (code.length > 0 && code !== '0' && code !== '200')) {
       if (code === '401' || code === '403') {
-        throw new ClassroomQueryError('AUTH', '教务会话已过期，请按校方网页提示操作后重试');
+        throw new ClassroomQueryError('AUTH', '教务登录已过期，请重新登录后重试');
       }
       throw EmptyClassroomData.dataError();
     }

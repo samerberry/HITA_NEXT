@@ -108,7 +108,7 @@ struct PortalsPage {
           .margin({ top: HEADER_HEIGHT + 60 });
       } else if (this.groups.length === 0) {
         Column() {
-          Text('请先从“更多”顶部入口打开校方网页')
+          Text('请先登录教务系统')
             .fontSize(HitaDesign.body)
             .fontColor(COLOR_TEXT_SECONDARY);
         }

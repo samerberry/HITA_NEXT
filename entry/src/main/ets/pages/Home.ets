@@ -64,7 +64,6 @@ import { EasImportResult, EasTimetableImporter, EasTimetableUpdate } from '../fe
 import { TimetableUpdateDialog } from '../feature/timetable/views/TimetableUpdateDialog';
 import { EasUserMessages } from '../feature/eas/EasUserMessages';
 import { EasLoginPage } from '../feature/eas/webLogin/EasLoginPage';
-import { IcsImportResult, TimetableIcsImporter } from '../feature/timetable/data/TimetableIcsImporter';
 import { TimetableResolver } from '../feature/timetable/data/TimetableResolver';
 import { TimetableSelectionStore } from '../feature/timetable/data/TimetableSelectionStore';
 import { hasEveningCourse, eveningHintVisible } from '../feature/timetable/data/EveningCourseHint';
@@ -248,7 +247,6 @@ struct Home {
   @State currentTimetable: EasTimetable | undefined = undefined;
   @State recentTimetable: EasTimetable | undefined = undefined;
   @State importing: boolean = false;
-  @State importingTimetableFile: boolean = false;
   @State importMessage: string = '';
   @State importError: string = '';
   @State activeClass: EasEventItem | undefined = undefined;
@@ -263,6 +261,7 @@ struct Home {
   @State sessionSheetStatus: EasSessionStatus = EasSessionStatus.UNKNOWN;
   private sheetRequestGeneration: number = 0;
   private sessionSheetLoading: boolean = false;
+  private campusWebsiteNoticeOpen: boolean = false;
   @State loginSheetOpen: boolean = false;
   @State loginCampusCode: string = 'WEIHAI';
   @State courseSheetOpen: boolean = false;
@@ -1937,7 +1936,7 @@ struct Home {
 
   /** Summary of tomorrow's first class, shown once today is done. */
   private tomorrowText(): string {
-    if (!this.hasTimetable) return '导入数据或手动创建课表';
+    if (!this.hasTimetable) return '登录教务或手动创建课表';
     const start: number = new Date(new Date(this.nowTick).setHours(0, 0, 0, 0)).getTime() + DAY_MS;
     const classes: EasEventItem[] = this.timetableEvents.filter((event: EasEventItem): boolean =>
       event.type === EasEventType.CLASS && event.from >= start && event.from < start + DAY_MS);
@@ -2079,30 +2078,6 @@ struct Home {
     }
   }
 
-  private async importTimetableFile(): Promise<void> {
-    if (this.importingTimetableFile || !this.activeSheetVisible || !this.sessionSheetOpen) return;
-    const generation: number = this.sheetRequestGeneration;
-    this.importingTimetableFile = true;
-    try {
-      const context: common.UIAbilityContext = this.getUIContext().getHostContext() as common.UIAbilityContext;
-      const result: IcsImportResult | undefined = await TimetableIcsImporter.pickAndImport(context);
-      if (result === undefined || !this.pageVisible) return;
-      if (result.success) {
-        if (generation === this.sheetRequestGeneration && this.activeSheetVisible && this.sessionSheetOpen) {
-          this.closeActiveSheet();
-        }
-        void this.refreshSummaries().catch(() => {});
-      }
-      this.getUIContext().getPromptAction().showToast({ message: result.message });
-    } catch (_) {
-      if (this.pageVisible) {
-        this.getUIContext().getPromptAction().showToast({ message: '导入 ICS 文件失败，请重试' });
-      }
-    } finally {
-      this.importingTimetableFile = false;
-    }
-  }
-
   private beginSessionLogin(): void {
     if (!this.activeSheetVisible || !this.sessionSheetOpen) {
       return;
@@ -2127,7 +2102,7 @@ struct Home {
       this.closeActiveSheet();
     }
     await this.refreshSummaries();
-    this.getUIContext().getPromptAction().showToast({ message: '已删除' + Home.campusName(campus) + '会话及账号资料' });
+    this.getUIContext().getPromptAction().showToast({ message: '已退出' + Home.campusName(campus) + '教务会话' });
   }
 
   build() {
@@ -3304,7 +3279,7 @@ struct Home {
   @Builder
   emptyTimetableActions() {
     Row({ space: HitaDesign.gap }) {
-      HitaButton({ label: this.sessionInfo === undefined ? '导入数据' : '导入课表',
+      HitaButton({ label: this.sessionInfo === undefined ? '登录教务' : '导入课表',
         buttonHeight: HitaDesign.controlHeight, fitContent: true, onTap: () => {
           if (this.sessionInfo === undefined) {
             this.openSessionSheet();
@@ -3685,7 +3660,7 @@ struct Home {
                 this.openAcademicPanel(5);
               } });
             HitaListRow({ symbol: $r('sys.symbol.repeat_1'), title: '导入课表',
-              subtitle: this.importing ? '正在从教务导入课表' : '从教务导入当前学期课表', divider: true, onTap: () => {
+              subtitle: this.importing ? '正在从教务系统同步' : '从教务系统同步当前学期', divider: true, onTap: () => {
                 this.openImportTimetableSheet();
               } });
             HitaListRow({ symbol: $r('sys.symbol.calendar'),
@@ -3700,14 +3675,14 @@ struct Home {
           .backgroundColor(COLOR_CARD)
           .borderRadius(HitaDesign.cardRadius);
 
-          this.moreSectionTitle('辅助功能');
+          this.moreSectionTitle('教务功能');
           Column() {
             HitaListRow({ symbol: $r('sys.symbol.calendar'), title: '考试',
               subtitle: '查询教务考试或手动添加安排', onTap: () => {
                 this.openAcademicPanel(1);
               } });
             HitaListRow({ symbol: $r('sys.symbol.doc_plaintext'), title: '成绩管理',
-              subtitle: '按学期查询成绩、教务系统统计与本地均分', divider: true, onTap: () => {
+              subtitle: '按学期查询成绩、官方统计与本地均分', divider: true, onTap: () => {
                 this.openAcademicPanel(2);
               } });
             HitaListRow({ symbol: $r('sys.symbol.graduationcap'), title: '学分查询',
@@ -3977,10 +3952,11 @@ struct Home {
   userCard() {
     Row() {
       Column() {
-        SymbolGlyph($r('sys.symbol.download'))
+        Text(this.sessionInfo === undefined ? '?' :
+          (this.sessionInfo.name.length > 0 ? this.sessionInfo.name.substring(0, 1) : 'U'))
           .fontSize(HitaDesign.section)
-          .fontColor([$r('app.color.hita_on_primary')])
-          .accessibilityLevel('no');
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.hita_on_primary'));
       }
       .width(USER_AVATAR_SIZE)
       .height(USER_AVATAR_SIZE)
@@ -3991,26 +3967,25 @@ struct Home {
       .justifyContent(FlexAlign.Center)
       .alignItems(HorizontalAlign.Center);
       Column() {
-        Text(this.sessionInfo === undefined ? '导入数据' :
+        Text(this.sessionInfo === undefined ? '未登录教务' :
           this.sessionInfo.loginExpired ? '已过期教务' :
           (this.sessionInfo.name.length > 0 ? this.sessionInfo.name :
             (this.sessionInfo.username.length > 0 ? this.sessionInfo.username :
-              (this.sessionInfo.stuId.length > 0 ? this.sessionInfo.stuId : '已连接教务系统'))))
+              (this.sessionInfo.stuId.length > 0 ? this.sessionInfo.stuId : '已登录教务'))))
           .fontSize(HitaDesign.section)
           .fontWeight(FontWeight.Medium)
           .fontColor(COLOR_TEXT_PRIMARY);
-        if (this.sessionInfo !== undefined) {
-          Text(this.sessionInfo.loginExpired ? Home.campusName(this.sessionInfo.campus) :
-            ((this.sessionInfo.stuId.length > 0 ? this.sessionInfo.stuId + '\n' : '') +
-              Home.campusName(this.sessionInfo.campus) +
-              (this.sessionInfo.school.length > 0 ? ' · ' + this.sessionInfo.school : '') +
-              (this.sessionInfo.major.length > 0 ? ' · ' + this.sessionInfo.major : '')))
-            .fontSize(HitaDesign.caption)
-            .fontColor(COLOR_TEXT_SECONDARY)
-            .margin({ top: HitaDesign.space2xs })
-            .maxLines(2)
-            .textOverflow({ overflow: TextOverflow.Ellipsis });
-        }
+        Text(this.sessionInfo === undefined ? '点击进行教务登录' :
+          this.sessionInfo.loginExpired ? Home.campusName(this.sessionInfo.campus) + ' · 点击重新登录' :
+          ((this.sessionInfo.stuId.length > 0 ? this.sessionInfo.stuId + '\n' : '') +
+            Home.campusName(this.sessionInfo.campus) +
+            (this.sessionInfo.school.length > 0 ? ' · ' + this.sessionInfo.school : '') +
+            (this.sessionInfo.major.length > 0 ? ' · ' + this.sessionInfo.major : '')))
+          .fontSize(HitaDesign.caption)
+          .fontColor(COLOR_TEXT_SECONDARY)
+          .margin({ top: HitaDesign.space2xs })
+          .maxLines(2)
+          .textOverflow({ overflow: TextOverflow.Ellipsis });
       }
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start)
@@ -4121,6 +4096,26 @@ struct Home {
     return 'rgb(' + r.toString() + ',' + g.toString() + ',' + b.toString() + ')';
   }
 
+  private async showCampusWebsiteNotice(): Promise<void> {
+    if (!this.sessionSheetOpen || this.campusWebsiteNoticeOpen) return;
+    this.campusWebsiteNoticeOpen = true;
+    try {
+      await this.getUIContext().getPromptAction().showDialog({
+        title: '校方网页访问说明',
+        message: '你选择校区并打开教务入口后，HITA NEXT 会在应用内浏览器中加载校方网站提供的网页。' +
+          '网页上的校名、校徽等标识来自校方网站，表明当前网页的来源。账号验证和验证码校验由校方系统完成。' +
+          'HITA NEXT 使用校方登录会话读取所选校区的教务数据。\n\n' +
+          'HITA NEXT 是由学生独立开发和运营的第三方应用，技术支持由开发者提供。' +
+          '校方网页及其中标识的相关权利归各自权利人。',
+        buttons: [{ text: '知道了', color: COLOR_PRIMARY }]
+      });
+    } catch (_) {
+      // The system can dismiss the dialog without a button selection.
+    } finally {
+      this.campusWebsiteNoticeOpen = false;
+    }
+  }
+
   @Builder
   sessionSheet() {
     Column() {
@@ -4133,10 +4128,14 @@ struct Home {
           })
             .margin({ right: HitaDesign.spaceSm });
           Column() {
-            Text('导入数据')
+            Text('教务认证')
               .fontSize(HitaDesign.title)
               .fontWeight(FontWeight.Medium)
               .fontColor(COLOR_TEXT_PRIMARY);
+            Text(this.sessionSheetInfo === undefined ? '请登录教务账号以继续' : '当前教务会话')
+              .fontSize(HitaDesign.caption)
+              .fontColor(COLOR_TEXT_SECONDARY)
+              .margin({ top: HitaDesign.space2xs });
           }
           .layoutWeight(1)
           .alignItems(HorizontalAlign.Start);
@@ -4147,7 +4146,17 @@ struct Home {
       }
 
       Column() {
-        Text('选择校区')
+        HitaListRow({ symbol: $r('sys.symbol.info_circle'), title: '说明', subtitle: '校方网页来源与账号验证',
+          onTap: () => { void this.showCampusWebsiteNotice(); } });
+      }
+      .width('100%')
+      .backgroundColor(CompatibleSheetMaterial.cardColor($r('app.color.hita_surface_soft_f8fafd')))
+      .border({ width: 1, color: $r('app.color.hita_divider_e3eaf2') })
+      .borderRadius(HitaDesign.cardRadius)
+      .margin({ top: HitaDesign.spaceMd });
+
+      Column() {
+        Text('认证校区')
           .fontSize(HitaDesign.caption)
           .fontWeight(FontWeight.Medium)
           .fontColor(COLOR_TEXT_SECONDARY)
@@ -4215,8 +4224,7 @@ struct Home {
         .margin({ top: HitaDesign.spaceMd });
 
         if (this.sessionSheetStatus === EasSessionStatus.EXPIRED && this.sessionSheetInfo.expiredReason.length > 0) {
-          Text('失效原因：' + this.sessionSheetInfo.expiredReason
-            .replace('未登录', '会话不可用').replace('登录失效', '会话失效').replace('登录', '访问'))
+          Text('失效原因：' + this.sessionSheetInfo.expiredReason)
             .fontSize(HitaDesign.caption)
             .fontColor(COLOR_TEXT_HINT)
             .width('100%')
@@ -4226,11 +4234,11 @@ struct Home {
         }
 
         Row({ space: HitaDesign.gap }) {
-          HitaButton({ label: '重新导入', variant: HitaButtonVariant.SECONDARY, onTap: () => {
+          HitaButton({ label: '重新登录', variant: HitaButtonVariant.SECONDARY, onTap: () => {
             this.beginSessionLogin();
           } })
             .layoutWeight(1);
-          HitaButton({ label: '删除数据', variant: HitaButtonVariant.DANGER, onTap: () => {
+          HitaButton({ label: '退出登录', variant: HitaButtonVariant.DANGER, onTap: () => {
             this.logoutSession();
           } })
             .layoutWeight(1);
@@ -4238,17 +4246,54 @@ struct Home {
         .width('100%')
         .margin({ top: HitaDesign.gap });
       } else {
-        HitaButton({ label: '重新导入', variant: HitaButtonVariant.PRIMARY, onTap: () => {
-          this.beginSessionLogin();
-        } })
-          .width('100%')
-          .margin({ top: HitaDesign.spaceMd });
-      }
+        Column() {
+          Row() {
+            Stack() {
+              SymbolGlyph($r('sys.symbol.lock_shield'))
+                .fontSize(HitaDesign.iconMd)
+                .fontColor([COLOR_PRIMARY]);
+            }
+            .width(HitaDesign.listIconSize)
+            .height(HitaDesign.listIconSize)
+            .borderRadius(HitaDesign.listIconSize / 2)
+            .backgroundColor(COLOR_NAV_ACTIVE)
+            .alignContent(Alignment.Center);
+            Column() {
+              Text('登录教务系统')
+                .fontSize(HitaDesign.body)
+                .fontWeight(FontWeight.Medium)
+                .fontColor(COLOR_TEXT_PRIMARY);
+            }
+            .layoutWeight(1)
+            .alignItems(HorizontalAlign.Start)
+            .margin({ left: HitaDesign.spaceSm });
+          }
+          .width('100%');
 
-      HitaButton({ label: '从本地导入数据', variant: HitaButtonVariant.SECONDARY,
-        disabled: this.importingTimetableFile, onTap: () => { void this.importTimetableFile(); } })
+          HitaButton({ label: '网页登录', variant: HitaButtonVariant.PRIMARY, onTap: () => {
+            this.beginSessionLogin();
+          } })
+            .width('100%')
+            .margin({ top: HitaDesign.spaceMd });
+
+          Row() {
+            SymbolGlyph($r('sys.symbol.lock_shield'))
+              .fontSize(HitaDesign.iconSm)
+              .fontColor([COLOR_TEXT_HINT]);
+            Text('HITA 不保存您的教务密码')
+              .fontSize(HitaDesign.caption)
+              .fontColor(COLOR_TEXT_HINT)
+              .margin({ left: HitaDesign.spaceXs });
+          }
+          .margin({ top: HitaDesign.gap });
+        }
         .width('100%')
-        .margin({ top: HitaDesign.gap });
+        .padding(HitaDesign.inset)
+        .backgroundColor(CompatibleSheetMaterial.cardColor($r('app.color.hita_surface_soft_f8fafd')))
+        .border({ width: 1, color: $r('app.color.hita_divider_e3eaf2') })
+        .borderRadius(HitaDesign.cardRadius)
+        .margin({ top: HitaDesign.spaceMd });
+      }
     }
     .width('100%')
     .padding({ left: HitaDesign.inset, right: HitaDesign.inset, top: 0, bottom: HitaDesign.spaceLg })

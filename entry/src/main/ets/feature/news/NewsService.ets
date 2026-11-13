@@ -87,7 +87,7 @@ export class NewsService {
         usingCache: false
       });
       if (resp.responseCode === 401 || resp.responseCode === 403) {
-        result.message = '请按通知网站的页面提示操作后返回重试';
+        result.message = '通知网站需要认证，请打开通知网站完成认证后返回重试';
         return result;
       }
       if (resp.responseCode < 200 || resp.responseCode >= 300) {
@@ -96,7 +96,7 @@ export class NewsService {
       }
       const body: string = resp.result === undefined || resp.result === null ? '' : String(resp.result);
       if (/<title[^>]*>[^<]*(?:统一身份认证|用户登录)|<form\b[^>]*action=["'][^"']*authserver\/login/i.test(body)) {
-        result.message = '请按通知网站的页面提示操作后返回重试';
+        result.message = '通知网站需要认证，请打开通知网站完成认证后返回重试';
         return result;
       }
       try {

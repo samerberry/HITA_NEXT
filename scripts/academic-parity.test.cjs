@@ -147,7 +147,7 @@ test('changing term/type discards old in-flight results and failures; leaving pa
 
 test('score errors never reveal raw server content or internal paths', () => {
   assert.doesNotMatch(scores.scoreErrorMessage('HTTP 500 private/path user=abc'), /private|abc|500/);
-  assert.equal(scores.scoreErrorMessage('教务会话已失效，请重新登录'), '教务会话已过期，请按校方网页提示操作后重试');
+  assert.match(scores.scoreErrorMessage('教务会话已失效，请重新登录'), /重新登录/);
 });
 
 test('evening hint includes exams, respects the displayed week and the 18:30 boundary', () => {

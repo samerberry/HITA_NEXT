@@ -279,9 +279,9 @@ export struct ExamPage {
       return;
     }
     if (this.session === undefined) {
-      this.queryMsg = '请先从“更多”顶部入口打开校方网页';
+      this.queryMsg = '请先登录教务';
       this.queryWarning = true;
-      this.getUIContext().getPromptAction().showToast({ message: this.queryMsg });
+      this.getUIContext().getPromptAction().showToast({ message: '请先登录教务后再查询考试' });
       return;
     }
     const session: EasSession = this.session;
@@ -577,7 +577,7 @@ export struct ExamPage {
             .width('100%')
             .textAlign(TextAlign.Center)
           Text(this.queryMsg.length > 0 ? this.queryMsg :
-            (this.hasSession ? '可点右上角“查询”刷新，或手动添加考试' : '可手动添加考试，或从校方教务系统查询'))
+            (this.hasSession ? '可点右上角“查询”刷新，或手动添加考试' : '登录教务后可查询考试，也可手动添加'))
             .fontSize(HitaDesign.caption)
             .fontColor(this.queryWarning ? $r('app.color.hita_error') : $r('app.color.hita_text_secondary_808080'))
             .width('100%')

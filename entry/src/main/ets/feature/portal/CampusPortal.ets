@@ -101,7 +101,7 @@ export class CampusPortal {
       new CampusPortal('VPN', 'https://ivpn.hitwh.edu.cn'),
       new CampusPortal('数据库VPN', 'https://webvpn.hitwh.edu.cn'),
       new CampusPortal('办公系统', 'http://oa.hitwh.edu.cn/'),
-      new CampusPortal('校方网页', 'https://ids.hit.edu.cn/authserver/login', $r('sys.symbol.lock_shield')),
+      new CampusPortal('身份认证', 'https://ids.hit.edu.cn/authserver/login', $r('sys.symbol.lock_shield')),
       new CampusPortal('电子邮箱', 'https://mail.hit.edu.cn')
     ]),
     new CampusPortalGroup('资源', [

@@ -26,7 +26,6 @@ function harness() {
     loadLast: async () => 'WEIHAI',
     load: async campus => ({ campus, name: 'Current session' }),
     clear: async () => {},
-    pickIcs: async () => undefined,
     checks: [],
     verify: async () => Status.CONNECTED
   };
@@ -37,7 +36,6 @@ function harness() {
   };
   const context = {
     setKeyboardAvoidMode() {},
-    getHostContext: () => ({}),
     getPromptAction: () => ({ showToast: item => state.toasts.push(item.message) }),
     getRouter: () => ({ getState: () => ({ name: state.topPage }) })
   };
@@ -61,7 +59,6 @@ function harness() {
       courseSheetOpen = false;
       calendarExportSheetOpen = false;
       sessionSheetLoading = false;
-      importingTimetableFile = false;
       sheetRequestGeneration = 0;
       sessionSheetCampus = 'WEIHAI';
       sessionSheetInfo;
@@ -93,14 +90,12 @@ function harness() {
   }).outputText;
   const page = new Function('context', 'EasSessionStore', 'EasCampus', 'KeyboardAvoidMode',
     'TAB_TIMETABLE', 'EasSessionStatus', 'EasDataProvider', 'EasApiClient', 'Status', 'EasWebLoginState',
-    'TimetableIcsImporter',
     compiled + '; return new Home();')(
     context, { getInstance: () => store },
     { WEIHAI: 'WEIHAI', BENBU: 'BENBU', SHENZHEN: 'SHENZHEN' }, { OFFSET: 0 }, 1,
     Status, class {
       async checkSessionStatus(session) { state.checks.push(session); return state.verify(session); }
-    }, class {}, Status, { clear: async () => { state.webCleared++; } },
-    { pickAndImport: (...args) => state.pickIcs(...args) });
+    }, class {}, Status, { clear: async () => { state.webCleared++; } });
   return { page, state };
 }
 
@@ -230,47 +225,6 @@ test('late campus selection and login clicks cannot update or reopen a dismissed
   pending.resolve({ campus: 'BENBU', name: 'Late' });
   await selecting;
   assert.equal(page.sessionSheetInfo, undefined);
-});
-
-test('the import sheet opens one file picker, stays open on cancellation and refreshes after a new import', async () => {
-  const { page, state } = harness();
-  await page.openSessionSheet();
-  const pending = deferred();
-  const requests = [];
-  state.pickIcs = (...args) => {
-    requests.push(args);
-    return pending.promise;
-  };
-  const importing = page.importTimetableFile();
-  await page.importTimetableFile();
-  assert.deepEqual(requests, [[{}]], 'no target timetable is passed to the importer');
-  pending.resolve(undefined);
-  await importing;
-  assert.equal(page.activeSheetVisible, true);
-  assert.deepEqual(state.toasts, []);
-
-  let refreshes = 0;
-  page.refreshSummaries = async () => { refreshes++; };
-  state.pickIcs = async () => ({ success: true, message: 'Imported' });
-  await page.importTimetableFile();
-  assert.equal(page.activeSheetVisible, false);
-  assert.equal(refreshes, 1);
-  assert.deepEqual(state.toasts, ['Imported']);
-});
-
-test('a completed file import does not close a reopened import sheet', async () => {
-  const { page, state } = harness();
-  await page.openSessionSheet();
-  const pending = deferred();
-  state.pickIcs = () => pending.promise;
-  const importing = page.importTimetableFile();
-  page.willDisappear();
-  page.didDisappear();
-  await page.openSessionSheet();
-  pending.resolve({ success: true, message: 'Imported' });
-  await importing;
-  assert.equal(page.activeSheetVisible, true);
-  assert.equal(page.importingTimetableFile, false);
 });
 
 test('going to the background keeps an open sheet, while a pushed page still closes it', async () => {

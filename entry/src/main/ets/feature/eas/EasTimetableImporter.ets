@@ -95,7 +95,7 @@ export class EasTimetableImporter {
       await rdb.init(context);
       const session: EasSession | undefined = await EasSessionStore.getInstance().loadPreferred();
       if (session === undefined) {
-        result.message = '请先从“更多”顶部入口打开校方网页';
+        result.message = '请先登录统一身份认证';
         return result;
       }
       if (studentType !== undefined && studentType.length > 0) {

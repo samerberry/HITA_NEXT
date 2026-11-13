@@ -69,13 +69,13 @@ export struct ImportTimetablePanel {
     const campus: EasCampus | undefined = await EasSessionStore.getInstance().loadLastCampus();
     if (campus === undefined) {
       this.loading = false;
-      this.error = '请先从“更多”顶部入口打开校方网页';
+      this.error = '请先登录教务系统';
       return;
     }
     this.session = await EasSessionStore.getInstance().load(campus);
     if (this.session === undefined || !this.session.isLogin()) {
       this.loading = false;
-      this.error = '请先从“更多”顶部入口打开校方网页';
+      this.error = '请先登录教务系统';
       return;
     }
     try {

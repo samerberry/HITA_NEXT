@@ -224,7 +224,7 @@ test('expiry from optional endpoints propagates and stops requests; cached expir
   const expired = session(); expired.loginExpired = true;
   await assert.rejects(service.query(expired, term('1')), /会话已失效/);
   assert.equal(calls.length, 0);
-  assert.equal(creditErrorMessage('教务会话已失效，请重新登录'), '教务会话已过期，请按校方网页提示操作后重试');
+  assert.match(creditErrorMessage('教务会话已失效，请重新登录'), /登录已过期/);
   assert.doesNotMatch(creditErrorMessage('private-cookie server stack'), /private|cookie|stack/);
 });
 
