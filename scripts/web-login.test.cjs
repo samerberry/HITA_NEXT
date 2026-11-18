@@ -12,7 +12,7 @@ function setup(apiVersion = 26) {
   const cache = new Map();
   const state = { now: 10000, syncReads: 0, reads: 0, cookie: '', navigations: [],
     finished: [], errors: [], scripts: [], progress: [], requests: 0, exchanges: 0,
-    resetCookies: 0, resetStorage: 0, allReads: 0 };
+    resetCookies: 0, resetStorage: 0, allReads: 0, userAgents: [] };
   let timerId = 0;
   const setTimer = (callback, delay) => {
     const id = ++timerId;
@@ -22,8 +22,9 @@ function setup(apiVersion = 26) {
   const clearTimer = id => timers.delete(id);
   const clock = class extends Date { static now() { return state.now; } };
   const web = {
-    getUserAgent: () => 'test UA', setCustomUserAgent() {},
-    loadUrl: url => state.navigations.push(url), refresh() {}, stop() {}, removeCache() {},
+    getUserAgent: () => 'test UA', setCustomUserAgent: value => state.userAgents.push(value),
+    loadUrl: url => { state.navigations.push(url); if (state.onNavigate) state.onNavigate(url); },
+    refresh() {}, stop() {}, removeCache() {},
     runJavaScript: async script => { state.scripts.push(script); return 'false'; },
     accessBackward: () => false,
     getUrl: () => state.currentUrl ?? ''
@@ -79,10 +80,10 @@ function setup(apiVersion = 26) {
     file = path.resolve(root, file);
     if (cache.has(file)) return cache.get(file).exports;
     let source = fs.readFileSync(file, 'utf8');
-    if (file.endsWith('EasLoginPage.ets')) {
+    if (file.endsWith('EasLoginPage.ets') || file.endsWith('EasLocalDataConfirmation.ets')) {
       source = source.slice(0, source.indexOf('\n  build()')) + '\n}';
       source = source.replace(/^@Component\r?\n/gm, '')
-        .replace(/@(State|Prop|StorageProp)(\([^)]*\))?\s+/g, '')
+        .replace(/@(State|Prop|StorageProp|Watch)(\([^)]*\))?\s+/g, '')
         .replace('export struct ', 'export class ');
     }
     const mod = { exports: {} };
@@ -196,12 +197,11 @@ test('cookie probes never use synchronous reads on the UI thread', async () => {
   ctrl.stop();
 });
 
-test('verification has no native overlay, code field or scripted send/submit bridge', () => {
+test('school login uses the actual Web with no native credential fields or prefill bridge', () => {
   const login = fs.readFileSync(path.join(root, 'feature/eas/webLogin/EasLoginPage.ets'), 'utf8');
-  const controller = fs.readFileSync(path.join(root, 'feature/eas/webLogin/EasWebLoginController.ets'), 'utf8');
-  assert.doesNotMatch(login, /EasMfa|mfaState|mfaInput|mfaBusy|TextInput\s*\(/);
-  assert.doesNotMatch(controller, /EasWebMfaBridge|scheduleMfaDetection|submitMfaInput|sendMfaCode|switchMfaMethod/);
-  assert.equal(fs.existsSync(path.join(root, 'feature/eas/webLogin/EasWebMfaBridge.ets')), false);
+  assert.match(login, /Web\(\{ src: this\.initialUrl, controller: this\.webController \}\)/);
+  assert.doesNotMatch(login, /TextInput|fillCredentials|EasLocalDataConfirmation|DemoAccount|\.opacity\(0\)/);
+  assert.match(login, /\.onConsole\(\(\) => true\)/);
   assert.match(login, /\.javaScriptAccess\(true\)/);
   assert.match(login, /\.onPageEnd\(/);
   assert.match(login, /\.onLoadFinished\(/);
@@ -209,7 +209,7 @@ test('verification has no native overlay, code field or scripted send/submit bri
 
 for (const api of [23, 26]) {
   for (const campus of ['BENBU', 'WEIHAI', 'SHENZHEN']) {
-    test(`${campus} API ${api}: verification stays in the webpage and its successful redirect completes login`, async () => {
+    test(`${campus} API ${api}: controller waits for school verification and only its successful redirect completes login`, async () => {
       const h = setup(api);
       const { ctrl, state, urls, page, tick } = h;
       const authBase = campus === 'BENBU' ? 'https://ids.hit.edu.cn' :
@@ -252,7 +252,7 @@ for (const api of [23, 26]) {
   }
 }
 
-test('loading a verification page dismisses the loading cover without a second native prompt', async () => {
+test('loading a verification page clears the page-load timeout without premature session checks', async () => {
   const h = setup();
   const page = loginPage(h);
   const url = 'https://webvpn.hitwh.edu.cn/authserver/reAuthCheck/index';
@@ -404,7 +404,7 @@ test('Weihai reauthentication and unrelated sites cannot be success pages even w
 function loginPage(harness) {
   const { EasLoginPage } = harness.load('feature/eas/webLogin/EasLoginPage.ets');
   const page = new EasLoginPage();
-  page.getUIContext = () => ({ getPromptAction: () => ({
+  page.getUIContext = () => ({ getHostContext: () => ({}), getPromptAction: () => ({
     showDialog: async () => ({ index: 0 })
   }) });
   page.campusCode = 'WEIHAI';
@@ -412,7 +412,51 @@ function loginPage(harness) {
   return page;
 }
 
-test('a page that never finishes loading releases the overlay and offers recovery', async () => {
+function deactivatePage(page) {
+  page.active = false;
+  page.onActiveChanged();
+}
+
+test('a verified web session is saved and reported only once', async () => {
+  const h = setup();
+  const { EasSessionStore } = h.load('feature/eas/EasSessionStore.ets');
+  const store = EasSessionStore.getInstance();
+  const saved = [];
+  store.init = async () => {};
+  store.save = async session => { saved.push(session); return true; };
+  const page = loginPage(h);
+  const completed = [];
+  page.onLoggedIn = session => completed.push(session);
+  const session = { campus: 'WEIHAI' };
+  page.loginController.onFinished(session);
+  page.loginController.onFinished(session);
+  await flush();
+  assert.deepEqual(saved, [session]);
+  assert.deepEqual(completed, [session]);
+  page.aboutToDisappear();
+});
+
+test('closing while a verified session initializes does not save or notify the closed page', async () => {
+  const h = setup();
+  const { EasSessionStore } = h.load('feature/eas/EasSessionStore.ets');
+  const store = EasSessionStore.getInstance();
+  let release;
+  let saves = 0;
+  let completions = 0;
+  store.init = () => new Promise(resolve => { release = resolve; });
+  store.save = async () => { saves++; return true; };
+  const page = loginPage(h);
+  page.onLoggedIn = () => { completions++; };
+  page.loginController.onFinished({ fixture: true });
+  deactivatePage(page);
+  release();
+  await flush();
+  assert.equal(saves, 0);
+  assert.equal(completions, 0);
+  assert.equal(h.timers.size, 0);
+});
+
+test('a page-load timeout keeps the Web available for recovery', async () => {
   const h = setup();
   const page = loginPage(h);
   page.watchPageLoad(h.urls.WEIHAI_LOGIN);
@@ -443,14 +487,14 @@ test('recovery waits for a blank page before clearing only Web storage and resta
   page.aboutToDisappear();
 });
 
-test('reset completion after cancelling the login window cannot reopen it', async () => {
+test('reset completion after closing the login window cannot reopen it', async () => {
   const h = setup();
   let resolve;
   h.state.clearCookies = () => new Promise(done => { resolve = done; });
   const page = loginPage(h);
   page.beginRecovery();
   page.pageEnded('about:blank');
-  page.cancelLogin();
+  deactivatePage(page);
   resolve();
   await flush();
   assert.deepEqual(h.state.navigations, ['about:blank']);
@@ -458,7 +502,7 @@ test('reset completion after cancelling the login window cannot reopen it', asyn
   assert.equal(h.timers.size, 0);
 });
 
-test('a hung reset times out without leaving the login window busy forever', async () => {
+test('a hung reset times out without leaving the Web disabled forever', async () => {
   const h = setup();
   h.state.clearCookies = () => new Promise(() => {});
   const page = loginPage(h);
@@ -891,4 +935,55 @@ test('a stalled electronic token request cannot extend the shared experiment dea
   await flush();
   assert.equal(h.state.finished.length, 1);
   assert.equal(h.state.finished[0].electronicExpToken, '');
+});
+
+function localDataConfirmation(h) {
+  const { EasLocalDataConfirmation } = h.load('feature/eas/demo/EasLocalDataConfirmation.ets');
+  const panel = new EasLocalDataConfirmation();
+  panel.getUIContext = () => ({ getHostContext: () => ({}) });
+  return panel;
+}
+
+test('confirming enables exactly one local session with no account fields or network requests', async () => {
+  const source = fs.readFileSync(path.join(root, 'feature/eas/demo/EasLocalDataConfirmation.ets'), 'utf8');
+  assert.match(source, /确认使用本地数据/);
+  assert.doesNotMatch(source, /TextInput|password|username/);
+  const h = setup();
+  const { EasSessionStore } = h.load('feature/eas/EasSessionStore.ets');
+  const store = EasSessionStore.getInstance();
+  const panel = localDataConfirmation(h);
+  panel.campus = 'WEIHAI';
+  const saved = [];
+  const completed = [];
+  store.init = async () => {};
+  store.save = async session => { saved.push(session); return true; };
+  panel.onConfirmed = session => completed.push(session);
+  assert.equal(saved.length, 0);
+  await Promise.all([panel.confirm(), panel.confirm()]);
+  assert.equal(saved.length, 1);
+  assert.deepEqual(completed, saved);
+  assert.equal(saved[0].demoMode, true);
+  assert.equal(saved[0].campus, 'WEIHAI');
+  assert.equal(saved[0].username, '');
+  assert.equal(saved[0].password, '');
+  assert.equal(h.state.navigations.length, 0);
+  assert.equal(h.state.requests, 0);
+});
+
+test('closing confirmation during preparation discards the pending change', async () => {
+  for (const dismiss of [panel => { panel.active = false; }, panel => panel.aboutToDisappear()]) {
+    const h = setup();
+    const { EasSessionStore } = h.load('feature/eas/EasSessionStore.ets');
+    const store = EasSessionStore.getInstance();
+    let release;
+    let saves = 0;
+    store.init = () => new Promise(resolve => { release = resolve; });
+    store.save = async () => { saves++; return true; };
+    const panel = localDataConfirmation(h);
+    const pending = panel.confirm();
+    dismiss(panel);
+    release();
+    await pending;
+    assert.equal(saves, 0);
+  }
 });

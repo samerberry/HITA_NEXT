@@ -76,10 +76,12 @@ test('export uses the current timetable rather than the first row and handles mi
 
 const home = fs.readFileSync(path.resolve(__dirname, '../entry/src/main/ets/pages/Home.ets'), 'utf8');
 const homeMethod = (start, end) => home.slice(home.indexOf(start), home.indexOf(end, home.indexOf(start)));
+const DEMO_CODE = 'DEMO:SHENZHEN:2026-20271';
 
 function summaryHarness() {
   const table = id => ({ id, name: id, code: 'LOCAL:' + id, startTime: 0, getWeekNumber: () => 1 });
-  const state = { tables: ['a', 'b', 'c'].map(table), selectedId: 'a', events: async () => [] };
+  const state = { tables: ['a', 'b', 'c'].map(table), selectedId: 'a', events: async () => [],
+    session: undefined, imports: [], import: async () => {} };
   const rdb = {
     init: async () => {},
     getTimetables: async () => state.tables.slice(),
@@ -98,6 +100,7 @@ function summaryHarness() {
     courseDeleteEffects = { resume() {} };
     getUIContext() { return { getHostContext: () => ({}), setKeyboardAvoidMode() {} }; }
     startClock() {}
+    updateHomeKeyboardAvoidMode() {}
     startDockHandedness() {}
     checkTimetableUpdate() {}
     async openPendingReminder() {}
@@ -111,16 +114,23 @@ function summaryHarness() {
   }`;
   const page = new Function('RdbHelper', 'EasSessionStore', 'TimetableSelectionStore', 'TimetableResolver',
     'EasEventType', 'DAY_MS', 'KeyboardAvoidMode', 'WidgetBackgroundStore', 'NextClassWidgetService', 'CalendarSyncStore',
+    'DemoTimetableData',
     ts.transpileModule(code, {
       compilerOptions: { target: ts.ScriptTarget.ES2020 }
     }).outputText + '; return new Home();')(
     { getInstance: () => rdb },
-    { getInstance: () => ({ loadPreferred: async () => undefined }) },
+    { getInstance: () => ({ loadPreferred: async () => state.session }) },
     { getInstance: () => ({
       load: async () => state.selectedId,
       clearIf: async id => { if (state.selectedId === id) state.selectedId = ''; }
     }) }, module.exports.TimetableResolver, { EXAM: 'EXAM' }, 86400000, { NONE: 0 },
-    { hasBackground: () => false }, { scheduleRefresh() {} }, { getInstance: () => ({ enabled: async () => false }) });
+    { hasBackground: () => false }, { scheduleRefresh() {} }, { getInstance: () => ({ enabled: async () => false }) },
+    { CODE: DEMO_CODE });
+  page.importTimetable = async showToast => {
+    page.importRequested = true;
+    state.imports.push(showToast);
+    await state.import(page);
+  };
   return { page, state, table };
 }
 
@@ -166,9 +176,68 @@ test('a refresh started before deletion cannot restore the old count after retur
   assert.equal(page.hasTimetable, false);
 });
 
+test('demo recent timetable is selected by account even when real terms start later or on the same date', async () => {
+  for (const realStart of [100, 200]) {
+    const { page, state, table } = summaryHarness();
+    const real = { ...table('real'), code: 'SHENZHEN:2026-20271', startTime: realStart };
+    const demo = { ...table('demo'), code: DEMO_CODE, startTime: 100 };
+    state.tables = [real, demo];
+    state.selectedId = demo.id;
+    state.session = { demoMode: true };
+    await page.onPageShow();
+    assert.equal(page.recentTimetable.id, demo.id);
+    assert.equal(page.currentTimetable.id, demo.id);
+    assert.deepEqual(state.imports, []);
+  }
+});
+
+test('restart restores a missing demo timetable despite another account having a saved selected timetable', async () => {
+  const { page, state, table } = summaryHarness();
+  const real = { ...table('real'), code: 'SHENZHEN:2026-20271', startTime: 200 };
+  const demo = { ...table('demo'), code: DEMO_CODE, startTime: 100 };
+  state.tables = [real];
+  state.selectedId = real.id;
+  state.session = { demoMode: true };
+  state.import = async host => {
+    state.tables.push(demo);
+    state.selectedId = demo.id;
+    await host.refreshSummaries();
+  };
+  await page.onPageShow();
+  assert.deepEqual(state.imports, [false]);
+  assert.equal(page.recentTimetable.id, demo.id);
+  assert.equal(page.currentTimetable.id, demo.id);
+  assert.equal(page.timetableCount, 2);
+  assert.equal(state.tables[0], real, 'restoration leaves real timetable data intact');
+});
+
+test('a failed demo restoration is bounded instead of reimporting on every summary refresh', async () => {
+  const { page, state, table } = summaryHarness();
+  state.tables = [{ ...table('real'), code: 'SHENZHEN:2026-20271' }];
+  state.selectedId = 'real';
+  state.session = { demoMode: true };
+  await page.refreshSummaries();
+  await page.refreshSummaries();
+  assert.deepEqual(state.imports, [false]);
+  assert.equal(page.recentTimetable, undefined, 'cannot substitute the real account for a missing demo');
+});
+
+test('ordinary accounts retain latest-started recent semantics independently of the selected timetable', async () => {
+  const { page, state, table } = summaryHarness();
+  const recent = { ...table('recent'), code: 'WEIHAI:2026-20271', startTime: 200 };
+  const selected = { ...table('selected'), code: 'SHENZHEN:2025-20261', startTime: 100 };
+  state.tables = [recent, selected];
+  state.selectedId = selected.id;
+  state.session = { demoMode: false };
+  await page.onPageShow();
+  assert.equal(page.recentTimetable.id, recent.id);
+  assert.equal(page.currentTimetable.id, selected.id);
+  assert.deepEqual(state.imports, []);
+});
+
 test('More shortcuts bind changing count and recent name by reference instead of freezing builder values', () => {
   assert.match(home, /moreShortcut\(options: MoreShortcutOptions\)/);
-  assert.match(home, /this\.moreShortcut\(\{\s*symbol: [^\n]+\s*title: '最近课表',\s*subtitle: this\.recentTimetable/);
+  assert.match(home, /this\.moreShortcut\(\{\s*symbol: [^\n]+\s*title: '最近课表',\s*subtitle: this\.importing \? '[^']*' :\s*this\.recentTimetable/);
   assert.match(home, /this\.moreShortcut\(\{\s*symbol: [^\n]+\s*title: '课表管理',\s*subtitle: this\.timetableCount/);
   const builder = homeMethod('  moreShortcut(', '  moreSectionTitle(');
   assert.match(builder, /Text\(options\.subtitle\)/);

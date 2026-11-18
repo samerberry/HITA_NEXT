@@ -117,7 +117,7 @@ test('pages brought onto the scale keep 4 vp spacing and token sizes', () => {
   const home = read('pages/Home.ets');
   const pilot = ['tabToday', 'todayHeader', 'todayHeroCard', 'todayExamCard', 'todaySectionHeader', 'emptyToday',
     'eventRow', 'tabMine', 'desktopWidgetSettings', 'appearanceSettings', 'appearanceOption', 'userCard',
-    'sessionSheet', 'sessionCampusButton', 'moreShortcut', 'moreSectionTitle', 'classReminderSettings'];
+    'sessionSheet', 'sessionAccountPanel', 'sessionCampusButton', 'moreShortcut', 'moreSectionTitle', 'classReminderSettings'];
   for (const name of pilot) {
     const source = builder(home, name);
     assert.deepEqual(offGrid(source), [], `${name}: spacing off the 4 vp grid`);
@@ -131,7 +131,7 @@ test('pages brought onto the scale keep 4 vp spacing and token sizes', () => {
   assert.doesNotMatch(home, /moreNavigationRow/);
   assert.match(builder(home, 'eventRow'), /HitaTag\(\{ text: Home\.todayChipText/);
   assert.match(builder(home, 'todayExamCard'), /HitaTag\(\{ text: Home\.examDistanceText\(exam, this\.nowTick\), tone: HitaTagTone\.EXAM \}\)/);
-  assert.match(builder(home, 'sessionSheet'), /HitaTag\(\{ text: this\.sessionSheetStatus/);
+  assert.match(builder(home, 'sessionAccountPanel'), /HitaTag\(\{ text: .*this\.sessionSheetStatus/);
   // List group headings are quieter than the 22 fp page title.
   assert.match(builder(home, 'moreSectionTitle'),
     /\.fontSize\(HitaDesign\.caption\)\s*\.fontWeight\(FontWeight\.Medium\)\s*\.fontColor\(COLOR_TEXT_SECONDARY\)/);

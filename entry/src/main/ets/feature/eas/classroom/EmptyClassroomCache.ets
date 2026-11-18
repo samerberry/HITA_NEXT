@@ -1,6 +1,7 @@
 import { preferences } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
 import { EasSession } from '../EasSession';
+import { DemoAccount } from '../demo/DemoAccount';
 import { EasTermItem } from '../model/EasModels';
 import { ClassroomBuilding, ClassroomRoom } from './EmptyClassroomData';
 
@@ -23,7 +24,8 @@ export class EmptyClassroomCache {
   }
 
   static key(session: EasSession, term: EasTermItem, building: ClassroomBuilding, week: number): string {
-    return JSON.stringify([session.campus, session.getStudentType(), session.stuId || session.username,
+    const scope: string = DemoAccount.isSession(session) ? 'demo-v1:' : '';
+    return scope + JSON.stringify([session.campus, session.getStudentType(), session.stuId || session.username,
       term.getCode(), building.area, building.id, week.toString()]);
   }
 

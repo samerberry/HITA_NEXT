@@ -4,8 +4,6 @@ import { AbilityConstant, common, Configuration, UIAbility, Want } from '@kit.Ab
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { display, window } from '@kit.ArkUI';
 import {
-  KEYBOARD_INSET_FALLBACK,
-  KEYBOARD_INSET_KEY,
   NAV_BAR_INSET_FALLBACK,
   NAV_BAR_INSET_KEY,
   STATUS_BAR_INSET_FALLBACK,
@@ -28,7 +26,6 @@ export default class EntryAbility extends UIAbility {
     hilog.info(DOMAIN, TAG, 'Ability onCreate');
     AppStorage.setOrCreate(STATUS_BAR_INSET_KEY, STATUS_BAR_INSET_FALLBACK);
     AppStorage.setOrCreate(NAV_BAR_INSET_KEY, NAV_BAR_INSET_FALLBACK);
-    AppStorage.setOrCreate(KEYBOARD_INSET_KEY, KEYBOARD_INSET_FALLBACK);
     AppearanceStore.getInstance().initialize(this.context);
     this.startup = BackupService.recover(this.context).then((): boolean => true, (error: Error): boolean => {
       // The journal stays for the next launch to retry; the app still opens instead of a blank window.
@@ -126,14 +123,10 @@ export default class EntryAbility extends UIAbility {
       await mainWindow.setWindowLayoutFullScreen(true);
       AppearanceStore.getInstance().attachWindow(mainWindow);
       this.captureSystemInsets(mainWindow);
-      this.captureKeyboardInset(mainWindow);
       mainWindow.on('avoidAreaChange', (data: window.AvoidAreaOptions) => {
         if (data.type === window.AvoidAreaType.TYPE_SYSTEM ||
           data.type === window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR) {
           this.captureSystemInsets(mainWindow);
-        }
-        if (data.type === window.AvoidAreaType.TYPE_KEYBOARD) {
-          this.captureKeyboardInset(mainWindow);
         }
       });
     } catch (e) {
@@ -167,21 +160,6 @@ export default class EntryAbility extends UIAbility {
     }
     AppStorage.setOrCreate(STATUS_BAR_INSET_KEY, topVp);
     AppStorage.setOrCreate(NAV_BAR_INSET_KEY, bottomVp);
-  }
-
-  private captureKeyboardInset(mainWindow: window.Window): void {
-    let keyboardVp: number = KEYBOARD_INSET_FALLBACK;
-    try {
-      const density: number = display.getDefaultDisplaySync().densityPixels;
-      const keyboardArea: window.AvoidArea = mainWindow.getWindowAvoidArea(window.AvoidAreaType.TYPE_KEYBOARD);
-      const keyboardPx: number = keyboardArea.bottomRect.height;
-      if (keyboardPx > 0 && density > 0) {
-        keyboardVp = keyboardPx / density;
-      }
-    } catch (_) {
-      keyboardVp = KEYBOARD_INSET_FALLBACK;
-    }
-    AppStorage.setOrCreate(KEYBOARD_INSET_KEY, keyboardVp);
   }
 
   onWindowStageDestroy(): void {

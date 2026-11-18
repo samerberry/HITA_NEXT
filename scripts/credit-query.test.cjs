@@ -54,6 +54,43 @@ const groups = [{ kzid: 'ROOT', fkzid: '-1', title: '无', children: [
   { kzid: 'TRACK', fkzid: 'ROOT', title: '计算机轨道', yqxdms: 1, wc_ms: 2, wc_xf: 6.5, sftg: true }
 ] }];
 
+test('demo credit queries use local subjects and never request an official term or progress', async t => {
+  const { DemoAccount } = load('feature/eas/demo/DemoAccount.ets');
+  const { EasSessionStore } = load('feature/eas/EasSessionStore.ets');
+  const { RdbHelper } = load('common/db/RdbHelper.ets');
+  const { CreditPage } = load('pages/CreditPage.ets');
+  const store = EasSessionStore.getInstance();
+  const db = RdbHelper.getInstance();
+  const originalStore = { init: store.init, loadPreferred: store.loadPreferred };
+  const originalDb = { init: db.init, getAllSubjects: db.getAllSubjects };
+  t.after(() => { Object.assign(store, originalStore); Object.assign(db, originalDb); });
+  store.init = async () => {};
+  store.loadPreferred = async () => DemoAccount.createSession();
+  db.init = async () => {};
+  db.getAllSubjects = async () => [Object.assign(new EasTermSubject(), { name: '本地课程', credit: 3 })];
+  const page = new CreditPage();
+  page.getUIContext = () => ({ getHostContext: () => ({}) });
+  page.goalStore = { init: async () => {}, load: async () => new Map() };
+  page.service = { query: async () => assert.fail('demo credit page must use local aggregation') };
+  page.official = true;
+  page.terms = [term('1')];
+  page.progress.completed = 90;
+  await page.load();
+  assert.equal(page.official, false);
+  assert.equal(page.ready, true);
+  assert.equal(page.local.credits, 3);
+  assert.deepEqual(page.terms, []);
+  assert.equal(page.progress.completed, undefined);
+  assert.equal(page.errorText, '');
+});
+
+test('accidental official credit calls for a demo session cannot send a request', async () => {
+  const { DemoAccount } = load('feature/eas/demo/DemoAccount.ets');
+  const service = new CreditService({ request: async () => assert.fail('must not contact school') });
+  await assert.rejects(service.query(DemoAccount.createSession(), term('1')), /仅支持本地学分/);
+  await assert.rejects(service.groupCourses(DemoAccount.createSession(), {}, { id: 'old-group' }), /仅支持本地学分/);
+});
+
 test('Android identity, record lookup, plan and current-term payloads retain aliases and decimals', () => {
   const identity = P.identity(json({ content: { XH: 'fixture-student', ID: 'fixture-record', PYLX: '本科', NJMC: '2024级' } }));
   assert.equal(identity.studentNumber, 'fixture-student');

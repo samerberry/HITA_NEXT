@@ -551,5 +551,5 @@ test('a marked session keeps a readable reason until the next successful login c
   }
   const home = fs.readFileSync(path.join(root, 'pages/Home.ets'), 'utf8');
   const sheet = home.slice(home.indexOf('  sessionSheet()'), home.indexOf('  sessionCampusButton('));
-  assert.match(sheet, /if \(this\.sessionSheetStatus === EasSessionStatus\.EXPIRED && this\.sessionSheetInfo\.expiredReason\.length > 0\) \{\s*Text\('失效原因：' \+ this\.sessionSheetInfo\.expiredReason\)/);
+  assert.match(sheet, /if \(this\.sessionSheetStatus === EasSessionStatus\.EXPIRED && this\.sessionSheetInfo\.expiredReason\.length > 0\) \{\s*Text\('失效原因：' \+ this\.sessionSheetInfo\.expiredReason\b/);
 });

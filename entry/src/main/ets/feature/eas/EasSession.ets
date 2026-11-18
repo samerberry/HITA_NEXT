@@ -19,6 +19,8 @@ export enum EasStudentType {
 
 export class EasSession {
   // —— 会话核心 ——
+  /** Explicit local demo identity; never carries school cookies or tokens. */
+  demoMode: boolean = false;
   campus: EasCampus = EasCampus.SHENZHEN;
   /** 门户会话 Cookie（登录主产物） */
   webCookies: Map<string, string> = new Map<string, string>();
@@ -70,11 +72,16 @@ export class EasSession {
   /** 对应 EASToken.isLogin()：accessToken 非空或任一 cookie 集合非空即视为有会话。 */
   isLogin(): boolean {
     const hasToken: boolean = this.accessToken.length > 0;
-    return hasToken || this.cookies.size > 0 || this.webCookies.size > 0;
+    return this.isDemoSession() || hasToken || this.cookies.size > 0 || this.webCookies.size > 0;
+  }
+
+  isDemoSession(): boolean {
+    return this.demoMode;
   }
 
   hasShenzhenWebSession(): boolean {
-    return this.campus === EasCampus.SHENZHEN && EasSession.hasShenzhenWebSessionCookies(this.webCookies);
+    return this.campus === EasCampus.SHENZHEN &&
+      (this.isDemoSession() || EasSession.hasShenzhenWebSessionCookies(this.webCookies));
   }
 
   isBenbuCampus(): boolean {
@@ -139,6 +146,7 @@ export class EasSession {
   encode(): string {
     const o: Record<string, Object> = {
       'campus': this.campus.toString(),
+      'demoMode': this.demoMode,
       'studentType': this.getStudentType(),
       'webCookies': EasSession.encodeMap(this.webCookies),
       'cookies': EasSession.encodeMap(this.cookies),
@@ -170,6 +178,7 @@ export class EasSession {
     try {
       const o: Record<string, Object> = JSON.parse(raw) as Record<string, Object>;
       const s: EasSession = new EasSession();
+      s.demoMode = o['demoMode'] === true;
       const str = (k: string): string => {
         const v = o[k];
         return (v === undefined || v === null) ? '' : String(v);
@@ -205,6 +214,12 @@ export class EasSession {
       s.picture = str('picture');
       s.sfxsx = str('sfxsx');
       s.id = str('id');
+      // Older local sessions stored placeholder account details.
+      if (s.isDemoSession()) {
+        s.username = '';
+        s.stuId = '';
+        s.name = '';
+      }
       return s;
     } catch (e) {
       return undefined;

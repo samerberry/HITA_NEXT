@@ -6,6 +6,8 @@
  */
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { EasCampus, EasSession } from './EasSession';
+import { DemoAccount } from './demo/DemoAccount';
+import { DemoTimetableData } from './demo/DemoTimetableData';
 import { EasApiClient, EasApiClientOptions, EasApiResponse, EasHttpMethod } from './EasApiClient';
 import { EasSessionStatus, expiredEvidence, isExpiredEasResponse } from './EasSessionStatus';
 import { EasCourseItem, EasCourseScoreItem, EasExamItem, EasTermItem } from './model/EasModels';
@@ -95,6 +97,7 @@ export class EasDataProvider {
   }
 
   async checkSessionStatus(session: EasSession, timeoutMs: number = 10000): Promise<EasSessionStatus> {
+    if (DemoAccount.isSession(session)) return EasSessionStatus.CONNECTED;
     if (EasSession.buildCookieHeader(session.webCookies).length === 0) {
       return EasSessionStatus.EXPIRED;
     }
@@ -157,6 +160,7 @@ export class EasDataProvider {
   }
 
   async getAllTerms(session: EasSession): Promise<EasTermItem[]> {
+    if (DemoAccount.isSession(session)) return [DemoTimetableData.term()];
     if (session.loginExpired) {
       throw new Error('教务会话已失效，请重新登录');
     }
@@ -200,6 +204,9 @@ export class EasDataProvider {
 
   /** Read week-one Monday from the calendar, not from course/score term selectors. */
   async getStartDate(session: EasSession, term: EasTermItem): Promise<number | undefined> {
+    if (DemoAccount.isSession(session)) {
+      return DemoTimetableData.matchesTerm(term) ? DemoTimetableData.startDate() : undefined;
+    }
     let resp: EasApiResponse;
     if (session.campus === EasCampus.SHENZHEN) {
       const cfg = easWebLoginConfigFor(session.campus, session.getStudentType());
@@ -226,6 +233,7 @@ export class EasDataProvider {
 
   async getTimetableOfTerm(session: EasSession, term: EasTermItem): Promise<EasCourseItem[]> {
     this.importWarnings.length = 0;
+    if (DemoAccount.isSession(session)) return DemoTimetableData.courses(term);
     if (session.campus === EasCampus.SHENZHEN) {
       return await this.getShenzhenTimetable(session, term);
     }
@@ -501,6 +509,7 @@ export class EasDataProvider {
 
   /** 供成绩/课表结构页面复用的深圳节次接口。 */
   async getShenzhenScheduleStructure(session: EasSession, term: EasTermItem): Promise<EasTimePeriodInDay[]> {
+    if (DemoAccount.isSession(session)) return DemoTimetableData.schedule();
     const cfg = easWebLoginConfigFor(session.campus, session.getStudentType());
     const body: string = 'xn=' + encodeURIComponent(term.yearCode) + '&xq=' +
       encodeURIComponent(term.termCode) + '&pylx=' + encodeURIComponent(session.getStudentType());
@@ -660,6 +669,11 @@ export class EasDataProvider {
   }
 
   async getPersonalScores(session: EasSession, term: EasTermItem): Promise<EasScoresResult> {
+    if (DemoAccount.isSession(session)) {
+      const result: EasScoresResult = new EasScoresResult();
+      result.ok = true;
+      return result;
+    }
     if (session.campus === EasCampus.SHENZHEN) {
       return await this.getShenzhenScores(session, term);
     }
@@ -758,6 +772,7 @@ export class EasDataProvider {
   }
 
   async getExamResult(session: EasSession, term: EasTermItem | undefined): Promise<EasExamQueryResult> {
+    if (DemoAccount.isSession(session)) return new EasExamQueryResult();
     if (term === undefined) {
       throw new Error('未获取到学期列表');
     }

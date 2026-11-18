@@ -43,8 +43,13 @@ export class TimetableResolver {
   }
 
   /** Android recent timetable semantics: latest timetable whose term has started. */
-  static async getRecent(rdb: RdbHelper, now: number = Date.now()): Promise<EasTimetable | undefined> {
+  static async getRecent(rdb: RdbHelper, now: number = Date.now(),
+    requiredCode: string = ''): Promise<EasTimetable | undefined> {
     const all: EasTimetable[] = await rdb.getTimetables();
+    // An account-scoped shortcut must not fall back to another account's timetable.
+    if (requiredCode.length > 0) {
+      return all.find((timetable: EasTimetable): boolean => timetable.code === requiredCode);
+    }
     for (let i: number = 0; i < all.length; i++) {
       if (TimetableResolver.isReal(all[i]) && all[i].startTime <= now) {
         return all[i];

@@ -18,6 +18,7 @@ import { EasDataProvider } from '../feature/eas/EasDataProvider';
 import { EasTimetableImporter } from '../feature/eas/EasTimetableImporter';
 import { EasTermItem } from '../feature/eas/model/EasModels';
 import { EasUserMessages } from '../feature/eas/EasUserMessages';
+import { DemoAccount } from '../feature/eas/demo/DemoAccount';
 import { ClassroomBuilding, ClassroomQueryError, ClassroomRoom } from '../feature/eas/classroom/EmptyClassroomData';
 import { EmptyClassroomService } from '../feature/eas/classroom/EmptyClassroomService';
 import { ClassroomScheduleRow, EmptyClassroomDisplay } from '../feature/eas/classroom/EmptyClassroomDisplay';
@@ -45,6 +46,7 @@ export struct EmptyClassroomPage {
   @State querying: boolean = false;
   @State queried: boolean = false;
   @State loginNeeded: boolean = false;
+  @State localTestData: boolean = false;
   @State error: string = '';
   @State cachedAt: number = 0;
   @State sheetVisible: boolean = false;
@@ -116,6 +118,7 @@ export struct EmptyClassroomPage {
     this.buildings = [];
     this.schedule = [];
     this.session = undefined;
+    this.localTestData = false;
     try {
       const context: common.Context = this.getUIContext().getHostContext() as common.Context;
       const store: EasSessionStore = EasSessionStore.getInstance();
@@ -125,6 +128,7 @@ export struct EmptyClassroomPage {
       if (session === undefined) { throw new ClassroomQueryError('AUTH', '请先登录教务系统'); }
       EmptyClassroomService.assertSession(session);
       this.session = session;
+      this.localTestData = DemoAccount.isSession(session);
       await this.cache.init(context);
       const provider: EasDataProvider = new EasDataProvider(new EasApiClient());
       const terms: EasTermItem[] = await provider.getAllTerms(session);
@@ -139,6 +143,7 @@ export struct EmptyClassroomPage {
       }
       const keep: boolean = preserveSelection && previousSession !== undefined &&
         previousSession.campus === session.campus &&
+        DemoAccount.isSession(previousSession) === DemoAccount.isSession(session) &&
         (previousSession.stuId || previousSession.username) === (session.stuId || session.username);
       const previousIndex: number = keep ? this.terms.findIndex((term: EasTermItem): boolean =>
         term.getCode() === previousTerm) : -1;
@@ -168,11 +173,11 @@ export struct EmptyClassroomPage {
       const rdb: RdbHelper = RdbHelper.getInstance();
       await rdb.init(this.getUIContext().getHostContext() as common.Context);
       const saved: EasTimetable | undefined = await rdb.getTimetableByEasCode(
-        session.campus.toString() + ':' + term.getCode());
+        EasTimetableImporter.timetableCode(session, term));
       week = saved === undefined ? 1 : Math.max(1, saved.getWeekNumber(Date.now()));
     } catch (e) { week = 1; }
     let schedule: EasTimePeriodInDay[] = EasTimetableImporter.scheduleStructure(session.campus);
-    if (session.campus === EasCampus.SHENZHEN) {
+    if (session.demoMode || session.campus === EasCampus.SHENZHEN) {
       schedule = [];
       try {
         const remote: EasTimePeriodInDay[] = await new EasDataProvider(new EasApiClient())
@@ -350,7 +355,8 @@ export struct EmptyClassroomPage {
           if (this.presentedAsSheet) this.onClose();
           else this.getUIContext().getRouter().back();
         } })
-          Text('空教室查询').fontSize(HitaDesign.title).fontWeight(FontWeight.Medium).fontColor(TEXT).layoutWeight(1)
+          Text(this.localTestData ? '空教室查询 · 本地数据' : '空教室查询')
+            .fontSize(HitaDesign.title).fontWeight(FontWeight.Medium).fontColor(TEXT).layoutWeight(1)
             .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
           Button({ type: ButtonType.Circle }) {
             if (this.loading || this.querying) {

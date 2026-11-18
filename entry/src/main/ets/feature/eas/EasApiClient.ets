@@ -68,6 +68,8 @@ export class EasApiClient {
    */
   async request(session: EasSession, cfg: EasCampusConfig, path: string,
     options: EasApiClientOptions): Promise<EasApiResponse> {
+    // Demo data is supplied by local providers. Never send this session to a school endpoint.
+    if (session.demoMode) throw new Error('暂无数据');
     const attempts: number = 2;
     for (let i = 0; i < attempts; i++) {
       // 重登可能换到深圳另一数据基址，每次尝试都按当前会话取地址。

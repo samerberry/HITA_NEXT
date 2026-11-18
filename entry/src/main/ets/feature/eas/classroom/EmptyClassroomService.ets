@@ -1,6 +1,8 @@
 import { EasApiClient, EasApiClientOptions, EasApiResponse, EasHttpMethod } from '../EasApiClient';
 import { EasCampus, EasSession } from '../EasSession';
 import { EasTermItem } from '../model/EasModels';
+import { DemoAccount } from '../demo/DemoAccount';
+import { DemoClassroomData } from '../demo/DemoClassroomData';
 import { easWebLoginConfigFor, EasCampusUrls } from '../webLogin/EasWebLoginConfig';
 import {
   ClassroomBuilding, ClassroomQueryError, ClassroomRoom, ClassroomRoomPage, EmptyClassroomData
@@ -15,6 +17,7 @@ export class EmptyClassroomService {
   }
 
   static assertSession(session: EasSession): void {
+    if (DemoAccount.isSession(session) && session.isLogin()) { return; }
     if (!session.isLogin() || session.webCookies.size === 0 ||
       (session.campus === EasCampus.SHENZHEN &&
         (!session.hasShenzhenWebSession() || session.webBaseUrl.length === 0))) {
@@ -27,6 +30,7 @@ export class EmptyClassroomService {
 
   async getBuildings(session: EasSession): Promise<ClassroomBuilding[]> {
     EmptyClassroomService.assertSession(session);
+    if (DemoAccount.isSession(session)) { return DemoClassroomData.buildings(); }
     if (session.campus === EasCampus.SHENZHEN) {
       // These requests initialize the classroom page context in the Shenzhen EAS.
       const paths: string[] = ['/pksd/queryxiaoquList', '/pksd/querycdlbList', '/kbfbsz/querydqxnxq'];
@@ -62,6 +66,7 @@ export class EmptyClassroomService {
       term.yearCode.trim().length === 0 || term.termCode.trim().length === 0 || building.id.trim().length === 0) {
       throw new ClassroomQueryError('INPUT', '请选择学期、教学楼和有效的教学周');
     }
+    if (DemoAccount.isSession(session)) { return DemoClassroomData.query(term, building, week); }
     if (session.campus === EasCampus.SHENZHEN) {
       return this.queryShenzhen(session, term, building, week);
     }

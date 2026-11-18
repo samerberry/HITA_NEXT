@@ -1,5 +1,6 @@
 import { EasApiClient, EasApiClientOptions, EasApiResponse, EasHttpMethod } from '../eas/EasApiClient';
 import { EasCampus, EasSession } from '../eas/EasSession';
+import { DemoAccount } from '../eas/demo/DemoAccount';
 import { isExpiredEasResponse } from '../eas/EasSessionStatus';
 import { easWebLoginConfigFor } from '../eas/webLogin/EasWebLoginConfig';
 import { EasTermItem } from '../eas/model/EasModels';
@@ -34,6 +35,7 @@ export class CreditService {
   private async request(session: EasSession, path: string, fields: RequestFields, json: boolean,
     active: () => boolean, referer: string = REFERER): Promise<EasApiResponse> {
     this.ensureActive(active);
+    if (DemoAccount.isSession(session)) throw new Error('演示账号仅支持本地学分查询');
     if (session.loginExpired) throw new Error(EXPIRED);
     const options = new EasApiClientOptions();
     options.method = EasHttpMethod.POST;

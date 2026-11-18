@@ -146,7 +146,7 @@ export struct ImportTimetablePanel {
       const provider: EasDataProvider = new EasDataProvider(new EasApiClient());
       const start: EasTermStartResult = await EasTimetableImporter.loadStartDate(rdb, provider, session, term);
       let schedule: EasTimePeriodInDay[] = ImportTimetablePanel.defaultSchedule(session.campus);
-      if (session.campus === EasCampus.SHENZHEN) {
+      if (session.demoMode || session.campus === EasCampus.SHENZHEN) {
         try {
           const remote: EasTimePeriodInDay[] = await provider.getShenzhenScheduleStructure(session, term);
           if (remote.length > 0) {

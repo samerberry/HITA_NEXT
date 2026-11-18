@@ -42,12 +42,13 @@ export class EasSessionRenewal {
    * 调用方可直接重试；同校区并发失效只执行一次网页登录。
    */
   async renew(session: EasSession, reason: string): Promise<boolean> {
+    if (session.demoMode) return false;
     const runner: EasSilentLoginRunner | undefined = this.runner;
     if (runner === undefined) {
       return false;
     }
     const current: EasSession | undefined = await EasSessionStore.getInstance().load(session.campus);
-    if (current === undefined || current.loginExpired ||
+    if (current === undefined || current.demoMode || current.loginExpired ||
       current.getStudentType() !== session.getStudentType()) {
       return false;
     }
@@ -97,7 +98,7 @@ export class EasSessionRenewal {
       }
       // 续期失败或未写入时，如已有更新的登录则沿用它，否则保持过期。
       const latest: EasSession | undefined = await store.load(expected.campus);
-      if (latest !== undefined && !latest.loginExpired &&
+      if (latest !== undefined && !latest.demoMode && !latest.loginExpired &&
         latest.sessionGeneration !== expected.sessionGeneration &&
         latest.getStudentType() === expected.getStudentType()) {
         return latest;

@@ -12,6 +12,7 @@ import { CompatibleLightModifier } from '../common/theme/CompatibleLightModifier
 import { CompatibleSheetMaterial } from '../common/theme/CompatibleSheetMaterial';
 import { NAV_BAR_INSET_FALLBACK, STATUS_BAR_INSET_FALLBACK } from '../common/theme/StatusBarInset';
 import { EasCampus, EasSession } from '../feature/eas/EasSession';
+import { DemoAccount } from '../feature/eas/demo/DemoAccount';
 import { EasSessionStore } from '../feature/eas/EasSessionStore';
 import { EasDataProvider } from '../feature/eas/EasDataProvider';
 import { EasApiClient } from '../feature/eas/EasApiClient';
@@ -98,7 +99,7 @@ export struct CreditPage {
       const session = await store.loadPreferred();
       if (generation !== this.generation) return;
       this.session = session;
-      this.official = session?.campus === EasCampus.SHENZHEN;
+      this.official = session?.campus === EasCampus.SHENZHEN && !DemoAccount.isSession(session);
       if (this.official && session !== undefined) {
         this.terms = [];
         this.termIndex = -1;
@@ -116,6 +117,9 @@ export struct CreditPage {
         }
         await this.queryOfficial(generation);
       } else {
+        this.terms = [];
+        this.termIndex = -1;
+        this.progress = new OfficialCreditProgress();
         const db = RdbHelper.getInstance();
         await db.init(context);
         const subjects = await db.getAllSubjects();

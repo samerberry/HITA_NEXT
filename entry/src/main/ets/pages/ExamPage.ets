@@ -32,6 +32,7 @@ import { TimetableSelectionStore } from '../feature/timetable/data/TimetableSele
 import { CourseColorEditor } from '../feature/timetable/views/CourseColorEditor';
 import { timetableBlockColor } from '../feature/timetable/views/TimetableWeekDraw';
 import { EasSession } from '../feature/eas/EasSession';
+import { DemoAccount } from '../feature/eas/demo/DemoAccount';
 import { EasSessionStore } from '../feature/eas/EasSessionStore';
 import { EasDataProvider, EasExamQueryResult } from '../feature/eas/EasDataProvider';
 import { EasUserMessages } from '../feature/eas/EasUserMessages';
@@ -65,6 +66,7 @@ export struct ExamPage {
   @State pendingDeleteId: string = '';
   @State openingEditor: boolean = false;
   @State hasSession: boolean = false;
+  @State demoMode: boolean = false;
   @State queryMsg: string = '';
   @State queryContext: string = '';
   @State queryWarning: boolean = false;
@@ -148,6 +150,7 @@ export struct ExamPage {
   private async refreshSession(): Promise<void> {
     const generation: number = ++this.queryGeneration;
     this.session = undefined;
+    this.demoMode = false;
     this.hasSession = false;
     this.querying = false;
     this.remoteExams = [];
@@ -162,6 +165,7 @@ export struct ExamPage {
         return;
       }
       this.session = session;
+      this.demoMode = DemoAccount.isSession(session);
       this.hasSession = session !== undefined;
     } catch (_) {
       if (generation === this.queryGeneration) {
@@ -171,8 +175,19 @@ export struct ExamPage {
   }
 
   private async loadExams(): Promise<void> {
+    const generation: number = this.pageGeneration;
     this.loading = true;
     this.loadError = false;
+    if (this.demoMode) {
+      this.exams = [];
+      this.upcoming = [];
+      this.past = [];
+      this.remoteExams = [];
+      this.learningGeneration++;
+      this.learningTasks = [];
+      this.loading = false;
+      return;
+    }
     try {
       const ctx: common.Context = this.getUIContext().getHostContext() as common.Context;
       const rdb: RdbHelper = RdbHelper.getInstance();
@@ -187,6 +202,7 @@ export struct ExamPage {
           }
         }
       }
+      if (generation !== this.pageGeneration || this.demoMode) return;
       events.sort((a: EasEventItem, b: EasEventItem): number => a.from - b.from);
       this.exams = events;
       const now: number = Date.now();
@@ -195,14 +211,18 @@ export struct ExamPage {
       this.remoteExams = this.filterImported(this.remoteExams, events);
       await this.loadLearningTasks();
     } catch (_) {
-      this.loadError = true;
+      if (generation === this.pageGeneration && !this.demoMode) this.loadError = true;
     } finally {
-      this.loading = false;
+      if (generation === this.pageGeneration) this.loading = false;
     }
   }
 
   private async loadLearningTasks(): Promise<void> {
     const generation: number = ++this.learningGeneration;
+    if (this.demoMode) {
+      this.learningTasks = [];
+      return;
+    }
     try {
       const tasks: LearningTask[] = await RdbHelper.getInstance().getLearningTasks();
       if (this.learningActive && generation === this.learningGeneration) this.learningTasks = tasks;
@@ -250,7 +270,7 @@ export struct ExamPage {
 
   /** 考试事件挂到当前选中的课表；没有可用课表时引导先建课表。 */
   private async openAddExam(): Promise<void> {
-    if (this.examSheetMode !== 0 || this.openingEditor || this.savingExamColor ||
+    if (this.demoMode || this.examSheetMode !== 0 || this.openingEditor || this.savingExamColor ||
       this.pendingDeleteId.length > 0) {
       return;
     }
@@ -715,13 +735,15 @@ export struct ExamPage {
               }
             } })
             .margin({ left: HitaDesign.spaceXs })
-          HeaderActionButton({ label: '添加', disabled: this.openingEditor || this.pendingDeleteId.length > 0,
-            materialEnabled: !this.presentedAsSheet || CompatibleSheetMaterial.isEnabled(), onTap: () => {
-              if (!this.preparingQuery && !this.querying) {
-                this.openAddExam();
-              }
-            } })
-            .margin({ left: HitaDesign.spaceXs })
+          if (!this.demoMode) {
+            HeaderActionButton({ label: '添加', disabled: this.openingEditor || this.pendingDeleteId.length > 0,
+              materialEnabled: !this.presentedAsSheet || CompatibleSheetMaterial.isEnabled(), onTap: () => {
+                if (!this.preparingQuery && !this.querying) {
+                  this.openAddExam();
+                }
+              } })
+              .margin({ left: HitaDesign.spaceXs })
+          }
         }
         .width('100%')
         .height(HEADER_HEIGHT)

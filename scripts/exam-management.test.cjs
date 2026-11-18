@@ -127,6 +127,59 @@ function setup(seeds = [exam('a'), exam('b', 'current')], extras = {}) {
   return { page, editor, rows, calls, db, prompt };
 }
 
+test('demo exams stay empty without exposing or changing saved real exams and review tasks', async () => {
+  const { DemoAccount } = load('feature/eas/demo/DemoAccount.ets');
+  const { page, rows, calls, db } = setup([exam('real-exam')], {
+    sessionStore: { init: async () => {}, loadPreferred: async () => DemoAccount.createSession() },
+    EasDataProvider: load('feature/eas/EasDataProvider.ets').EasDataProvider
+  });
+  db.getTimetables = async () => assert.fail('demo must not read real exam tables');
+  db.getLearningTasks = async () => assert.fail('demo must not read real review tasks');
+  page.exams = [exam('stale')];
+  page.learningTasks = [{ id: 'private-review' }];
+  await page.onPageShow();
+  assert.equal(page.demoMode, true);
+  assert.deepEqual(page.exams, []);
+  assert.deepEqual(page.upcoming, []);
+  assert.deepEqual(page.past, []);
+  assert.deepEqual(page.remoteExams, []);
+  assert.deepEqual(page.learningTasks, []);
+  assert.equal(page.loadError, false);
+  assert.equal(page.queryWarning, false);
+  assert.match(page.queryMsg, /暂无/);
+  await page.loadLearningTasks();
+  await page.openAddExam();
+  assert.equal(page.examSheetMode, 0);
+  assert.equal(rows.size, 1);
+  assert.deepEqual(calls.inserts, []);
+  assert.deepEqual(calls.deletes, []);
+});
+
+test('a pending local exam read from the previous account cannot overwrite the demo empty state', async () => {
+  const { DemoAccount } = load('feature/eas/demo/DemoAccount.ets');
+  const { page, db } = setup([], {
+    sessionStore: { init: async () => {}, loadPreferred: async () => DemoAccount.createSession() },
+    EasDataProvider: load('feature/eas/EasDataProvider.ets').EasDataProvider
+  });
+  let finish;
+  let started;
+  const reading = new Promise(resolve => { started = resolve; });
+  db.getTimetables = () => {
+    started();
+    return new Promise(resolve => { finish = resolve; });
+  };
+  db.getEventsOfTimetable = async () => [exam('private-stale')];
+  const previous = page.loadExams();
+  await reading;
+  await page.onPageShow();
+  finish([{ id: 'private-table' }]);
+  await previous;
+  assert.equal(page.demoMode, true);
+  assert.deepEqual(page.exams, []);
+  assert.equal(page.loadError, false);
+  assert.equal(page.loading, false);
+});
+
 test('list keeps event identity, filters courses and sorts by time across timetables', async () => {
   const a = exam('a');
   const b = exam('b', 'current');

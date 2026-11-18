@@ -10,6 +10,7 @@ import { CompatibleLightModifier } from '../common/theme/CompatibleLightModifier
 import { CompatibleSheetMaterial } from '../common/theme/CompatibleSheetMaterial';
 import { NAV_BAR_INSET_FALLBACK, STATUS_BAR_INSET_FALLBACK } from '../common/theme/StatusBarInset';
 import { EasCampus, EasSession } from '../feature/eas/EasSession';
+import { DemoAccount } from '../feature/eas/demo/DemoAccount';
 import { EasSessionStore } from '../feature/eas/EasSessionStore';
 import { EasDataProvider } from '../feature/eas/EasDataProvider';
 import { EasApiClient } from '../feature/eas/EasApiClient';
@@ -30,6 +31,7 @@ export struct ScorePage {
   @Prop presentedAsSheet: boolean = false;
   onClose: () => void = () => {};
   @State campusIndex: number = 0;
+  @State demoMode: boolean = false;
   @State termIndex: number = 0;
   @State typeIndex: number = 0;
   @State terms: EasTermItem[] = [];
@@ -62,9 +64,10 @@ export struct ScorePage {
     const generation = ++this.generation;
     const store = EasSessionStore.getInstance();
     await store.init(this.getUIContext().getHostContext() as common.Context);
-    if (!this.initialized) {
-      const preferred = await store.loadPreferred();
-      if (generation !== this.generation) return;
+    const preferred = await store.loadPreferred();
+    if (generation !== this.generation) return;
+    this.demoMode = DemoAccount.isSession(preferred);
+    if (!this.initialized || this.demoMode) {
       if (preferred !== undefined) this.campusIndex = CAMPUSES.indexOf(preferred.campus);
       this.initialized = true;
     }
@@ -202,8 +205,9 @@ export struct ScorePage {
       Row({ space: 12 }) {
         Select(CAMPUS_NAMES.map((name: string): SelectOption => ({ value: name })))
           .selected(this.campusIndex).value(CAMPUS_NAMES[this.campusIndex]).layoutWeight(1)
+          .enabled(!this.demoMode)
           .onSelect((index: number) => {
-            if (index === this.campusIndex) return;
+            if (this.demoMode || index === this.campusIndex) return;
             this.campusIndex = index; this.typeIndex = 0; this.terms = []; this.loadTerms();
           })
         Select(TYPE_NAMES.slice(0, this.campusIndex === 0 ? 2 : 4).map((name: string): SelectOption => ({ value: name })))

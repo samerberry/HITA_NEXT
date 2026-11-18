@@ -1158,3 +1158,28 @@ test('linking a timetable to a term updates it with the merge and refuses a term
     assert.deepEqual(f.snapshot(), before, 'a refused link writes nothing');
   } finally { f.sql.close(); }
 });
+
+test('demo import persists all subjects and sessions for the recent detail page using real SQL', async () => {
+  const f = database();
+  try {
+    const { DemoAccount } = load('feature/eas/demo/DemoAccount.ets');
+    const { DemoTimetableData: data } = load('feature/eas/demo/DemoTimetableData.ets');
+    const { TimetableResolver } = load('feature/timetable/data/TimetableResolver.ets');
+    await f.db.saveTimetable(Object.assign(table('real'), {
+      code: 'SHENZHEN:2026-20271', startTime: new Date(2026, 8, 7).getTime()
+    }));
+    const plan = await EasTimetableImporter.buildImport(f.db, DemoAccount.createSession(), data.term(),
+      data.courses(data.term()), data.schedule(), data.startDate());
+    await EasTimetableImporter.savePlan(f.db, plan);
+    const recent = await TimetableResolver.getRecent(f.db, new Date(2026, 10, 16).getTime(), data.CODE);
+    assert.equal(recent.id, plan.timetable.id);
+    const restored = await f.db.getTimetableById(recent.id, true);
+    const subjects = await f.db.getSubjectsOfTimetable(restored.id);
+    assert.equal(subjects.length, 21);
+    let sessions = 0;
+    for (const subject of subjects) sessions += (await f.db.getClassesOfSubject(subject.id)).length;
+    assert.equal(sessions, 193);
+    assert.equal((await f.db.getEventsOfTimetable(restored.id, true)).length, 193);
+    assert.equal((await f.db.getTimetables()).length, 2);
+  } finally { f.sql.close(); }
+});

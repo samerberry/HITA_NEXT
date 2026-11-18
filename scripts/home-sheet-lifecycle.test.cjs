@@ -20,9 +20,14 @@ function deferred() {
 const flush = async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); };
 const Status = { SAVED: 'saved', CHECKING: 'checking', CONNECTED: 'connected', EXPIRED: 'expired', UNKNOWN: 'unknown' };
 
+function tapLocalDataLoginIcon(page, count = 7) {
+  for (let tap = 0; tap < count; tap++) page.onLocalDataLoginIconTap();
+}
+
 function harness() {
   const state = {
-    lastReads: 0, reads: 0, toasts: [], topPage: 'AssistantPage', webCleared: 0,
+    lastReads: 0, reads: 0, toasts: [], topPage: 'AssistantPage', webCleared: 0, refreshes: 0,
+    keyboardModes: [],
     loadLast: async () => 'WEIHAI',
     load: async campus => ({ campus, name: 'Current session' }),
     clear: async () => {},
@@ -35,11 +40,13 @@ function harness() {
     async clear(campus) { return state.clear(campus); }
   };
   const context = {
-    setKeyboardAvoidMode() {},
+    setKeyboardAvoidMode(mode) { state.keyboardModes.push(mode); },
+    refreshSummaries() { state.refreshes++; },
     getPromptAction: () => ({ showToast: item => state.toasts.push(item.message) }),
     getRouter: () => ({ getState: () => ({ name: state.topPage }) })
   };
   const binding = slice('.bindSheet($$this.activeSheetVisible,', '\n  @Builder\n  compatibleDock()');
+  const sheetLayout = binding.slice(binding.indexOf('height:'), binding.indexOf('dragBar:'));
   const callback = name => {
     const match = binding.match(new RegExp(`${name}: \\(\\) => \\{([\\s\\S]*?)\\n      \\}`));
     assert.ok(match, name);
@@ -47,6 +54,7 @@ function harness() {
   };
   const animation = home.match(/\.onAnimationStart\([^\n]+=> \{([\s\S]*?)\n    \}\)/);
   assert.ok(animation);
+  const showPage = slice('  async onPageShow(): Promise<void> {', '    this.widgetBackgroundSet =');
   const code = `
     class Home {
       pageVisible = true;
@@ -55,7 +63,10 @@ function harness() {
       tabTransitionRunning = false;
       activeSheetVisible = false;
       sessionSheetOpen = false;
-      loginSheetOpen = false;
+      sessionDemoVisible = false;
+      localDataLoginTaps = 0;
+      campusWebsiteNoticeOpen = false;
+      sessionWebVisible = false;
       courseSheetOpen = false;
       calendarExportSheetOpen = false;
       sessionSheetLoading = false;
@@ -70,12 +81,15 @@ function harness() {
       finishCourseSheetDismissal() {}
       resetDockInteraction() {}
       dockHandObserver = { stop() {} };
+      startDockHandedness() {}
       getUIContext() { return context; }
       stopTimetableMarquee() {}
       startTimetableMarquee() {}
       stopClock() {}
       startClock() {}
-      async refreshSummaries() {}
+      async refreshSummaries() { context.refreshSummaries(); }
+      onPageShow() { ${showPage.slice(showPage.indexOf('{') + 1)} }
+      sheetLayout() { return { ${sheetLayout} }; }
       willDisappear() { ${callback('onWillDisappear')} }
       didDisappear() { ${callback('onDisappear')} }
       startTabAnimation(index, targetIndex) { ${animation[1]} }
@@ -90,12 +104,15 @@ function harness() {
   }).outputText;
   const page = new Function('context', 'EasSessionStore', 'EasCampus', 'KeyboardAvoidMode',
     'TAB_TIMETABLE', 'EasSessionStatus', 'EasDataProvider', 'EasApiClient', 'Status', 'EasWebLoginState',
+    'SheetSize', 'ScrollSizeMode', 'SheetKeyboardAvoidMode', 'HitaDesign',
     compiled + '; return new Home();')(
     context, { getInstance: () => store },
-    { WEIHAI: 'WEIHAI', BENBU: 'BENBU', SHENZHEN: 'SHENZHEN' }, { OFFSET: 0 }, 1,
+    { WEIHAI: 'WEIHAI', BENBU: 'BENBU', SHENZHEN: 'SHENZHEN' }, { OFFSET: 'offset', NONE: 'none' }, 1,
     Status, class {
       async checkSessionStatus(session) { state.checks.push(session); return state.verify(session); }
-    }, class {}, Status, { clear: async () => { state.webCleared++; } });
+    }, class {}, Status, { clear: async () => { state.webCleared++; } },
+    { FIT_CONTENT: 'fit', MEDIUM: 'medium', LARGE: 'large' }, { CONTINUOUS: 'continuous' },
+    { TRANSLATE_AND_SCROLL: 'translate-and-scroll', NONE: 'none' }, { spaceLg: 24 });
   return { page, state };
 }
 
@@ -109,7 +126,7 @@ test('native dismissal synchronizes visibility immediately and has no default se
 });
 
 test('closing any sheet cannot flash it on a tab change, while its exit content stays stable', () => {
-  for (const kind of ['session', 'login', 'course', 'calendarExport']) {
+  for (const kind of ['session', 'course', 'calendarExport']) {
     const { page } = harness();
     page[`${kind}SheetOpen`] = true;
     page.activeSheetVisible = true;
@@ -125,7 +142,7 @@ test('closing any sheet cannot flash it on a tab change, while its exit content 
     page.selectTab(1);
     assert.equal(page.activeSheetVisible, false);
     page.didDisappear();
-    for (const flag of ['session', 'login', 'course', 'calendarExport']) {
+    for (const flag of ['session', 'course', 'calendarExport']) {
       assert.equal(page[`${flag}SheetOpen`], false);
     }
     assert.equal(page.selectedCourse, undefined);
@@ -207,8 +224,9 @@ test('session read failure stays closed and the next attempt remains usable', as
   await page.openSessionSheet();
   assert.equal(page.activeSheetVisible, true);
   page.beginSessionLogin();
-  assert.equal(page.loginSheetOpen, true);
-  assert.equal(page.sessionSheetOpen, false);
+  assert.equal(page.sessionWebVisible, true);
+  assert.equal(page.sessionSheetOpen, true);
+  assert.equal(page.activeSheetVisible, true);
 });
 
 test('late campus selection and login clicks cannot update or reopen a dismissed session sheet', async () => {
@@ -220,7 +238,7 @@ test('late campus selection and login clicks cannot update or reopen a dismissed
   page.willDisappear();
   page.beginSessionLogin();
   assert.equal(page.activeSheetVisible, false);
-  assert.equal(page.loginSheetOpen, false);
+  assert.equal(page.sessionWebVisible, false);
   page.didDisappear();
   pending.resolve({ campus: 'BENBU', name: 'Late' });
   await selecting;
@@ -278,8 +296,8 @@ test('switching campus ignores out-of-order results and recovers from a failed r
   assert.equal(page.activeSheetVisible, true);
   assert.equal(state.toasts.length, 1);
   state.load = async campus => ({ campus });
-  await page.selectSessionCampus('SHENZHEN');
-  assert.equal(page.sessionSheetInfo.campus, 'SHENZHEN');
+  await page.selectSessionCampus('BENBU');
+  assert.equal(page.sessionSheetInfo.campus, 'BENBU');
 });
 
 
@@ -332,10 +350,303 @@ test('missing session and completed relogin use local state without automatic va
   state.load = async () => undefined;
   await page.openSessionSheet();
   assert.equal(page.sessionSheetInfo, undefined);
+  assert.equal(page.sessionWebVisible, false);
+  page.beginSessionLogin();
+  assert.equal(page.sessionWebVisible, true);
   page.willDisappear(); page.didDisappear();
   state.load = async campus => ({ campus, loginExpired: false });
   await page.openSessionSheet();
   assert.equal(page.sessionSheetStatus, Status.SAVED);
+  assert.equal(page.sessionWebVisible, false);
   assert.equal(state.checks.length, 0);
   assert.doesNotMatch(home, /checkSessionStatus\(|verifySessionSheet\(/);
+});
+
+test('campus notice is reachable before selecting a campus and normal login opens the genuine Web', () => {
+  const account = slice('  sessionSheet()', '  sessionCampusButton(');
+  assert.match(account, /if \(this\.sessionWebVisible\) \{\s*EasLoginPage\(/);
+  assert.match(account, /active: this\.activeSheetVisible && this\.sessionSheetOpen/);
+  assert.match(account, /label: '网页登录'[\s\S]*this\.beginSessionLogin\(\)/);
+  assert.match(account, /title: '说明'[\s\S]*showCampusWebsiteNotice\(\)[\s\S]*Text\('认证校区'\)/);
+  assert.match(home, /title: '校方网页访问说明'/);
+  assert.match(account, /if \(this\.sessionDemoVisible\) \{\s*EasLocalDataConfirmation\([\s\S]*onConfirmed:[^\n]*this\.onSessionLoggedIn/);
+  assert.match(account, /SymbolGlyph\(\$r\('sys\.symbol\.lock_shield'\)\)[^}]*\}\s*[^{}]*\.onClick\(\(\) => this\.onLocalDataLoginIconTap\(\)\);\s*Column\(\) \{\s*Text\('登录教务系统'\)/);
+  assert.doesNotMatch(account, /label: '使用本地数据'/);
+  assert.match(account, /Text\(this\.sessionSheetInfo\.demoMode \? '本地数据'/);
+  assert.match(home, /this\.sessionInfo\.demoMode \? '本地数据'/);
+});
+
+test('the account panel stays compact and does not change Home keyboard avoidance', async () => {
+  for (const dismiss of [page => page.closeActiveSheet(), page => page.willDisappear()]) {
+    const { page, state } = harness();
+    state.load = async () => undefined;
+    page.onPageShow();
+    assert.equal(state.keyboardModes.at(-1), 'none');
+    await page.openSessionSheet();
+    assert.equal(state.keyboardModes.at(-1), 'none');
+    assert.equal(page.sheetLayout().keyboardAvoidMode, 'none');
+    assert.equal(page.sheetLayout().height, 'fit');
+    dismiss(page);
+    assert.equal(state.keyboardModes.at(-1), 'none', 'do not reintroduce automatic avoidance during exit');
+    page.didDisappear();
+    assert.equal(state.keyboardModes.at(-1), 'none', 'restore the unchanged Home/dock policy');
+  }
+});
+
+test('returning from the background retains account-sheet keyboard avoidance', async () => {
+  const { page, state } = harness();
+  state.topPage = 'Home';
+  await page.openSessionSheet();
+  page.onPageHide();
+  assert.equal(page.sessionSheetOpen, true);
+  assert.equal(page.activeSheetVisible, true);
+  page.onPageShow();
+  assert.equal(state.keyboardModes.at(-1), 'none', 'the compact account panel retains Home avoidance');
+  page.beginSessionLogin();
+  page.onPageHide();
+  page.onPageShow();
+  assert.equal(state.keyboardModes.at(-1), 'offset', 'the real web stage keeps the same avoidance scope');
+});
+
+test('local data confirmation uses the compact sheet and Home keyboard policy', async () => {
+  const { page, state } = harness();
+  state.load = async () => undefined;
+  await page.openSessionSheet();
+  tapLocalDataLoginIcon(page);
+  assert.equal(page.sessionDemoVisible, true);
+  assert.equal(page.sheetLayout().height, 'fit');
+  assert.equal(page.sheetLayout().keyboardAvoidMode, 'none');
+  assert.equal(state.keyboardModes.at(-1), 'none');
+});
+
+test('the shield counts taps within a sheet and works from every campus', async () => {
+  const { page, state } = harness();
+  state.load = async () => undefined;
+  await page.openSessionSheet();
+  tapLocalDataLoginIcon(page, 6);
+  assert.equal(page.sessionDemoVisible, false);
+  await page.selectSessionCampus('SHENZHEN');
+  tapLocalDataLoginIcon(page, 6);
+  assert.equal(page.sessionDemoVisible, false, 'switching campus resets the previous taps');
+  page.willDisappear();
+  page.didDisappear();
+  for (const campus of ['SHENZHEN', 'WEIHAI', 'BENBU']) {
+    state.loadLast = async () => campus;
+    await page.openSessionSheet();
+    tapLocalDataLoginIcon(page, 6);
+    assert.equal(page.sessionDemoVisible, false);
+    page.onLocalDataLoginIconTap();
+    assert.equal(page.sessionDemoVisible, true);
+    assert.equal(page.sessionSheetCampus, campus);
+    assert.equal(page.sessionWebVisible, false);
+    page.beginSessionLogin();
+    assert.equal(page.sessionWebVisible, false, 'local confirmation stays in the account panel');
+    page.willDisappear();
+    page.didDisappear();
+  }
+});
+
+test('local data confirmation stays mounted during dismissal and resets after exit', async () => {
+  for (const dismiss of [page => page.closeActiveSheet(), page => {
+    page.activeSheetVisible = false; // Native $$ binding updates before onWillDisappear.
+    page.willDisappear();
+  }]) {
+    const { page, state } = harness();
+    state.load = async () => undefined;
+    await page.openSessionSheet();
+    await page.selectSessionCampus('SHENZHEN');
+    tapLocalDataLoginIcon(page);
+    dismiss(page);
+    assert.equal(page.activeSheetVisible && page.sessionSheetOpen, false, 'disable confirmation during exit');
+    assert.equal(page.sessionDemoVisible, true, 'keep the confirmation panel during exit');
+    page.didDisappear();
+    await page.openSessionSheet();
+    assert.equal(page.sessionDemoVisible, false);
+  }
+});
+
+test('a late sheet dismissal cannot change the keyboard mode of a new routed page', async () => {
+  const { page, state } = harness();
+  await page.openSessionSheet();
+  page.onPageHide();
+  assert.equal(page.activeSheetVisible, false);
+  assert.equal(state.keyboardModes.at(-1), 'offset');
+  const calls = state.keyboardModes.length;
+  page.didDisappear();
+  assert.equal(state.keyboardModes.length, calls, 'hidden Home must not write the next page keyboard policy');
+  page.onPageShow();
+  assert.equal(state.keyboardModes.at(-1), 'none');
+});
+
+test('failed and cancelled account-sheet opens do not change keyboard policy', async () => {
+  const { page, state } = harness();
+  page.onPageShow();
+  const calls = state.keyboardModes.length;
+  state.load = async () => { throw Error('Unavailable'); };
+  await page.openSessionSheet();
+  assert.equal(state.keyboardModes.length, calls);
+  const pending = deferred();
+  state.load = () => pending.promise;
+  const opening = page.openSessionSheet();
+  await flush();
+  page.selectTab(1);
+  pending.resolve(undefined);
+  await opening;
+  assert.equal(state.keyboardModes.length, calls);
+});
+
+test('a single login click opens the selected campus Web and keeps its height through exit', async () => {
+  const { page, state } = harness();
+  state.load = async () => undefined;
+  page.beginSessionLogin();
+  assert.equal(page.sessionWebVisible, false);
+  await page.openSessionSheet();
+  await page.selectSessionCampus('BENBU');
+  assert.equal(page.sessionSheetCampus, 'BENBU');
+  assert.equal(page.sheetLayout().height, 'fit');
+  assert.equal(page.sheetLayout().detents, undefined);
+  page.beginSessionLogin();
+  assert.equal(page.sessionWebVisible, true);
+  assert.equal(page.sessionDemoVisible, false);
+  assert.equal(page.sheetLayout().height, 'large');
+  assert.deepEqual(page.sheetLayout().detents, ['large', 'medium']);
+  assert.equal(page.sheetLayout().scrollSizeMode, 'continuous');
+  assert.equal(page.sheetLayout().keyboardAvoidMode, 'translate-and-scroll');
+  page.willDisappear();
+  assert.equal(page.sessionWebVisible, true);
+  assert.equal(page.sheetLayout().height, 'large');
+  page.didDisappear();
+  assert.equal(page.sessionWebVisible, false);
+  await page.openSessionSheet();
+  assert.equal(page.sheetLayout().height, 'fit');
+});
+
+test('requesting relogin changes the existing sheet without network work and retains its mode until exit', async () => {
+  const { page, state } = harness();
+  await page.openSessionSheet();
+  const previous = page.sessionSheetInfo;
+  const reads = state.reads;
+  const generation = page.sheetRequestGeneration;
+  page.beginSessionLogin();
+  assert.equal(page.sessionWebVisible, true);
+  assert.equal(page.sessionSheetInfo, previous);
+  assert.equal(page.sessionSheetOpen, true);
+  assert.equal(page.activeSheetVisible, true);
+  assert.equal(page.sheetRequestGeneration, generation + 1);
+  assert.equal(state.reads, reads);
+  assert.equal(state.checks.length, 0);
+  assert.equal(state.webCleared, 0);
+  page.willDisappear();
+  assert.equal(page.sessionWebVisible, true);
+  assert.equal(page.sessionSheetOpen, true);
+  assert.equal(page.activeSheetVisible, false);
+  page.didDisappear();
+  assert.equal(page.sessionWebVisible, false);
+  assert.equal(page.sessionSheetOpen, false);
+});
+
+test('tapping the selected campus preserves the current input instance and outstanding local read', async () => {
+  const { page, state } = harness();
+  state.load = async () => undefined;
+  await page.openSessionSheet();
+  let generation = page.sheetRequestGeneration;
+  let reads = state.reads;
+  await page.selectSessionCampus('WEIHAI');
+  assert.equal(page.sheetRequestGeneration, generation);
+  assert.equal(page.sessionWebVisible, false);
+  assert.equal(state.reads, reads);
+  const pending = deferred();
+  state.load = () => pending.promise;
+  const selecting = page.selectSessionCampus('BENBU');
+  generation = page.sheetRequestGeneration;
+  reads = state.reads;
+  await page.selectSessionCampus('BENBU');
+  assert.equal(page.sheetRequestGeneration, generation);
+  assert.equal(page.sessionSheetLoading, true);
+  assert.equal(state.reads, reads);
+  pending.resolve(undefined);
+  await selecting;
+  assert.equal(page.sessionWebVisible, false);
+  assert.equal(page.sessionSheetLoading, false);
+});
+
+test('campus changes hide the previous form until the current local read completes', async () => {
+  const { page, state } = harness();
+  state.load = async () => undefined;
+  await page.openSessionSheet();
+  const old = deferred();
+  const fresh = deferred();
+  state.load = () => old.promise;
+  const first = page.selectSessionCampus('BENBU');
+  assert.equal(page.sessionSheetLoading, true);
+  assert.equal(page.sessionWebVisible, false);
+  state.load = () => fresh.promise;
+  const second = page.selectSessionCampus('SHENZHEN');
+  old.resolve(undefined);
+  await first;
+  assert.equal(page.sessionSheetCampus, 'SHENZHEN');
+  assert.equal(page.sessionSheetLoading, true);
+  assert.equal(page.sessionWebVisible, false);
+  fresh.resolve(undefined);
+  await second;
+  assert.equal(page.sessionSheetLoading, false);
+  assert.equal(page.sessionWebVisible, false);
+  assert.equal(page.activeSheetVisible, true);
+  assert.equal(state.webCleared, 0);
+  assert.equal(state.checks.length, 0);
+});
+
+test('closing during a campus read preserves loading height and ignores the late result on reopen', async () => {
+  const { page, state } = harness();
+  await page.openSessionSheet();
+  const old = deferred();
+  state.load = () => old.promise;
+  const selecting = page.selectSessionCampus('BENBU');
+  page.willDisappear();
+  assert.equal(page.sessionSheetLoading, true);
+  assert.equal(page.sessionWebVisible, false);
+  assert.equal(page.activeSheetVisible, false);
+  page.didDisappear();
+  assert.equal(page.sessionSheetLoading, false);
+  state.load = async () => undefined;
+  await page.openSessionSheet();
+  old.resolve({ campus: 'BENBU', name: 'Old result' });
+  await selecting;
+  assert.equal(page.sessionSheetCampus, 'WEIHAI');
+  assert.equal(page.sessionSheetInfo, undefined);
+  assert.equal(page.sessionWebVisible, false);
+  assert.equal(page.activeSheetVisible, true);
+  assert.equal(page.sessionSheetLoading, false);
+});
+
+test('only a verified result for the visible selected campus closes the account sheet', async () => {
+  const { page, state } = harness();
+  state.load = async () => undefined;
+  await page.openSessionSheet();
+  await page.selectSessionCampus('BENBU');
+  page.beginSessionLogin();
+  page.onSessionLoggedIn('WEIHAI', { campus: 'WEIHAI' });
+  page.onSessionLoggedIn('BENBU', { campus: 'WEIHAI' });
+  assert.equal(page.activeSheetVisible, true);
+  assert.equal(state.refreshes, 0);
+  page.onSessionLoggedIn('BENBU', { campus: 'BENBU' });
+  assert.equal(page.activeSheetVisible, false);
+  assert.equal(state.refreshes, 1);
+  page.onSessionLoggedIn('BENBU', { campus: 'BENBU' });
+  assert.equal(state.refreshes, 1);
+});
+
+test('successful demo login closes the account sheet and imports its local timetable once', () => {
+  const { page } = harness();
+  page.sessionSheetCampus = 'WEIHAI';
+  page.sessionDemoVisible = true;
+  page.sessionSheetOpen = true;
+  page.activeSheetVisible = true;
+  let imports = 0;
+  page.importTimetable = async () => { imports++; };
+  page.onSessionLoggedIn('WEIHAI', { campus: 'WEIHAI', demoMode: true });
+  assert.equal(page.activeSheetVisible, false);
+  assert.equal(imports, 1);
+  page.onSessionLoggedIn('WEIHAI', { campus: 'WEIHAI', demoMode: true });
+  assert.equal(imports, 1);
 });

@@ -39,6 +39,44 @@ const response = (body, statusCode = 200) => ({ statusCode, body: typeof body ==
 const session = campus => Object.assign(new EasSession(), { campus, webBaseUrl: 'https://jw.hitsz.edu.cn', webCookies: new Map([['SESSION', 'fixture-only']]) });
 const grade = (text, credits) => Object.assign(new EasCourseScoreItem(), { courseName: '测试课程', finalScoresText: text, credits });
 
+test('demo scores are successful empty results without contacting the academic system', async () => {
+  const { DemoAccount } = load('feature/eas/demo/DemoAccount.ets');
+  const service = new ScoreService();
+  service.api.request = async () => assert.fail('demo scores must stay offline');
+  for (const type of [T.NORMAL, T.MIDTERM, T.ALL, T.RETAKE]) {
+    const result = await service.query(DemoAccount.createSession(), term, type);
+    assert.deepEqual(result.items, []);
+    assert.equal(result.summary.available(), false);
+    assert.equal(result.summaryMessage, '');
+  }
+});
+
+test('reopening scores in demo mode resets a previously selected real campus and transcript', async t => {
+  const { DemoAccount } = load('feature/eas/demo/DemoAccount.ets');
+  const { EasSessionStore } = load('feature/eas/EasSessionStore.ets');
+  const { ScorePage } = load('pages/ScorePage.ets');
+  const store = EasSessionStore.getInstance();
+  const original = { init: store.init, loadPreferred: store.loadPreferred, load: store.load };
+  t.after(() => Object.assign(store, original));
+  store.init = async () => {};
+  store.loadPreferred = async () => DemoAccount.createSession();
+  store.load = async campus => {
+    assert.equal(campus, C.SHENZHEN);
+    return DemoAccount.createSession();
+  };
+  const page = new ScorePage();
+  page.getUIContext = () => ({ getHostContext: () => ({}) });
+  page.initialized = true;
+  page.campusIndex = 2;
+  page.scores = [grade('95', 3)];
+  await page.onPageShow();
+  assert.equal(page.demoMode, true);
+  assert.equal(page.campusIndex, 0);
+  assert.equal(page.queried, true);
+  assert.deepEqual(page.scores, []);
+  assert.equal(page.errorText, '');
+});
+
 test('campus/type selection preserves Android endpoints, term and retake parameters', () => {
   const all = scores.legacyScoreRequest(C.BENBU, term, T.ALL);
   assert.equal(all.path, '/xfj/queryListXfj');

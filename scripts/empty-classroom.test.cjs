@@ -40,6 +40,7 @@ const { EmptyClassroomData: data, ClassroomBuilding, ClassroomRoom, ClassroomAva
 const { EmptyClassroomService: Service } = load('feature/eas/classroom/EmptyClassroomService.ets', {}, modules);
 const { EasCampus: C, EasSession } = load('feature/eas/EasSession.ets', {}, modules);
 const { EasTermItem } = load('feature/eas/model/EasModels.ets', {}, modules);
+const { DemoAccount } = load('feature/eas/demo/DemoAccount.ets', {}, modules);
 function session(campus = C.SHENZHEN) {
   const s = new EasSession();
   s.campus = campus;
@@ -57,6 +58,58 @@ function legacy(cells = new Map(), name = '正心101') {
     '</td><td>80人</td>' + Array.from({ length: 42 }, (_, i) => '<td>' + (cells.get(i) ?? '&nbsp;') + '</td>').join('') +
     '</tr></table>';
 }
+
+test('demo classroom service stays offline and only includes rooms observed in the supplied recording', async () => {
+  const api = { request: async () => { assert.fail('demo must not contact the school'); } };
+  const service = new Service(api);
+  const s = DemoAccount.createSession();
+  assert.equal(s.webCookies.size, 0);
+  const buildings = await service.getBuildings(s);
+  assert.equal(buildings.length, 23);
+  const expected = new Map([
+    ['A楼', ['A103', 'A109', 'A405', 'A416']], ['G楼', ['G707']],
+    ['经管楼', ['M701', 'M702', 'M802', 'M806', 'M807', 'M808']],
+    ['教学楼II', ['T2304', 'T2306', 'T2307', 'T2309', 'T2313', 'T2407', 'T2803']],
+    ['教学楼III', ['T3201', 'T3202', 'T3401', 'T3402', 'T3501', 'T3502']],
+    ['教学楼IV', ['T4402']],
+    ['教学楼V', ['T5204', 'T5205', 'T5206', 'T5304', 'T5305', 'T5306', 'T5404', 'T5405',
+      'T5406', 'T5503', 'T5505', 'T5506', 'T5507', 'T5603', 'T5605', 'T5606']],
+    ['教学楼VI', ['T6401', 'T6404', 'T6405', 'T6406']],
+    ['主楼', ['H301', 'H302', 'H303', 'H304', 'H307', 'H308', 'H311', 'H312', 'H313',
+      'H401', 'H402', 'H403', 'H404', 'H407', 'H408', 'H411', 'H412', 'H413',
+      'H501', 'H502', 'H503', 'H504', 'H507', 'H508', 'H509', 'H512', 'H513']]
+  ]);
+  for (const b of buildings) {
+    const rooms = await service.query(s, term(), b, 1);
+    assert.deepEqual(rooms.map(r => r.name), expected.get(b.name) ?? []);
+    assert.deepEqual(await service.query(s, term(), b, 1), rooms, 'refresh must be deterministic');
+    for (const r of rooms) {
+      assert.equal(r.periodCount, 12, 'align with the demo ICS bell schedule');
+      assert.ok(r.occupied.length > 0);
+      assert.ok(r.occupied.every(slot => slot.day >= 1 && slot.day <= 5 && slot.period >= 1 && slot.period <= 10));
+      assert.equal(data.availability(r, 7, 1, 2), A.FREE);
+      assert.equal(data.availability(r, r.occupied[0].day, r.occupied[0].period, r.occupied[0].period), A.OCCUPIED);
+    }
+  }
+  assert.deepEqual(await service.query(s, term(), building('unseen'), 1), []);
+  assert.deepEqual(await service.query(s, Object.assign(term(), { termCode: '2' }), buildings[0], 1), []);
+  await assert.rejects(service.query(s, term(), buildings[0], 0), e => e.kind === 'INPUT');
+  const changed = await service.query(s, term(), buildings[0], 2);
+  assert.notDeepEqual(changed[0].occupied, (await service.query(s, term(), buildings[0], 1))[0].occupied);
+  for (const campus of [C.BENBU, C.WEIHAI]) {
+    const local = DemoAccount.createSession(campus);
+    assert.deepEqual(await service.getBuildings(local), buildings);
+    assert.deepEqual(await service.query(local, term(), buildings[0], 2), changed);
+  }
+  const signedOut = Object.assign(new EasSession(), { campus: C.BENBU });
+  await assert.rejects(service.getBuildings(signedOut), e => e.kind === 'AUTH');
+});
+
+test('demo classroom cache cannot overlap a real session using the same student number', () => {
+  const demo = DemoAccount.createSession();
+  const real = session(); real.username = demo.username; real.stuId = demo.stuId;
+  assert.notEqual(Cache.key(demo, term(), building(), 1), Cache.key(real, term(), building(), 1));
+});
 
 test('building identifiers preserve leading zeroes and areas; accepted response wrappers include empty arrays', () => {
   for (const body of [[{ DM: '001', MC: 'A楼' }], { data: { list: [{ dm: '001', mc: 'A楼' }] } }]) {
@@ -318,6 +371,27 @@ function pageWithService(service, mocks = {}) {
   Object.assign(page, { session: session(), terms: [term()], buildings: [building()], loading: false });
   return page;
 }
+
+test('demo classroom week uses its isolated timetable and the demo bell schedule', async () => {
+  const codes = [];
+  const schedule = [Period.ofHour(8, 0, 8, 45), Period.ofHour(8, 55, 9, 40)];
+  const page = pageWithService(class {}, {
+    '../common/db/RdbHelper': { RdbHelper: { getInstance: () => ({
+      init: async () => {}, getTimetableByEasCode: async code => {
+        codes.push(code); return { getWeekNumber: () => 12 };
+      }
+    }) } },
+    '../feature/eas/EasDataProvider': { EasDataProvider: class {
+      async getShenzhenScheduleStructure(s) { assert.ok(s.isDemoSession()); return schedule; }
+    } }
+  });
+  page.session = DemoAccount.createSession(C.BENBU);
+  page.getUIContext = () => ({ getHostContext: () => ({}) });
+  await page.loadTermContext(page.generation);
+  assert.deepEqual(codes, ['DEMO:SHENZHEN:2026-20271']);
+  assert.equal(page.selectedWeek, 12);
+  assert.equal(page.schedule, schedule);
+});
 
 test('changing week automatically queries and ignores a late response for the previous week', async () => {
   const pending = deferred(); const calls = [];

@@ -54,6 +54,8 @@ import { CurrentClassSelection } from '../common/model/timetable/CurrentClassSel
 import { DOW_FULL, EasTimeTools } from '../common/util/EasTimeTools';
 import { EasCampus, EasSession } from '../feature/eas/EasSession';
 import { EasSessionStore, EAS_SESSION_REVISION_KEY } from '../feature/eas/EasSessionStore';
+import { EasLocalDataConfirmation } from '../feature/eas/demo/EasLocalDataConfirmation';
+import { DemoTimetableData } from '../feature/eas/demo/DemoTimetableData';
 import { attachEasSilentRenewal } from '../feature/eas/webLogin/EasSilentLoginWeb';
 import { EasWebLoginState } from '../feature/eas/webLogin/EasWebLoginState';
 import { SheetContent } from '../common/components/SheetContent';
@@ -260,10 +262,11 @@ struct Home {
   @State sessionSheetInfo: EasSession | undefined = undefined;
   @State sessionSheetStatus: EasSessionStatus = EasSessionStatus.UNKNOWN;
   private sheetRequestGeneration: number = 0;
-  private sessionSheetLoading: boolean = false;
+  @State sessionSheetLoading: boolean = false;
   private campusWebsiteNoticeOpen: boolean = false;
-  @State loginSheetOpen: boolean = false;
-  @State loginCampusCode: string = 'WEIHAI';
+  private localDataLoginTaps: number = 0;
+  @State sessionDemoVisible: boolean = false;
+  @State sessionWebVisible: boolean = false;
   @State courseSheetOpen: boolean = false;
   @State courseColorEditing: boolean = false;
   @State courseColorPreview: number = 0;
@@ -299,6 +302,7 @@ struct Home {
   @State timetableAnimationDuration: number = 0;
   @State timetableAnimating: boolean = false;
   private importRequested: boolean = false;
+  private openingRecentTimetable: boolean = false;
   private timetableUpdateChecking: boolean = false;
   private timetableUpdatePrompting: boolean = false;
   private pendingTimetableUpdate: EasTimetableUpdate | undefined = undefined;
@@ -379,7 +383,7 @@ struct Home {
   async aboutToAppear(): Promise<void> {
     this.pageVisible = true;
     this.assistantDockVisible = AppearanceStore.getInstance().showsAssistantDock();
-    this.getUIContext().setKeyboardAvoidMode(KeyboardAvoidMode.NONE);
+    this.updateHomeKeyboardAvoidMode();
     const ctx: common.Context = this.getUIContext().getHostContext() as common.Context;
     await EasSessionStore.getInstance().init(ctx);
     attachEasSilentRenewal(this.getUIContext());
@@ -427,7 +431,7 @@ struct Home {
     this.pageVisible = true;
     this.startDockHandedness();
     this.courseDeleteEffects.resume();
-    this.getUIContext().setKeyboardAvoidMode(KeyboardAvoidMode.NONE);
+    this.updateHomeKeyboardAvoidMode();
     this.startClock();
     this.widgetBackgroundSet = WidgetBackgroundStore.hasBackground(
       this.getUIContext().getHostContext() as common.Context);
@@ -489,6 +493,13 @@ struct Home {
     } catch (_) {
       return true;
     }
+  }
+
+  private updateHomeKeyboardAvoidMode(): void {
+    if (!this.pageVisible) return;
+    // The school Web uses ArkUI avoidance while the Home dock keeps its own layout.
+    this.getUIContext().setKeyboardAvoidMode(
+      this.sessionSheetOpen && this.sessionWebVisible ? KeyboardAvoidMode.OFFSET : KeyboardAvoidMode.NONE);
   }
 
   private async onSessionRevisionChanged(): Promise<void> {
@@ -677,7 +688,8 @@ struct Home {
     const found: EasSession | undefined = await EasSessionStore.getInstance().loadPreferred();
 
     const allTimetables: EasTimetable[] = await rdb.getTimetables();
-    const recent: EasTimetable | undefined = await TimetableResolver.getRecent(rdb, this.nowTick);
+    const recent: EasTimetable | undefined = await TimetableResolver.getRecent(rdb, this.nowTick,
+      found?.demoMode ? DemoTimetableData.CODE : '');
     const selectedId: string = await TimetableSelectionStore.getInstance().load();
     let selected: EasTimetable | undefined = undefined;
     if (selectedId.length > 0) {
@@ -690,7 +702,8 @@ struct Home {
     if (generation !== this.summaryRequestGeneration || this.skippingCourse) {
       return;
     }
-    if (found !== undefined && !found.loginExpired && real === undefined && selected === undefined &&
+    const needsTimetable: boolean = found?.demoMode ? recent === undefined : real === undefined && selected === undefined;
+    if (found !== undefined && !found.loginExpired && needsTimetable &&
       !this.importing && !this.importRequested) {
       await this.importTimetable(false);
       return;
@@ -1581,7 +1594,7 @@ struct Home {
 
   private canOpenSheet(): boolean {
     return !this.skippingCourse && this.pageVisible && !this.tabTransitionRunning && !this.activeSheetVisible &&
-      !this.sessionSheetOpen && !this.loginSheetOpen && !this.courseSheetOpen &&
+      !this.sessionSheetOpen && !this.courseSheetOpen &&
       !this.calendarExportSheetOpen && !this.timetableDisplayOpen && !this.widgetBackgroundSheetOpen &&
       !this.importTimetableSheetOpen && !this.academicPanelOpen && !this.backupSheetOpen;
   }
@@ -1590,7 +1603,7 @@ struct Home {
     if ((this.backupSheetOpen && this.backupBusy) || this.learningBusy) return;
     // Invalidate pending reads immediately, but retain content until the exit animation ends.
     this.sheetRequestGeneration++;
-    this.sessionSheetLoading = false;
+    if (!this.sessionSheetOpen) this.sessionSheetLoading = false;
     this.activeSheetVisible = false;
   }
 
@@ -1743,6 +1756,37 @@ struct Home {
     } finally {
       this.importing = false;
       await this.refreshSummaries();
+    }
+  }
+
+  private async openRecentTimetable(): Promise<void> {
+    if (this.openingRecentTimetable) return;
+    if (this.importing) {
+      this.getUIContext().getPromptAction().showToast({ message: '课表正在准备，请稍候' });
+      return;
+    }
+    this.openingRecentTimetable = true;
+    try {
+      await this.refreshSummaries();
+      if (!this.pageVisible) return;
+      // A previous automatic import may have failed. The explicit tap permits a retry.
+      if (this.sessionInfo?.demoMode && this.recentTimetable === undefined) {
+        await this.importTimetable();
+        if (this.recentTimetable === undefined) return;
+      }
+      const timetable: EasTimetable | undefined = this.recentTimetable;
+      if (timetable === undefined) {
+        this.getUIContext().getPromptAction().showToast({ message: '暂无课表，请先导入课表' });
+        return;
+      }
+      if (!this.pageVisible) return;
+      await this.getUIContext().getRouter().pushUrl({
+        url: 'pages/TimetableDetailPage', params: { 'timetableId': timetable.id }
+      });
+    } catch (_) {
+      if (this.pageVisible) this.getUIContext().getPromptAction().showToast({ message: '无法打开课表，请重试' });
+    } finally {
+      this.openingRecentTimetable = false;
     }
   }
 
@@ -2042,13 +2086,15 @@ struct Home {
       }
       this.sessionSheetCampus = campus.toString();
       this.sessionSheetInfo = session;
+      this.sessionWebVisible = false;
       this.sessionSheetStatus = EasSessionStatus.UNKNOWN;
       this.sessionSheetOpen = true;
+      this.updateHomeKeyboardAvoidMode();
       this.activeSheetVisible = true;
       this.sessionSheetStatus = session?.loginExpired ? EasSessionStatus.EXPIRED : EasSessionStatus.SAVED;
     } catch (_) {
       if (generation === this.sheetRequestGeneration && this.canOpenSheet()) {
-        this.getUIContext().getPromptAction().showToast({ message: '教务会话读取失败，请重试' });
+        this.getUIContext().getPromptAction().showToast({ message: '账号信息读取失败，请重试' });
       }
     } finally {
       if (generation === this.sheetRequestGeneration) {
@@ -2058,12 +2104,18 @@ struct Home {
   }
 
   private async selectSessionCampus(code: string): Promise<void> {
-    if (!this.activeSheetVisible || !this.sessionSheetOpen) {
+    if (!this.activeSheetVisible || !this.sessionSheetOpen || this.sessionWebVisible ||
+      this.sessionDemoVisible || code === this.sessionSheetCampus) {
       return;
     }
     const generation: number = ++this.sheetRequestGeneration;
     this.sessionSheetCampus = code;
     this.sessionSheetInfo = undefined;
+    this.localDataLoginTaps = 0;
+    this.sessionDemoVisible = false;
+    this.sessionWebVisible = false;
+    this.sessionSheetLoading = true;
+    this.updateHomeKeyboardAvoidMode();
     this.sessionSheetStatus = EasSessionStatus.UNKNOWN;
     try {
       const session: EasSession | undefined = await EasSessionStore.getInstance().load(Home.campusFromCode(code));
@@ -2073,36 +2125,59 @@ struct Home {
       }
     } catch (_) {
       if (generation === this.sheetRequestGeneration && this.activeSheetVisible && this.sessionSheetOpen) {
-        this.getUIContext().getPromptAction().showToast({ message: '教务会话读取失败，请重试' });
+        this.getUIContext().getPromptAction().showToast({ message: '账号信息读取失败，请重试' });
+      }
+    } finally {
+      if (generation === this.sheetRequestGeneration) {
+        this.sessionSheetLoading = false;
       }
     }
   }
 
   private beginSessionLogin(): void {
-    if (!this.activeSheetVisible || !this.sessionSheetOpen) {
-      return;
-    }
+    if (!this.activeSheetVisible || !this.sessionSheetOpen || this.sessionSheetLoading ||
+      this.sessionDemoVisible || this.sessionWebVisible) return;
     this.sheetRequestGeneration++;
-    this.loginCampusCode = this.sessionSheetCampus;
-    this.sessionSheetOpen = false;
-    this.loginSheetOpen = true;
-    this.activeSheetVisible = true;
+    this.sessionWebVisible = true;
+    this.updateHomeKeyboardAvoidMode();
+  }
+
+  private onLocalDataLoginIconTap(): void {
+    if (!this.activeSheetVisible || !this.sessionSheetOpen || this.sessionSheetLoading ||
+      this.sessionWebVisible || this.sessionDemoVisible || this.sessionSheetInfo !== undefined ||
+      this.campusWebsiteNoticeOpen) return;
+    this.localDataLoginTaps++;
+    if (this.localDataLoginTaps < 7) return;
+    this.localDataLoginTaps = 0;
+    this.sessionDemoVisible = true;
+  }
+
+  private onSessionLoggedIn(campusCode: string, session: EasSession): void {
+    if (!this.activeSheetVisible || !this.sessionSheetOpen ||
+      campusCode !== this.sessionSheetCampus || session.campus !== Home.campusFromCode(campusCode) ||
+      (session.demoMode ? !this.sessionDemoVisible : !this.sessionWebVisible)) return;
+    this.closeActiveSheet();
+    if (session.demoMode) void this.importTimetable();
+    else void this.refreshSummaries();
   }
 
   private async logoutSession(): Promise<void> {
     const generation: number = this.sheetRequestGeneration;
     const campus: EasCampus = Home.campusFromCode(this.sessionSheetCampus);
+    const isDemo: boolean = this.sessionSheetInfo?.demoMode === true;
     await EasSessionStore.getInstance().clear(campus);
-    try {
-      // The web sign-in would otherwise log the next person straight into this account.
-      await EasWebLoginState.clear();
-    } catch (_) {}
+    if (!isDemo) {
+      try {
+        // The web sign-in would otherwise log the next person straight into this account.
+        await EasWebLoginState.clear();
+      } catch (_) {}
+    }
     if (generation === this.sheetRequestGeneration && this.sessionSheetOpen) {
       // Keep the signed-in content while the sheet slides away; reopening loads the fresh state.
       this.closeActiveSheet();
     }
     await this.refreshSummaries();
-    this.getUIContext().getPromptAction().showToast({ message: '已退出' + Home.campusName(campus) + '教务会话' });
+    this.getUIContext().getPromptAction().showToast({ message: '已退出' + Home.campusName(campus) + '账号' });
   }
 
   build() {
@@ -2515,14 +2590,16 @@ struct Home {
     })
     .bindSheet($$this.activeSheetVisible, this.activeSheet(), CompatibleSheetMaterial.options({
       height: this.backupSheetOpen ? SheetSize.MEDIUM :
-        this.widgetBackgroundSheetOpen || this.importTimetableSheetOpen || this.academicPanelOpen ? SheetSize.LARGE :
-        (this.loginSheetOpen ? SheetSize.LARGE : SheetSize.FIT_CONTENT),
+        this.widgetBackgroundSheetOpen || this.importTimetableSheetOpen || this.academicPanelOpen || this.sessionWebVisible ? SheetSize.LARGE :
+        SheetSize.FIT_CONTENT,
       // The first detent is the initial selection, so start expanded and allow collapsing to medium.
       detents: this.backupSheetOpen ? [SheetSize.MEDIUM, SheetSize.LARGE] :
-        this.widgetBackgroundSheetOpen || this.importTimetableSheetOpen || this.academicPanelOpen ?
+        this.widgetBackgroundSheetOpen || this.importTimetableSheetOpen || this.academicPanelOpen || this.sessionWebVisible ?
         [SheetSize.LARGE, SheetSize.MEDIUM] : undefined,
-      scrollSizeMode: this.backupSheetOpen || this.widgetBackgroundSheetOpen || this.importTimetableSheetOpen || this.academicPanelOpen ?
+      scrollSizeMode: this.backupSheetOpen || this.widgetBackgroundSheetOpen || this.importTimetableSheetOpen || this.academicPanelOpen || this.sessionWebVisible ?
         ScrollSizeMode.CONTINUOUS : undefined,
+      keyboardAvoidMode: this.sessionSheetOpen ? (this.sessionWebVisible ?
+        SheetKeyboardAvoidMode.TRANSLATE_AND_SCROLL : SheetKeyboardAvoidMode.NONE) : undefined,
       dragBar: true,
       // Every sheet owns its header control; the system close bubble overlaps
       // the web login toolbar's trailing actions.
@@ -2552,7 +2629,11 @@ struct Home {
         // Keep content and height stable until the dismissal animation finishes.
         this.activeSheetVisible = false;
         this.sessionSheetOpen = false;
-        this.loginSheetOpen = false;
+        this.updateHomeKeyboardAvoidMode();
+        this.sessionSheetLoading = false;
+        this.localDataLoginTaps = 0;
+        this.sessionDemoVisible = false;
+        this.sessionWebVisible = false;
         this.widgetBackgroundSheetOpen = false;
         this.importTimetableSheetOpen = false;
         this.backupSheetOpen = false;
@@ -2578,7 +2659,7 @@ struct Home {
           void this.refreshSummaries(true);
         }
       }
-    }, this.loginSheetOpen || this.sessionSheetOpen || this.courseSheetOpen || this.timetableDisplayOpen ||
+    }, this.sessionSheetOpen || this.courseSheetOpen || this.timetableDisplayOpen ||
       this.calendarExportSheetOpen || this.widgetBackgroundSheetOpen || this.importTimetableSheetOpen ||
       this.academicPanelOpen || this.backupSheetOpen,
     !this.timetableDisplayOpen));
@@ -2776,28 +2857,9 @@ struct Home {
 
   @Builder
   activeSheet() {
-    SheetContent({ fillHeight: this.loginSheetOpen || this.widgetBackgroundSheetOpen || this.importTimetableSheetOpen ||
-      this.academicPanelOpen || this.backupSheetOpen }) {
-      if (this.loginSheetOpen) {
-        EasLoginPage({
-          campusCode: this.loginCampusCode,
-          studentType: '1',
-          onCancel: () => {
-            this.closeActiveSheet();
-          },
-          onLoggedIn: (session: EasSession) => {
-            if (!this.activeSheetVisible || !this.loginSheetOpen) {
-              return;
-            }
-            this.closeActiveSheet();
-            this.sessionSheetInfo = session;
-            this.refreshSummaries();
-          }
-        })
-          .width('100%')
-          .height('100%')
-          .attributeModifier(new CompatibleLightModifier(24, CompatibleSheetMaterial.isEnabled(), true));
-      } else if (this.widgetBackgroundSheetOpen) {
+    SheetContent({ fillHeight: this.widgetBackgroundSheetOpen || this.importTimetableSheetOpen ||
+      this.academicPanelOpen || this.backupSheetOpen || this.sessionWebVisible }) {
+      if (this.widgetBackgroundSheetOpen) {
         WidgetBackgroundPage({
           onBackgroundChanged: (enabled: boolean) => {
             this.widgetBackgroundSet = enabled;
@@ -3629,15 +3691,9 @@ struct Home {
             this.moreShortcut({
               symbol: $r('sys.symbol.calendar'),
               title: '最近课表',
-              subtitle: this.recentTimetable === undefined ? '暂无课表' : this.recentTimetable.name,
-              action: () => {
-                if (this.recentTimetable !== undefined) {
-                  this.getUIContext().getRouter().pushUrl({
-                    url: 'pages/TimetableDetailPage',
-                    params: { 'timetableId': this.recentTimetable.id }
-                  });
-                }
-              }
+              subtitle: this.importing ? '正在准备课表…' :
+                this.recentTimetable === undefined ? '暂无课表' : this.recentTimetable.name,
+              action: () => { void this.openRecentTimetable(); }
             });
             Blank().width(HitaDesign.gap);
             this.moreShortcut({
@@ -3968,6 +4024,7 @@ struct Home {
       .alignItems(HorizontalAlign.Center);
       Column() {
         Text(this.sessionInfo === undefined ? '未登录教务' :
+          this.sessionInfo.demoMode ? '已登录' :
           this.sessionInfo.loginExpired ? '已过期教务' :
           (this.sessionInfo.name.length > 0 ? this.sessionInfo.name :
             (this.sessionInfo.username.length > 0 ? this.sessionInfo.username :
@@ -3976,6 +4033,7 @@ struct Home {
           .fontWeight(FontWeight.Medium)
           .fontColor(COLOR_TEXT_PRIMARY);
         Text(this.sessionInfo === undefined ? '点击进行教务登录' :
+          this.sessionInfo.demoMode ? '本地数据' :
           this.sessionInfo.loginExpired ? Home.campusName(this.sessionInfo.campus) + ' · 点击重新登录' :
           ((this.sessionInfo.stuId.length > 0 ? this.sessionInfo.stuId + '\n' : '') +
             Home.campusName(this.sessionInfo.campus) +
@@ -4118,21 +4176,45 @@ struct Home {
 
   @Builder
   sessionSheet() {
+    if (this.sessionWebVisible) {
+      EasLoginPage({
+        campusCode: this.sessionSheetCampus,
+        studentType: '1',
+        active: this.activeSheetVisible && this.sessionSheetOpen,
+        onCancel: () => this.closeActiveSheet(),
+        onLoggedIn: (session: EasSession) => this.onSessionLoggedIn(this.sessionSheetCampus, session)
+      })
+        .width('100%')
+        .height('100%')
+        .attributeModifier(new CompatibleLightModifier(HitaDesign.heroRadius, CompatibleSheetMaterial.isEnabled(), true));
+    } else {
+      this.sessionAccountPanel();
+    }
+  }
+
+  @Builder
+  sessionAccountPanel() {
     Column() {
-      ImmersiveHeader({ barHeight: 60 }) {
+      ImmersiveHeader({ barHeight: HitaDesign.headerHeight }) {
         Row() {
           HeaderBackButton({
             onBack: () => {
-              this.closeActiveSheet();
+              if (this.sessionDemoVisible) {
+                this.sessionDemoVisible = false;
+              } else {
+                this.closeActiveSheet();
+              }
             }
           })
             .margin({ right: HitaDesign.spaceSm });
           Column() {
-            Text('教务认证')
+            Text(this.sessionDemoVisible ? '使用本地数据' : '教务认证')
               .fontSize(HitaDesign.title)
               .fontWeight(FontWeight.Medium)
               .fontColor(COLOR_TEXT_PRIMARY);
-            Text(this.sessionSheetInfo === undefined ? '请登录教务账号以继续' : '当前教务会话')
+            Text(this.sessionDemoVisible ? '载入内置课表与示例数据' :
+              this.sessionSheetInfo === undefined ? '请登录教务账号以继续' :
+                this.sessionSheetInfo.demoMode ? '当前账号' : '当前教务会话')
               .fontSize(HitaDesign.caption)
               .fontColor(COLOR_TEXT_SECONDARY)
               .margin({ top: HitaDesign.space2xs });
@@ -4145,154 +4227,174 @@ struct Home {
         .alignItems(VerticalAlign.Center);
       }
 
-      Column() {
-        HitaListRow({ symbol: $r('sys.symbol.info_circle'), title: '说明', subtitle: '校方网页来源与账号验证',
-          onTap: () => { void this.showCampusWebsiteNotice(); } });
-      }
-      .width('100%')
-      .backgroundColor(CompatibleSheetMaterial.cardColor($r('app.color.hita_surface_soft_f8fafd')))
-      .border({ width: 1, color: $r('app.color.hita_divider_e3eaf2') })
-      .borderRadius(HitaDesign.cardRadius)
-      .margin({ top: HitaDesign.spaceMd });
-
-      Column() {
-        Text('认证校区')
-          .fontSize(HitaDesign.caption)
-          .fontWeight(FontWeight.Medium)
-          .fontColor(COLOR_TEXT_SECONDARY)
-          .width('100%');
-
-        ImmersiveHeader({ barHeight: HitaDesign.spaceXs + HitaDesign.space2xs * 2 + HitaDesign.controlHeight }) {
-          Row({ space: HitaDesign.space2xs }) {
-            this.sessionCampusButton('SHENZHEN', '深圳');
-            this.sessionCampusButton('BENBU', '本部');
-            this.sessionCampusButton('WEIHAI', '威海');
-          }
-          .width('100%')
-          .padding(HitaDesign.space2xs)
-          .backgroundColor($r('app.color.hita_control_eaf0f7'))
-          .borderRadius(HitaDesign.cardRadius)
-          .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_control_eaf0f7')))
-          .margin({ top: HitaDesign.spaceXs });
-        }
-      }
-      .width('100%')
-      .alignItems(HorizontalAlign.Start)
-      .margin({ top: HitaDesign.spaceMd });
-
-      if (this.sessionSheetInfo !== undefined) {
-        Row() {
-          Stack() {
-            Text(this.sessionSheetInfo.name.length > 0 ?
-              this.sessionSheetInfo.name.substring(0, 1) : 'U')
-              .fontSize(HitaDesign.section)
-              .fontWeight(FontWeight.Medium)
-              .fontColor($r('app.color.hita_on_primary'));
-          }
-          .width(USER_AVATAR_SIZE)
-          .height(USER_AVATAR_SIZE)
-          .borderRadius(USER_AVATAR_SIZE / 2)
-          .backgroundColor($r('app.color.hita_primary_fill'))
-          .alignContent(Alignment.Center);
-          Column() {
-            Text(this.sessionSheetInfo.name.length > 0 ? this.sessionSheetInfo.name :
-              (this.sessionSheetInfo.stuId.length > 0 ? this.sessionSheetInfo.stuId : '教务账号'))
-              .fontSize(HitaDesign.body)
-              .fontWeight(FontWeight.Medium)
-              .fontColor(COLOR_TEXT_PRIMARY)
-              .maxLines(1)
-              .textOverflow({ overflow: TextOverflow.Ellipsis });
-            Text(Home.campusName(this.sessionSheetInfo.campus) +
-              (this.sessionSheetInfo.stuId.length > 0 ? ' · ' + this.sessionSheetInfo.stuId : ''))
-              .fontSize(HitaDesign.caption)
-              .fontColor(COLOR_TEXT_SECONDARY)
-              .margin({ top: HitaDesign.space2xs });
-          }
-          .layoutWeight(1)
-          .alignItems(HorizontalAlign.Start)
-          .margin({ left: HitaDesign.spaceSm });
-
-          HitaTag({ text: this.sessionSheetStatus, tone: this.sessionSheetStatus === EasSessionStatus.SAVED ?
-            HitaTagTone.SUCCESS : this.sessionSheetStatus === EasSessionStatus.EXPIRED ? HitaTagTone.DANGER :
-              HitaTagTone.NEUTRAL });
+      if (this.sessionDemoVisible) {
+        EasLocalDataConfirmation({
+          campus: Home.campusFromCode(this.sessionSheetCampus),
+          active: this.activeSheetVisible && this.sessionSheetOpen,
+          onConfirmed: (session: EasSession) => this.onSessionLoggedIn(this.sessionSheetCampus, session)
+        })
+          .margin({ top: HitaDesign.spaceMd });
+      } else {
+        Column() {
+          HitaListRow({ symbol: $r('sys.symbol.info_circle'), title: '说明', subtitle: '校方网页来源与账号验证',
+            onTap: () => { void this.showCampusWebsiteNotice(); } });
         }
         .width('100%')
-        .padding(HitaDesign.inset)
         .backgroundColor(CompatibleSheetMaterial.cardColor($r('app.color.hita_surface_soft_f8fafd')))
         .border({ width: 1, color: $r('app.color.hita_divider_e3eaf2') })
         .borderRadius(HitaDesign.cardRadius)
         .margin({ top: HitaDesign.spaceMd });
 
-        if (this.sessionSheetStatus === EasSessionStatus.EXPIRED && this.sessionSheetInfo.expiredReason.length > 0) {
-          Text('失效原因：' + this.sessionSheetInfo.expiredReason)
+        Column() {
+          Text('认证校区')
             .fontSize(HitaDesign.caption)
-            .fontColor(COLOR_TEXT_HINT)
-            .width('100%')
-            .maxLines(2)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
-            .margin({ top: HitaDesign.spaceXs });
-        }
+            .fontWeight(FontWeight.Medium)
+            .fontColor(COLOR_TEXT_SECONDARY)
+            .width('100%');
 
-        Row({ space: HitaDesign.gap }) {
-          HitaButton({ label: '重新登录', variant: HitaButtonVariant.SECONDARY, onTap: () => {
-            this.beginSessionLogin();
-          } })
-            .layoutWeight(1);
-          HitaButton({ label: '退出登录', variant: HitaButtonVariant.DANGER, onTap: () => {
-            this.logoutSession();
-          } })
-            .layoutWeight(1);
+          ImmersiveHeader({ barHeight: HitaDesign.spaceXs + HitaDesign.space2xs * 2 + HitaDesign.controlHeight }) {
+            Row({ space: HitaDesign.space2xs }) {
+              this.sessionCampusButton('SHENZHEN', '深圳');
+              this.sessionCampusButton('BENBU', '本部');
+              this.sessionCampusButton('WEIHAI', '威海');
+            }
+            .width('100%')
+            .padding(HitaDesign.space2xs)
+            .backgroundColor($r('app.color.hita_control_eaf0f7'))
+            .borderRadius(HitaDesign.cardRadius)
+            .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_control_eaf0f7')))
+            .margin({ top: HitaDesign.spaceXs });
+          }
         }
         .width('100%')
-        .margin({ top: HitaDesign.gap });
-      } else {
-        Column() {
+        .alignItems(HorizontalAlign.Start)
+        .margin({ top: HitaDesign.spaceMd });
+
+        if (this.sessionSheetLoading) {
+          Row({ space: HitaDesign.spaceXs }) {
+            LoadingProgress().width(HitaDesign.iconMd).height(HitaDesign.iconMd).color(COLOR_PRIMARY);
+            Text('正在读取账号信息').fontSize(HitaDesign.caption).fontColor(COLOR_TEXT_SECONDARY);
+          }
+          .width('100%')
+          .margin({ top: HitaDesign.spaceMd });
+        } else if (this.sessionSheetInfo !== undefined) {
           Row() {
             Stack() {
-              SymbolGlyph($r('sys.symbol.lock_shield'))
-                .fontSize(HitaDesign.iconMd)
-                .fontColor([COLOR_PRIMARY]);
+              Text(this.sessionSheetInfo.name.length > 0 ?
+                this.sessionSheetInfo.name.substring(0, 1) : 'U')
+                .fontSize(HitaDesign.section)
+                .fontWeight(FontWeight.Medium)
+                .fontColor($r('app.color.hita_on_primary'));
             }
-            .width(HitaDesign.listIconSize)
-            .height(HitaDesign.listIconSize)
-            .borderRadius(HitaDesign.listIconSize / 2)
-            .backgroundColor(COLOR_NAV_ACTIVE)
+            .width(USER_AVATAR_SIZE)
+            .height(USER_AVATAR_SIZE)
+            .borderRadius(USER_AVATAR_SIZE / 2)
+            .backgroundColor($r('app.color.hita_primary_fill'))
             .alignContent(Alignment.Center);
             Column() {
-              Text('登录教务系统')
+              Text(this.sessionSheetInfo.demoMode ? '本地账号' :
+                this.sessionSheetInfo.name.length > 0 ? this.sessionSheetInfo.name :
+                (this.sessionSheetInfo.stuId.length > 0 ? this.sessionSheetInfo.stuId : '教务账号'))
                 .fontSize(HitaDesign.body)
                 .fontWeight(FontWeight.Medium)
-                .fontColor(COLOR_TEXT_PRIMARY);
+                .fontColor(COLOR_TEXT_PRIMARY)
+                .maxLines(1)
+                .textOverflow({ overflow: TextOverflow.Ellipsis });
+              Text(this.sessionSheetInfo.demoMode ? '本地数据' :
+                Home.campusName(this.sessionSheetInfo.campus) +
+                  (this.sessionSheetInfo.stuId.length > 0 ? ' · ' + this.sessionSheetInfo.stuId : ''))
+                .fontSize(HitaDesign.caption)
+                .fontColor(COLOR_TEXT_SECONDARY)
+                .margin({ top: HitaDesign.space2xs });
             }
             .layoutWeight(1)
             .alignItems(HorizontalAlign.Start)
             .margin({ left: HitaDesign.spaceSm });
+
+            HitaTag({ text: this.sessionSheetStatus,
+              tone: this.sessionSheetStatus === EasSessionStatus.SAVED ?
+              HitaTagTone.SUCCESS : this.sessionSheetStatus === EasSessionStatus.EXPIRED ? HitaTagTone.DANGER :
+                HitaTagTone.NEUTRAL });
           }
-          .width('100%');
+          .width('100%')
+          .padding(HitaDesign.inset)
+          .backgroundColor(CompatibleSheetMaterial.cardColor($r('app.color.hita_surface_soft_f8fafd')))
+          .border({ width: 1, color: $r('app.color.hita_divider_e3eaf2') })
+          .borderRadius(HitaDesign.cardRadius)
+          .margin({ top: HitaDesign.spaceMd });
 
-          HitaButton({ label: '网页登录', variant: HitaButtonVariant.PRIMARY, onTap: () => {
-            this.beginSessionLogin();
-          } })
-            .width('100%')
-            .margin({ top: HitaDesign.spaceMd });
-
-          Row() {
-            SymbolGlyph($r('sys.symbol.lock_shield'))
-              .fontSize(HitaDesign.iconSm)
-              .fontColor([COLOR_TEXT_HINT]);
-            Text('HITA 不保存您的教务密码')
+          if (this.sessionSheetStatus === EasSessionStatus.EXPIRED && this.sessionSheetInfo.expiredReason.length > 0) {
+            Text('失效原因：' + this.sessionSheetInfo.expiredReason)
               .fontSize(HitaDesign.caption)
               .fontColor(COLOR_TEXT_HINT)
-              .margin({ left: HitaDesign.spaceXs });
+              .width('100%')
+              .maxLines(2)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+              .margin({ top: HitaDesign.spaceXs });
           }
+
+          Row({ space: HitaDesign.gap }) {
+            HitaButton({ label: '重新登录', variant: HitaButtonVariant.SECONDARY, onTap: () => {
+              this.beginSessionLogin();
+            } })
+              .layoutWeight(1);
+            HitaButton({ label: '退出登录', variant: HitaButtonVariant.DANGER, onTap: () => {
+              this.logoutSession();
+            } })
+              .layoutWeight(1);
+          }
+          .width('100%')
           .margin({ top: HitaDesign.gap });
+        } else {
+          Column() {
+            Row() {
+              Stack() {
+                SymbolGlyph($r('sys.symbol.lock_shield'))
+                  .fontSize(HitaDesign.iconMd)
+                  .fontColor([COLOR_PRIMARY]);
+              }
+              .width(HitaDesign.listIconSize)
+              .height(HitaDesign.listIconSize)
+              .borderRadius(HitaDesign.listIconSize / 2)
+              .backgroundColor(COLOR_NAV_ACTIVE)
+              .alignContent(Alignment.Center)
+              .onClick(() => this.onLocalDataLoginIconTap());
+              Column() {
+                Text('登录教务系统')
+                  .fontSize(HitaDesign.body)
+                  .fontWeight(FontWeight.Medium)
+                  .fontColor(COLOR_TEXT_PRIMARY);
+              }
+              .layoutWeight(1)
+              .alignItems(HorizontalAlign.Start)
+              .margin({ left: HitaDesign.spaceSm });
+            }
+            .width('100%');
+
+            HitaButton({ label: '网页登录', variant: HitaButtonVariant.PRIMARY, onTap: () => {
+              this.beginSessionLogin();
+            } })
+              .width('100%')
+              .margin({ top: HitaDesign.spaceMd });
+
+            Row() {
+              SymbolGlyph($r('sys.symbol.lock_shield'))
+                .fontSize(HitaDesign.iconSm)
+                .fontColor([COLOR_TEXT_HINT]);
+              Text('HITA 不保存您的教务密码')
+                .fontSize(HitaDesign.caption)
+                .fontColor(COLOR_TEXT_HINT)
+                .margin({ left: HitaDesign.spaceXs });
+            }
+            .margin({ top: HitaDesign.gap });
+          }
+          .width('100%')
+          .padding(HitaDesign.inset)
+          .backgroundColor(CompatibleSheetMaterial.cardColor($r('app.color.hita_surface_soft_f8fafd')))
+          .border({ width: 1, color: $r('app.color.hita_divider_e3eaf2') })
+          .borderRadius(HitaDesign.cardRadius)
+          .margin({ top: HitaDesign.spaceMd });
         }
-        .width('100%')
-        .padding(HitaDesign.inset)
-        .backgroundColor(CompatibleSheetMaterial.cardColor($r('app.color.hita_surface_soft_f8fafd')))
-        .border({ width: 1, color: $r('app.color.hita_divider_e3eaf2') })
-        .borderRadius(HitaDesign.cardRadius)
-        .margin({ top: HitaDesign.spaceMd });
       }
     }
     .width('100%')

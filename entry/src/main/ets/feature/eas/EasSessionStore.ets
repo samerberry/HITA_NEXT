@@ -96,6 +96,8 @@ export class EasSessionStore {
       if (this.store === undefined) return;
       try {
         const previous = await this.load(session.campus);
+        // A local test account must never overwrite a real campus session.
+        if (session.demoMode && previous !== undefined && !previous.demoMode) return;
         if (replacing !== undefined && (previous === undefined ||
           previous.sessionGeneration !== replacing.sessionGeneration ||
           previous.getStudentType() !== replacing.getStudentType())) return;
@@ -116,11 +118,12 @@ export class EasSessionStore {
 
   /** 只修改发起该请求的同一会话；保留身份资料、凭据和当前校区选择。reason 记录判定依据，供弹层显示。 */
   async markExpired(requestSession: EasSession, reason: string = ''): Promise<void> {
+    if (requestSession.demoMode) return;
     return this.enqueue(async () => {
       if (this.store === undefined) return;
       try {
         const current = await this.load(requestSession.campus);
-        if (current === undefined || current.loginExpired ||
+        if (current === undefined || current.demoMode || current.loginExpired ||
           current.sessionGeneration !== requestSession.sessionGeneration ||
           current.getStudentType() !== requestSession.getStudentType() ||
           current.webBaseUrl !== requestSession.webBaseUrl ||

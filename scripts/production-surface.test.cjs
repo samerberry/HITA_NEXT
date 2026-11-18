@@ -184,6 +184,20 @@ test('recent timetable selection skips future imported terms', async () => {
   assert.equal(await TimetableResolver.getRecent(database([future, started]), 200), started);
 });
 
+test('account-scoped recent timetable cannot resolve to a newer or same-date real account', async () => {
+  const code = 'DEMO:SHENZHEN:2026-20271';
+  const demo = table(code, 100);
+  for (const start of [100, 150]) {
+    const real = table('SHENZHEN:2026-20271', start);
+    assert.equal(await TimetableResolver.getRecent(database([real, demo]), 200, code), demo);
+    assert.equal(await TimetableResolver.getRecent(database([real]), 200, code), undefined);
+    assert.equal(await TimetableResolver.getRecent(database([real, demo]), 200), real,
+      'ordinary callers retain latest-started semantics');
+  }
+  assert.equal(await TimetableResolver.getRecent(database([demo]), 50, code), demo,
+    'an explicitly scoped demo remains available before its teaching term starts');
+});
+
 test('score parsing works without runtime sample/self-check exports', () => {
   const scores = loadEts('feature/eas/data/ShenzhenWebScores.ets');
   const { EasTermItem } = loadEts('feature/eas/model/EasModels.ets');
@@ -255,10 +269,8 @@ test('the window fills the status bar instead of leaving a white top inset', () 
   assert.match(home, /\.margin\(\{ bottom: HitaDesign\.spaceSm \+ this\.navBarInset \}\)/);
   assert.match(ability, /captureSystemInsets/);
   assert.match(ability, /TYPE_NAVIGATION_INDICATOR/);
-  assert.match(ability, /TYPE_KEYBOARD/);
-  assert.match(ability, /captureKeyboardInset/);
-  assert.match(ability, /hita_keyboard_vp|KEYBOARD_INSET_KEY/);
-  assert.match(home, /setKeyboardAvoidMode\(KeyboardAvoidMode\.NONE\)/);
+  // The school Web uses system keyboard avoidance.
+  assert.match(home, /setKeyboardAvoidMode\(\s*this\.sessionSheetOpen && this\.sessionWebVisible \? KeyboardAvoidMode\.OFFSET : KeyboardAvoidMode\.NONE\)/);
   assert.match(home, /setKeyboardAvoidMode\(KeyboardAvoidMode\.OFFSET\)/);
   assert.match(home, /SafeAreaType\.KEYBOARD/);
   assert.match(home, /padding\(\{ top: this\.statusBarInset \}\)/);

@@ -13,6 +13,8 @@ import {
   newId
 } from '../../common/model/timetable/TimetableModels';
 import { EasCampus, EasSession } from './EasSession';
+import { DemoAccount } from './demo/DemoAccount';
+import { DemoTimetableData } from './demo/DemoTimetableData';
 import { EasSessionStore } from './EasSessionStore';
 import { EasDataProvider, LegacyCatalogFetch } from './EasDataProvider';
 import { BenbuExperimentParser } from './data/BenbuExperimentParser';
@@ -101,7 +103,7 @@ export class EasTimetableImporter {
       if (studentType !== undefined && studentType.length > 0) {
         session.setStudentType(studentType);
       }
-      if (session.campus === EasCampus.BENBU && session.getStudentType() === '2') {
+      if (!session.demoMode && session.campus === EasCampus.BENBU && session.getStudentType() === '2') {
         result.message = '暂不支持导入本部研究生课表';
         return result;
       }
@@ -138,7 +140,7 @@ export class EasTimetableImporter {
       let target: EasTimetable | undefined = undefined;
       if (targetTimetableId !== undefined && targetTimetableId.length > 0) {
         target = await rdb.getTimetableById(targetTimetableId, true);
-        const code: string = session.campus.toString() + ':' + term.getCode();
+        const code: string = EasTimetableImporter.timetableCode(session, term);
         if (target === undefined) {
           result.message = '要合并的课表已不存在';
           return result;
@@ -174,7 +176,8 @@ export class EasTimetableImporter {
       }
       let schedule: EasTimePeriodInDay[] = scheduleOverride !== undefined && scheduleOverride.length > 0 ?
         scheduleOverride : EasTimetableImporter.scheduleStructure(session.campus);
-      if ((scheduleOverride === undefined || scheduleOverride.length === 0) && session.campus === EasCampus.SHENZHEN) {
+      if ((scheduleOverride === undefined || scheduleOverride.length === 0) &&
+        (session.demoMode || session.campus === EasCampus.SHENZHEN)) {
         try {
           const remoteSchedule: EasTimePeriodInDay[] = await provider.getShenzhenScheduleStructure(session, term);
           if (remoteSchedule.length > 0) {
@@ -257,11 +260,14 @@ export class EasTimetableImporter {
     await EasSessionStore.getInstance().init(context);
     const campus: EasCampus = source[0] === EasCampus.BENBU.toString() ? EasCampus.BENBU :
       source[0] === EasCampus.WEIHAI.toString() ? EasCampus.WEIHAI : EasCampus.SHENZHEN;
-    const session: EasSession | undefined = await EasSessionStore.getInstance().load(campus);
+    const isLocal: boolean = timetable.code.startsWith('DEMO:');
+    const storeSession: EasSessionStore = EasSessionStore.getInstance();
+    const session: EasSession | undefined = isLocal ? await storeSession.loadPreferred() : await storeSession.load(campus);
     if (session === undefined || !session.isLogin() || session.loginExpired ||
       (campus === EasCampus.BENBU && session.getStudentType() === '2')) {
       return undefined;
     }
+    if (DemoAccount.isSession(session) !== isLocal) return undefined;
     const store: TimetableUpdateStore = TimetableUpdateStore.getInstance();
     await store.init(context);
     const now: number = Date.now();
@@ -352,22 +358,28 @@ export class EasTimetableImporter {
     await store.saveSeen(update.timetable.id, update.fingerprint);
   }
 
-  /** 教务导入的课表编码为“校区:学期代码”；其他来源（ICS、手建）没有教务对应。 */
+  /** 演示课表有独立 DEMO 前缀；真实教务课表仍使用“校区:学期代码”。 */
   static isEasTimetable(timetable: EasTimetable): boolean {
     return EasTimetableImporter.sourceOf(timetable) !== undefined;
   }
 
   private static sourceOf(timetable: EasTimetable): string[] | undefined {
-    const separator: number = timetable.code.indexOf(':');
-    if (separator <= 0 || separator === timetable.code.length - 1) {
+    const code: string = timetable.code.startsWith('DEMO:') ? timetable.code.substring(5) : timetable.code;
+    const separator: number = code.indexOf(':');
+    if (separator <= 0 || separator === code.length - 1) {
       return undefined;
     }
-    const campus: string = timetable.code.substring(0, separator);
+    const campus: string = code.substring(0, separator);
     if (campus !== EasCampus.SHENZHEN.toString() && campus !== EasCampus.BENBU.toString() &&
       campus !== EasCampus.WEIHAI.toString()) {
       return undefined;
     }
-    return [campus, timetable.code.substring(separator + 1)];
+    return [campus, code.substring(separator + 1)];
+  }
+
+  static timetableCode(session: EasSession, term: EasTermItem): string {
+    if (DemoAccount.isSession(session)) return DemoTimetableData.CODE;
+    return session.campus.toString() + ':' + term.getCode();
   }
 
   private static async rememberRemote(context: common.Context, timetableId: string,
@@ -381,7 +393,7 @@ export class EasTimetableImporter {
   private static async fetchCourses(provider: EasDataProvider, session: EasSession,
     term: EasTermItem): Promise<EasCourseItem[]> {
     const courses: EasCourseItem[] = await provider.getTimetableOfTerm(session, term);
-    if (courses.length > 0 && session.campus !== EasCampus.SHENZHEN) {
+    if (courses.length > 0 && !session.demoMode && session.campus !== EasCampus.SHENZHEN) {
       const fetched: LegacyCatalogFetch = await provider.getLegacyCourseAttributes(session, term);
       const matched: number = EasTimetableImporter.applyLegacyAttributes(courses, fetched.rows, term);
       hilog.info(DOMAIN, TAG, 'course attributes %{public}s matched=%{public}d/%{public}d',
@@ -488,7 +500,7 @@ export class EasTimetableImporter {
   private static async buildImport(rdb: RdbHelper, session: EasSession, term: EasTermItem,
     courses: EasCourseItem[], schedule: EasTimePeriodInDay[], startTimeMs: number,
     target?: EasTimetable): Promise<EasImportPlan> {
-    const code: string = session.campus.toString() + ':' + term.getCode();
+    const code: string = EasTimetableImporter.timetableCode(session, term);
     let timetable: EasTimetable | undefined = target !== undefined ? target : await rdb.getTimetableByEasCode(code);
     const replaceCourses: boolean = timetable !== undefined;
     if (timetable === undefined) {
@@ -591,8 +603,10 @@ export class EasTimetableImporter {
         event.timetableId = timetable.id;
         event.from = timestamps[0];
         event.to = timestamps[1];
-        event.fromNumber = freeTime ? -1 : course.beginSection;
-        event.lastNumber = freeTime ? -1 : course.beginSection + course.sectionCount - 1;
+        const preserveSections: boolean = DemoAccount.isSession(session) && course.beginSection > 0 &&
+          course.sectionCount > 0;
+        event.fromNumber = freeTime && !preserveSections ? -1 : course.beginSection;
+        event.lastNumber = freeTime && !preserveSections ? -1 : course.beginSection + course.sectionCount - 1;
         eventByKey.set(key, event);
         savedEventCount++;
       }
@@ -835,7 +849,7 @@ export class EasTimetableImporter {
       return out;
     }
     const saved: EasTimetable | undefined = await rdb.getTimetableByEasCode(
-      session.campus.toString() + ':' + term.getCode());
+      EasTimetableImporter.timetableCode(session, term));
     if (saved !== undefined && Number.isFinite(saved.startTime) && saved.startTime > 0) {
       const monday: number = EasTimetable.mondayMsOf(saved.startTime);
       if (monday === EasTimetableImporter.legacyAutumnStart(term)) {

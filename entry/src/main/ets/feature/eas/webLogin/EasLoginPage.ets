@@ -11,7 +11,6 @@ import { HitaDesign } from '../../../common/theme/HitaDesign';
  */
 import { webview } from '@kit.ArkWeb';
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { logUrl } from './EasWebLoginProbe';
 import { common } from '@kit.AbilityKit';
 import { EasSession } from '../EasSession';
 import { EasSessionStore } from '../EasSessionStore';
@@ -30,6 +29,7 @@ export struct EasLoginPage {
   @StorageProp('hita_appearance_dark') darkMode: boolean = false;
   @Prop campusCode: string = 'SHENZHEN';
   @Prop studentType: string = '1';
+  @Prop @Watch('onActiveChanged') active: boolean = true;
   onCancel: () => void = () => {};
   onLoggedIn: (session: EasSession) => void = () => {};
 
@@ -37,6 +37,7 @@ export struct EasLoginPage {
   private loginController: EasWebLoginController = new EasWebLoginController();
   private attachStarted: boolean = false;
   private pageActive: boolean = false;
+  private loginCompleted: boolean = false;
   private callbackGeneration: number = 0;
   private pageLoadTimer: number = -1;
   private recoveryTimer: number = -1;
@@ -52,7 +53,7 @@ export struct EasLoginPage {
   @State recoveryBusy: boolean = false;
 
   aboutToAppear(): void {
-    this.pageActive = true;
+    this.pageActive = this.active;
     this.callbackGeneration++;
     // 必须在 Web 组件开始导航前开启 Cookie。安卓版在 loadUrl 前完成同样的初始化，
     // 否则 WebVPN/CAS 的跨站 Set-Cookie 可能被 ArkWeb 丢弃。
@@ -67,12 +68,14 @@ export struct EasLoginPage {
 
     const ctrl: EasWebLoginController = this.loginController;
     ctrl.onProgress = (p: number) => {
-      this.progressValue = p;
+      if (this.pageActive && !this.loginCompleted) this.progressValue = p;
     };
     ctrl.onError = (message: string) => {
-      this.errorText = message;
+      if (this.pageActive && !this.loginCompleted) this.errorText = message;
     };
     ctrl.onFinished = (session: EasSession) => {
+      if (!this.pageActive || this.loginCompleted) return;
+      this.loginCompleted = true;
       const generation: number = this.callbackGeneration;
       this.clearPageLoadTimer();
       const ctx: common.Context = this.getUIContext().getHostContext() as common.Context;
@@ -81,20 +84,34 @@ export struct EasLoginPage {
           return Promise.resolve(false);
         }
         return EasSessionStore.getInstance().save(session);
-      }).then(() => {
-        if (this.pageActive && generation === this.callbackGeneration) {
+      }).then((saved: boolean) => {
+        if (this.pageActive && generation === this.callbackGeneration && saved) {
           this.onLoggedIn(session);
+        } else if (this.pageActive && generation === this.callbackGeneration) {
+          this.loginCompleted = false;
+          this.errorText = '无法保存登录状态，请刷新后重试';
         }
       }).catch(() => {
         if (this.pageActive && generation === this.callbackGeneration) {
-          this.onLoggedIn(session);
+          this.loginCompleted = false;
+          this.errorText = '无法保存登录状态，请刷新后重试';
         }
       });
     };
   }
 
   aboutToDisappear(): void {
+    this.deactivate();
+  }
+
+  private onActiveChanged(): void {
+    if (!this.active) this.deactivate();
+  }
+
+  private deactivate(): void {
+    if (!this.pageActive) return;
     this.loginController.stop();
+    try { this.webController.stop(); } catch (_) {}
     this.pageActive = false;
     this.callbackGeneration++;
     this.clearPageLoadTimer();
@@ -128,7 +145,7 @@ export struct EasLoginPage {
   }
 
   private pageEnded(url: string): void {
-    if (!this.pageActive) {
+    if (!this.pageActive || this.loginCompleted) {
       return;
     }
     if (this.recoveryPending && url === 'about:blank') {
@@ -145,7 +162,7 @@ export struct EasLoginPage {
   }
 
   private pageLoadFinished(url: string): void {
-    if (this.campusCode !== 'BENBU' || !this.pageActive || this.recoveryBusy || url.length === 0) {
+    if (this.campusCode !== 'BENBU' || !this.pageActive || this.loginCompleted || this.recoveryBusy || url.length === 0) {
       return;
     }
     // ArkWeb's final main-frame callback also covers redirects and fragment navigation.
@@ -265,9 +282,8 @@ export struct EasLoginPage {
   }
 
   private cancelLogin(): void {
-    this.loginController.stop();
+    this.deactivate();
     this.onCancel();
-    this.aboutToDisappear();
   }
 
   build() {
@@ -401,6 +417,7 @@ export struct EasLoginPage {
             .multiWindowAccess(true)
             .allowWindowOpenMethod(true)
             .onWindowNew((event) => {
+              if (!this.pageActive || this.loginCompleted || this.recoveryBusy) return;
               if (event && event.targetUrl && event.targetUrl.length > 0) {
                 try {
                   this.webController.loadUrl(event.targetUrl);
@@ -408,7 +425,7 @@ export struct EasLoginPage {
               }
             })
             .onControllerAttached(() => {
-              if (this.attachStarted) {
+              if (this.attachStarted || !this.pageActive || this.loginCompleted) {
                 return;
               }
               this.attachStarted = true;
@@ -418,7 +435,7 @@ export struct EasLoginPage {
               this.watchPageLoad(this.initialUrl);
             })
             .onPageBegin((event) => {
-              if (!this.pageActive) {
+              if (!this.pageActive || this.loginCompleted) {
                 return;
               }
               const u: string = event !== undefined && event !== null ? event.url : '';
@@ -440,11 +457,13 @@ export struct EasLoginPage {
               }
             })
             .onProgressChange((event) => {
+              if (!this.pageActive || this.loginCompleted) return;
               const p: number = event !== undefined && event !== null ? event.newProgress : 0;
               this.progressValue = p;
               this.loginController.notifyProgress(p);
             })
             .onErrorReceive((event) => {
+              if (!this.pageActive || this.loginCompleted) return;
               if (event !== undefined && event !== null && event.error !== undefined && event.error !== null) {
                 let errStr: string = '';
                 try {
@@ -452,6 +471,9 @@ export struct EasLoginPage {
                 } catch (e) {
                   errStr = String(event.error);
                 }
+                if (/ABORTED/i.test(errStr)) return;
+                if (event.request !== undefined && event.request.isMainFrame() &&
+                  event.request.getRequestUrl() !== this.currentPageUrl) return;
                 if (this.loginController.notifyLoadError(errStr,
                   event.request !== undefined && event.request.isMainFrame())) {
                   return;
@@ -467,15 +489,8 @@ export struct EasLoginPage {
                 }
               }
             })
-            .onConsole((event) => {
-              if (event !== undefined && event !== null && event.message !== undefined && event.message !== null) {
-                // Page scripts can print tickets or tokens, so the console text stays private.
-                hilog.info(DOMAIN, 'HitaWebConsole', '[%{public}s] %{private}s',
-                  logUrl(event.message.getSourceId ? event.message.getSourceId() : ''),
-                  event.message.getMessage ? event.message.getMessage() : '');
-              }
-              return false;
-            })
+            // School scripts can log submitted fields; do not forward their console output.
+            .onConsole(() => true)
             .width('100%')
             .height('100%')
         }

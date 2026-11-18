@@ -1,4 +1,5 @@
 import { EasCampus, EasSession } from './EasSession';
+import { DemoAccount } from './demo/DemoAccount';
 import { EasApiClient, EasApiClientOptions, EasApiResponse, EasHttpMethod } from './EasApiClient';
 import { EasCourseScoreItem, EasTermItem } from './model/EasModels';
 import { EasCampusUrls, easWebLoginConfigFor } from './webLogin/EasWebLoginConfig';
@@ -29,6 +30,7 @@ export class ScoreService {
   private api: EasApiClient = new EasApiClient();
 
   async query(session: EasSession, term: EasTermItem, type: ScoreTestType): Promise<ScoreQueryResult> {
+    if (DemoAccount.isSession(session)) return new ScoreQueryResult();
     if (session.campus !== EasCampus.SHENZHEN && session.getStudentType() === '2') {
       throw new Error('该校区研究生成绩接口暂未接入，请到教务网站查询');
     }
