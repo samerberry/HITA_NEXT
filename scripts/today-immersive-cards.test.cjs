@@ -86,6 +86,17 @@ test('edited course fields re-key today rows so the list redraws without restart
   }
 });
 
+test('Today puts task reminders after exams and the task editor keeps their visibility below notifications', () => {
+  const home = read('pages/Home.ets');
+  const today = home.slice(home.indexOf('  tabToday()'), home.indexOf('  todayHeader()'));
+  assert.match(today, /this\.todayExamCard\(exam\)[\s\S]*ForEach\(this\.todayLearningTasks[\s\S]*this\.todayLearningTaskCard\(task\)[\s\S]*this\.todaySectionHeader\(\)/);
+  assert.match(today, /task\.id \+ '\|' \+ task\.updatedAt\.toString\(\)/);
+  assert.match(home, /\(\) => this\.openLearningTask\(task\.id\)/);
+  assert.match(home, /LearningTasksPanel\(\{\s*initialTaskId: this\.learningTaskId/);
+  const editor = read('feature/learning/LearningTaskEditor.ets');
+  assert.match(editor, /this\.field\('提醒'[\s\S]*Text\('显示在今日页'\)[\s\S]*Toggle\(\{ type: ToggleType\.Switch, isOn: this\.draft\.showInToday \}\)[\s\S]*next\.showInToday = value/);
+});
+
 test('today list runs to the screen bottom and keeps the dock inset as scroll end offset', () => {
   const home = require('node:fs').readFileSync(require('node:path').join(__dirname, '../entry/src/main/ets/pages/Home.ets'), 'utf8').replace(/\r\n/g, '\n');
   const today = home.slice(home.indexOf('  tabToday()'), home.indexOf('  todayHeader()'));

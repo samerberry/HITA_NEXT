@@ -26,6 +26,9 @@ export class EmptyClassroomService {
     if (session.campus === EasCampus.BENBU && session.getStudentType() === '2') {
       throw new ClassroomQueryError('UNSUPPORTED', '本部研究生教务接口暂未接入，请到学校教务网站查询');
     }
+    if (session.campus === EasCampus.WEIHAI && session.getStudentType() === '2') {
+      throw new ClassroomQueryError('UNSUPPORTED', '威海研究生空教室查询暂未接入，请到学校教务网站查询');
+    }
   }
 
   async getBuildings(session: EasSession): Promise<ClassroomBuilding[]> {
@@ -222,6 +225,7 @@ export class EmptyClassroomService {
     }
     options.extraHeaders.set('Referer', EasApiClient.joinUrl(base,
       session.campus === EasCampus.SHENZHEN ? '/cdkb/querycdzy' : '/kjscx/queryKjs'));
+    options.weihaiRefererPath = '/kjscx/queryKjs';
     const response: EasApiResponse = await this.api.request(session,
       easWebLoginConfigFor(session.campus, session.getStudentType()), path, options);
     if (response.statusCode === 401 || response.statusCode === 302 ||

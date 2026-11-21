@@ -56,6 +56,20 @@ test('split native navigation retains safe-area margin, glass and default mask',
   });
 });
 
+test('bottom dock glass keeps refraction and interaction while opting out of clipped shadows', () => {
+  const dock = material();
+  const instance = { backgroundColor() {}, systemMaterial(value) { this.glass = value; } };
+  assert.equal(dock.applyRail(instance, 0, false), true);
+  assert.deepEqual({ ...instance.glass, applyShadow: true }, { ...dock.material(0) });
+  assert.equal(instance.glass.applyShadow, false);
+  for (const path of ['common/components/SplitDock.ets', 'feature/assistant/AssistantDockButton.ets']) {
+    const dockView = read(path);
+    assert.match(dockView, /new CompatibleRailModifier\(this\.darkMode, false\)/);
+    assert.match(dockView, /materialHostHeight: number = DOCK_ACTION_SIZE \+ HitaDesign\.spaceMd \+ HitaDesign\.spaceXs/);
+    assert.match(dockView, /\.padding\(\{ top: HitaDesign\.spaceMd,[^}]*bottom: HitaDesign\.spaceXs \}\)/);
+  }
+});
+
 test('longer navigation aligns its icons and the complete group remains centred with an eight-vp gap', () => {
   const { DOCK_WIDTH, DOCK_NAV_WIDTH, DOCK_ACTION_START, DOCK_ACTION_SIZE,
     dockItemCenter } = handednessModule.exports;
@@ -103,7 +117,7 @@ test('smart grip wiring: observer lifecycle, and API 26 light / API 23 dock foll
   const home = read('pages/Home.ets');
   assert.match(home, /onPageShow\(\): Promise<void> \{\s*this\.pageVisible = true;\s*this\.startDockHandedness\(\);/);
   assert.match(home, /onPageHide\(\): void \{\s*this\.pageVisible = false;\s*this\.dockHandObserver\.stop\(\);/);
-  assert.match(home, /aboutToDisappear\(\): void \{\s*this\.pageVisible = false;\s*this\.dockHandObserver\.stop\(\);/);
+  assert.match(home, /aboutToDisappear\(\): void \{\s*this\.pageVisible = false;[^}]*this\.dockHandObserver\.stop\(\);/);
   const start = home.slice(home.indexOf('  private startDockHandedness()'), home.indexOf('  private dockOffset()'));
   // Bottom docks use one grip subscription; rails follow it only on foldable screens.
   assert.ok(start.includes('const needed: boolean = this.railMode() ? this.foldRailDevice : true;'));

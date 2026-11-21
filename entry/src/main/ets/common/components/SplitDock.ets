@@ -14,6 +14,7 @@ export struct SplitDock {
   @Prop assistant: boolean = true;
   @Prop assistantExitX: number = 0;
   onSelect: (index: number) => void = () => {};
+  private readonly materialHostHeight: number = DOCK_ACTION_SIZE + HitaDesign.spaceMd + HitaDesign.spaceXs;
 
   private glyphColor(index: number): ResourceColor {
     return this.selectedIndex === index ? $r('sys.color.ohos_id_color_text_primary') :
@@ -42,9 +43,9 @@ export struct SplitDock {
 
   build() {
     Stack({ alignContent: Alignment.TopStart }) {
-      // Keep room for native material shadows without enlarging the hit area.
+      // Keep the material host above the gesture inset without moving the capsule.
       Column() {
-        ImmersiveHeader({ barHeight: DOCK_ACTION_SIZE + HitaDesign.spaceMd * 2 }) {
+        ImmersiveHeader({ barHeight: this.materialHostHeight }) {
           Column() {
             Row() {
               this.item($r('sys.symbol.calendar'), '今日', 0);
@@ -55,17 +56,19 @@ export struct SplitDock {
             .height(DOCK_ACTION_SIZE)
             .padding({ left: DOCK_NATIVE_PADDING, right: DOCK_NATIVE_PADDING })
             .borderRadius(DOCK_ACTION_SIZE / 2)
-            .attributeModifier(new CompatibleRailModifier(this.darkMode));
+            // The title-bar host clips the native shadow into a straight edge below the dock.
+            .attributeModifier(new CompatibleRailModifier(this.darkMode, false));
           }
           .width('100%')
-          .height(DOCK_ACTION_SIZE + HitaDesign.spaceMd * 2)
-          .padding(HitaDesign.spaceMd)
+          .height(this.materialHostHeight)
+          .padding({ top: HitaDesign.spaceMd, left: HitaDesign.spaceMd, right: HitaDesign.spaceMd,
+            bottom: HitaDesign.spaceXs })
           .clip(false)
           .hitTestBehavior(HitTestMode.Transparent);
         }
       }
       .width(DOCK_NAV_WIDTH + HitaDesign.spaceMd * 2)
-      .height(DOCK_ACTION_SIZE + HitaDesign.spaceMd * 2)
+      .height(this.materialHostHeight)
       .position({ x: -HitaDesign.spaceMd, y: -HitaDesign.spaceMd })
       .clip(false)
       .hitTestBehavior(HitTestMode.Transparent);

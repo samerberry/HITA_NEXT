@@ -234,7 +234,7 @@ test('appearance options keep selection, accessibility and saving guards with ex
 
 test('session sheet login actions keep solid fills so white text stays readable in light mode', () => {
   const home = read('ets/pages/Home.ets');
-  const sheet = home.slice(home.indexOf('  sessionSheet()'), home.indexOf('  sessionCampusButton('));
+  const sheet = home.slice(home.indexOf('  sessionSheet()'), home.indexOf('  sessionCampusSelector('));
   for (const [label, variant] of [['网页登录', 'PRIMARY'], ['重新登录', 'SECONDARY'], ['退出登录', 'DANGER']]) {
     const start = sheet.indexOf(`HitaButton({ label: '${label}'`);
     assert.ok(start >= 0, label);

@@ -26,7 +26,7 @@ export class EasSession {
   webCookies: Map<string, string> = new Map<string, string>();
   /** 自有后端/旧式会话 Cookie（可空，兼容保留） */
   cookies: Map<string, string> = new Map<string, string>();
-  /** 深圳实际数据基址（proxy 或 direct，登录完成后回填） */
+  /** 深圳、威海网页登录时选定的数据基址。 */
   webBaseUrl: string = '';
   /** 本部电子实验(EELAB)额外 token */
   electronicExpToken: string = '';

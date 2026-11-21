@@ -51,6 +51,7 @@ function harness() {
     timetableCardSurfaces = [{ key: 'card', eventIds: ['lesson'], left: 10, top: 24, width: 40, height: 90 }];
     timetableEvents = [course, nextWeek, exam]; todayItems = [course, exam]; selectedCourse = course;
     getUIContext() { return context; }
+    updateHomeKeyboardAvoidMode() {}
     drawTimetableNow() { this.draws = (this.draws || 0) + 1; }
     updateTodayHighlights() { this.highlights = (this.highlights || 0) + 1; }
     async refreshSummaries(preserve) { state.refreshes.push(preserve); }
@@ -334,6 +335,7 @@ function refreshHarness() {
     currentTimetable = table; timetableWeek = 6; timetableEvents = []; nowTick = Date.now();
     getUIContext() { return { getHostContext: () => ({}) }; }
     updateTodayHighlights() {}
+    async refreshTodayLearningTasks() {}
     drawTimetableNow() { state.redraws++; }
     static defaultCanvasColor() { return 1; }
     ${slice(home, '  async refreshSummaries(', '  private classReminderSubtitle()')}

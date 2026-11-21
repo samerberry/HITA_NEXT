@@ -15,6 +15,7 @@ import { EasApiClient } from '../../eas/EasApiClient';
 import { EasCampus, EasSession } from '../../eas/EasSession';
 import { EasSessionStore } from '../../eas/EasSessionStore';
 import { EasDataProvider } from '../../eas/EasDataProvider';
+import { isWeihaiGraduate } from '../../eas/data/WeihaiGraduateTimetable';
 import { EasUserMessages } from '../../eas/EasUserMessages';
 import { EasImportResult, EasReimportConfirm, EasTermStartResult, EasTimetableImporter } from '../../eas/EasTimetableImporter';
 import { TimetableChangeGroup } from '../data/TimetableUpdateDiff';
@@ -146,7 +147,9 @@ export struct ImportTimetablePanel {
       const provider: EasDataProvider = new EasDataProvider(new EasApiClient());
       const start: EasTermStartResult = await EasTimetableImporter.loadStartDate(rdb, provider, session, term);
       let schedule: EasTimePeriodInDay[] = ImportTimetablePanel.defaultSchedule(session.campus);
-      if (session.demoMode || session.campus === EasCampus.SHENZHEN) {
+      if (isWeihaiGraduate(session)) {
+        schedule = await provider.getWeihaiGraduateSchedule(session, term);
+      } else if (session.demoMode || session.campus === EasCampus.SHENZHEN) {
         try {
           const remote: EasTimePeriodInDay[] = await provider.getShenzhenScheduleStructure(session, term);
           if (remote.length > 0) {

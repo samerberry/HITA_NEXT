@@ -7,6 +7,15 @@ const root = path.resolve(__dirname, '../entry/src/main/ets');
 global.$r = x => x;
 global.DialogAlignment = { Bottom: 'bottom' };
 
+test('the course editor keeps its save area clear of the navigation indicator and material shadow', () => {
+  const source = fs.readFileSync(path.join(root, 'pages/AddEventPage.ets'), 'utf8');
+  assert.match(source, /@StorageProp\('hita_nav_bar_vp'\) navBarInset: number = NAV_BAR_INSET_FALLBACK/);
+  const footer = source.slice(source.indexOf('Button(this.loading'), source.indexOf('.bindSheet('));
+  assert.match(footer, /new CompatibleMaterialModifier\(\$r\('app\.color\.hita_primary_fill'\), true,\s*true, undefined, false\)/);
+  assert.match(footer, /}\s*}\s*\.width\('100%'\)\s*\.padding\(\{[^}]*bottom: this\.sheetMode \? HitaDesign\.spaceSm : this\.navBarInset \+ HitaDesign\.spaceXs/);
+  assert.match(footer, /\.expandSafeArea\(\[SafeAreaType\.SYSTEM\], \[SafeAreaEdge\.BOTTOM\]\)/);
+});
+
 function load(relative, overrides = {}, cache = new Map()) {
   const file = path.resolve(root, relative);
   if (cache.has(file)) return cache.get(file).exports;
@@ -230,14 +239,36 @@ test('period mode reads the selected timetable structure and persists course num
   }
 });
 
-test('save remains disabled for missing name, weeks, weekdays, invalid periods or reversed times', () => {
+test('save remains disabled for missing name, weeks, weekdays or invalid periods', () => {
   for (const patch of [{ name: ' ' }, { selectedWeeks: [] }, { selectedWeekdays: [] },
     { timeMode: 1, fromPeriod: 0, toPeriod: 0 }, { timeMode: 1, fromPeriod: 4, toPeriod: 3 },
-    { timeMode: 1, fromPeriod: 1, toPeriod: 99 }, { endHour: 7 }, { loading: true }, { saving: true }]) {
+    { timeMode: 1, fromPeriod: 1, toPeriod: 99 }, { loading: true }, { saving: true }]) {
     const { form } = formSetup(); Object.assign(form, patch);
     assert.equal(form.canSave(), false, JSON.stringify(patch));
   }
   const { form } = formSetup(); assert.equal(form.canSave(), true);
+});
+
+test('clock time order is checked on save, leaving both fields independently editable', async () => {
+  const { form, commits } = formSetup();
+  assert.equal(form.acceptTime(true, 9, 30), true);
+  assert.equal(form.canSave(), true);
+  assert.equal(form.hint, '');
+  await form.save();
+  assert.equal(commits.length, 0);
+  assert.equal(form.hint, '结束时间必须晚于开始时间');
+
+  assert.equal(form.acceptTime(false, 9, 30), true);
+  await form.save();
+  assert.equal(commits.length, 0);
+  assert.equal(form.hint, '结束时间必须晚于开始时间');
+
+  assert.equal(form.acceptTime(false, 10, 0), true);
+  await form.save();
+  const event = commits[0][1][0];
+  assert.equal(new Date(event.from).getHours(), 9);
+  assert.equal(new Date(event.from).getMinutes(), 30);
+  assert.equal(new Date(event.to).getHours(), 10);
 });
 
 test('existing course copies blank fields too and retains explicitly selected identity among duplicate names', async () => {
@@ -350,7 +381,7 @@ test('legacy range migration changes only the matching timetable end', async () 
   assert.deepEqual(updates, [[{ endTime: tt.startTime + 17 * 7 * 86400000 - 1 }, [['id', tt.id], ['endTime', oldEnd]]]]);
 });
 
-test('course clock dialog omits the native calendar title, commits only valid times and closes on dismissal', () => {
+test('course clock dialog accepts either time independently and closes on dismissal', () => {
   const original = global.CustomDialogController;
   const originalColor = global.Color;
   global.Color = { Transparent: 'transparent' };
@@ -369,8 +400,8 @@ test('course clock dialog omits the native calendar title, commits only valid ti
     assert.equal(first.options.builder.title, '开始时间');
     assert.equal(first.options.builder.initialHour, 8);
     assert.equal(first.options.builder.initialMinute, 15);
-    assert.equal(first.options.builder.onAccept(9, 10), false, 'a reversed interval stays in the picker');
-    assert.equal(form.hour, 8);
+    assert.equal(first.options.builder.onAccept(9, 10), true);
+    assert.equal(form.hour, 9);
     assert.equal(first.options.builder.onAccept(7, 45), true);
     assert.equal(form.hour, 7);
     assert.equal(form.minute, 45);
@@ -378,7 +409,8 @@ test('course clock dialog omits the native calendar title, commits only valid ti
     assert.equal(first.closed, true, 'opening another picker closes the previous one');
     const second = dialogs[1];
     assert.equal(second.options.builder.title, '结束时间');
-    assert.equal(second.options.builder.onAccept(7, 30), false);
+    assert.equal(second.options.builder.onAccept(7, 30), true);
+    assert.equal(form.endMinute, 30);
     assert.equal(second.options.builder.onAccept(10, 0), true);
     assert.equal(form.endHour, 10);
     form.aboutToDisappear();
@@ -396,25 +428,32 @@ test('course clock dialog omits the native calendar title, commits only valid ti
   }
 });
 
-test('existing-course and period pickers preserve selection and discard late course accepts', async () => {
+test('existing-course sheet deduplicates choices, applies a tap and retains rows during dismissal', async () => {
   const { form, db } = formSetup();
-  const picked = [];
-  form.getUIContext = () => ({ showTextPickerDialog: options => picked.push(options) });
-  db.getEventsOfTimetable = async () => [
-    Object.assign(new EasEventItem(), { type: EasEventType.CLASS, subjectId: 'existing',
-      name: '数学', place: 'T3101', teacher: 'A' })
-  ];
+  const sample = Object.assign(new EasEventItem(), { type: EasEventType.CLASS, subjectId: 'existing',
+    name: '数学', place: 'T3101', teacher: 'A' });
+  db.getEventsOfTimetable = async () => [sample, sample, { ...sample, place: 'T3202' }];
   await form.chooseExistingCourse();
-  assert.equal(picked.length, 1);
-  assert.deepEqual(picked[0].range, ['数学 · T3101 · A']);
-  assert.equal(picked[0].canLoop, false);
-  picked[0].onAccept({ index: 0 });
+  assert.equal(form.existingCourseSheetVisible, true);
+  assert.deepEqual(form.existingCourseChoices.map(course => course.place), ['T3101', 'T3202']);
+  form.pickExistingCourse(form.existingCourseChoices[1]);
+  assert.equal(form.existingCourseSheetVisible, false);
   assert.equal(form.selectedSubjectId, 'existing');
-  assert.equal(form.place, 'T3101');
-  form.name = 'unchanged';
+  assert.equal(form.place, 'T3202');
+  assert.equal(form.teacher, 'A');
+  assert.equal(form.existingCourseChoices.length, 2);
+  form.pickExistingCourse(sample);
+  assert.equal(form.place, 'T3202');
+});
+
+test('existing-course reads finishing after the editor closes do not open the sheet', async () => {
+  const { form, db } = formSetup();
+  db.getEventsOfTimetable = async () => [];
+  const pending = form.chooseExistingCourse();
   form.aboutToDisappear();
-  picked[0].onAccept({ index: 0 });
-  assert.equal(form.name, 'unchanged');
+  await pending;
+  assert.equal(form.existingCourseSheetVisible, false);
+  assert.deepEqual(form.existingCourseChoices, []);
 });
 
 test('the API 26 wheel retains callbacks and closes its previous dialog and dismissed editor', () => {

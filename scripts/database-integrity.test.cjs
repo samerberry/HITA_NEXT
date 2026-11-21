@@ -330,6 +330,72 @@ test('single event saves extend the term to reach a later exam', async () => {
   } finally { f.sql.close(); }
 });
 
+test('exam sync updates rescheduled records, removes cancelled exams and keeps manual events and other scopes', async () => {
+  const f = database();
+  try {
+    const source = 'BENBU:2026-20271/';
+    const synced = (id, name, offset, examSource = source + name) =>
+      Object.assign(event(id, EasEventType.EXAM, 'a', offset * day), { name, examSource });
+    await seed(f.db);
+    const math = synced('math-original', '数学', 24);
+    const cancelled = synced('cancelled', '取消的考试', 25);
+    const pending = synced('pending', '待定的考试', 26);
+    const other = synced('different-term', '其他学期', 27, 'BENBU:2025-20261/Math');
+    await f.db.syncExamEvents('a', source, [math, cancelled, pending], [], true);
+    await f.db.saveEvent(other);
+    await f.db.saveExamColor(math.id, 'a', 0xff112233);
+    const moved = synced('math-new', math.name, 29);
+    moved.place = 'B201';
+    const added = synced('new', '新考试', 40);
+    await f.db.syncExamEvents('a', source, [moved, added, added], [pending.examSource], false);
+    assert.ok(await f.db.getEventById(cancelled.id), 'partial query cannot clear unobserved records');
+    await f.db.syncExamEvents('a', source, [moved, added, added], [pending.examSource], true);
+    const revised = await f.db.getEventById(math.id);
+    assert.equal(revised.from, moved.from);
+    assert.equal(revised.place, 'B201');
+    assert.equal(revised.color, 0xff112233);
+    assert.equal(await f.db.getEventById(moved.id), undefined);
+    assert.equal(await f.db.getEventById(cancelled.id), undefined);
+    assert.ok(await f.db.getEventById(pending.id));
+    assert.ok(await f.db.getEventById(other.id));
+    assert.ok(await f.db.getEventById('exam'));
+    assert.ok(await f.db.getEventById('old-one'));
+    assert.ok(await f.db.getEventById('other-table'));
+    assert.ok((await f.db.getTimetableById('a')).endTime >= added.to);
+  } finally {
+    f.sql.close();
+  }
+});
+
+test('exam sync updates identifiable older imports and rolls back if any replacement fails', async () => {
+  const f = database();
+  try {
+    await seed(f.db);
+    const source = 'BENBU:2026-20271/';
+    const older = Object.assign(event('legacy-exam', EasEventType.EXAM, 'a', 18 * day), {
+      name: '线性代数', teacher: '期末', color: 0xffb24b63, subjectId: '', fromNumber: 0, lastNumber: 0
+    });
+    await f.db.saveEvent(older);
+    const moved = Object.assign(new EasEventItem(), older, {
+      id: 'new-exam', examSource: source + JSON.stringify([older.name, older.teacher]),
+      from: older.from + day, to: older.to + day
+    });
+    const snapshot = f.snapshot();
+    const collision = Object.assign(new EasEventItem(), moved, { id: 'old-one', name: 'Other', examSource: source + 'Other' });
+    await assert.rejects(f.db.syncExamEvents('a', source, [moved, collision], [], true), /UNIQUE/);
+    assert.deepEqual(f.snapshot(), snapshot, 'a failed insert rolls back the earlier reschedule');
+    await f.db.syncExamEvents('a', source, [moved], [], true);
+    assert.equal((await f.db.getEventById(older.id)).from, moved.from);
+    assert.equal((await f.db.getEventById(older.id)).examSource, moved.examSource);
+    assert.equal(await f.db.getEventById(moved.id), undefined);
+    await f.db.syncExamEvents('a', source, [], [], true);
+    assert.equal(await f.db.getEventById(older.id), undefined);
+    assert.ok(await f.db.getEventById('exam'));
+  } finally {
+    f.sql.close();
+  }
+});
+
 test('imports record the school base, and deleting or shifting a term keeps its base in step', async () => {
   const f = database();
   try {
@@ -641,6 +707,35 @@ test('backup snapshot refuses cursor failures instead of exporting partial data'
 function learningTask(values = {}) {
   return Object.assign(new LearningTask(), { title: 'Exercises', timetableId: 'a', subjectId: 'math', courseName: 'Math' }, values);
 }
+
+test('upgraded learning tasks default to Today and support hiding independently of notifications', async () => {
+  const f = database();
+  try {
+    await seed(f.db);
+    const dueAt = Date.now() + day;
+    const remindAt = dueAt - 60000;
+    await f.db.saveLearningTask(learningTask({ id: 'legacy', dueAt, remindAt }), true);
+    f.sql.exec('ALTER TABLE learning_task DROP COLUMN showInToday');
+    f.db.store.querySql = async text => rowsResult(f.sql.prepare(text).all());
+    f.db.store.executeSql = async text => f.sql.exec(text);
+    await f.db.ensureLearningTaskTodayColumn();
+    await f.db.ensureLearningTaskTodayColumn();
+    await f.db.saveLearningTask(learningTask({ id: 'hidden', showInToday: false }), true);
+    await f.db.saveLearningTask(learningTask({ id: 'other', timetableId: 'b', subjectId: 'other-subject' }), true);
+    await f.db.saveLearningTask(learningTask({ id: 'review', kind: 'REVIEW', examId: 'exam', examName: 'Math' }), true);
+    const tasks = await f.db.getTodayLearningTasks('a');
+    assert.deepEqual(tasks.map(task => task.id).sort(), ['legacy', 'review']);
+    const legacy = tasks.find(task => task.id === 'legacy');
+    assert.equal(legacy.showInToday, true);
+    legacy.showInToday = false;
+    await f.db.saveLearningTask(legacy, false);
+    const review = tasks.find(task => task.id === 'review');
+    await f.db.setLearningTaskCompleted(review.id, true);
+    assert.deepEqual(await f.db.getTodayLearningTasks('a'), []);
+    assert.deepEqual((await f.db.getTodayLearningTasks('b')).map(task => task.id), ['other']);
+    assert.equal((await f.db.getLearningTasks()).find(task => task.id === 'legacy').remindAt, remindAt);
+  } finally { f.sql.close(); }
+});
 
 function studyTools(f) {
   const state = { selected: 'a', cancelled: [] };

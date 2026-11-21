@@ -51,7 +51,7 @@ const CREATE_EVENTS: string =
   'id TEXT PRIMARY KEY, type TEXT NOT NULL, name TEXT NOT NULL, place TEXT, teacher TEXT, ' +
   'subjectId TEXT NOT NULL, timetableId TEXT NOT NULL, fromTime INTEGER NOT NULL, toTime INTEGER NOT NULL, ' +
   'fromNumber INTEGER NOT NULL, lastNumber INTEGER NOT NULL, createdAt INTEGER NOT NULL, ' +
-  'color INTEGER NOT NULL DEFAULT 0)';
+  "color INTEGER NOT NULL DEFAULT 0, examSource TEXT NOT NULL DEFAULT '')";
 
 /**
  * 每张教务课表上次导入或更新时的教务版本，用来区分教务端变化与用户自己的修改。
@@ -65,12 +65,13 @@ const CREATE_IMPORT_BASE: string =
 const CREATE_BACKUP_RECEIPT: string = 'CREATE TABLE IF NOT EXISTS backup_restore_receipt (id TEXT PRIMARY KEY)';
 const CREATE_STUDY_OPERATION: string = 'CREATE TABLE IF NOT EXISTS assistant_study_operation (' +
   'id TEXT PRIMARY KEY, requestKey TEXT NOT NULL UNIQUE, body TEXT NOT NULL)';
+const LEARNING_TASK_TODAY_COLUMN: string = 'showInToday INTEGER NOT NULL DEFAULT 1';
 const CREATE_LEARNING_TASK: string = 'CREATE TABLE IF NOT EXISTS learning_task (' +
   'id TEXT PRIMARY KEY, kind TEXT NOT NULL, title TEXT NOT NULL, note TEXT NOT NULL, ' +
   'timetableId TEXT NOT NULL, subjectId TEXT NOT NULL, courseName TEXT NOT NULL, courseCode TEXT NOT NULL, ' +
   'examId TEXT NOT NULL, examName TEXT NOT NULL, examAt INTEGER NOT NULL, dueAt INTEGER NOT NULL, ' +
   'allDay INTEGER NOT NULL, completedAt INTEGER NOT NULL, remindAt INTEGER NOT NULL, notifiedAt INTEGER NOT NULL, ' +
-  'createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL)';
+  'createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL, ' + LEARNING_TASK_TODAY_COLUMN + ')';
 
 export class RdbHelper {
   /** applyTimetableMerge found the timetable changed after the plan was built. */
@@ -124,26 +125,40 @@ export class RdbHelper {
     await this.execSql(CREATE_LEARNING_TASK);
     await this.execSql(CREATE_STUDY_OPERATION);
     await this.ensureEventColorColumn();
+    await this.ensureExamSourceColumn();
+    await this.ensureLearningTaskTodayColumn();
     await this.repairLegacyWeihaiTimetables();
     await this.repairLegacyBenbuTimetables();
     await this.repairLegacyImportedWeeks();
   }
 
   private async ensureEventColorColumn(): Promise<void> {
-    const columns: relationalStore.ResultSet = await this.s().querySql('PRAGMA table_info(events)');
-    let hasColor: boolean = false;
+    if (!await this.hasColumn('events', 'color')) {
+      await this.execSql('ALTER TABLE events ADD COLUMN color INTEGER NOT NULL DEFAULT 0');
+    }
+  }
+
+  private async ensureExamSourceColumn(): Promise<void> {
+    if (!await this.hasColumn('events', 'examSource')) {
+      await this.execSql("ALTER TABLE events ADD COLUMN examSource TEXT NOT NULL DEFAULT ''");
+    }
+  }
+
+  private async ensureLearningTaskTodayColumn(): Promise<void> {
+    if (!await this.hasColumn('learning_task', 'showInToday')) {
+      await this.execSql('ALTER TABLE learning_task ADD COLUMN ' + LEARNING_TASK_TODAY_COLUMN);
+    }
+  }
+
+  private async hasColumn(table: string, column: string): Promise<boolean> {
+    const columns: relationalStore.ResultSet = await this.s().querySql('PRAGMA table_info(' + table + ')');
     try {
       while (columns.goToNextRow()) {
-        if (columns.getString(columns.getColumnIndex('name')) === 'color') {
-          hasColor = true;
-          break;
-        }
+        if (columns.getString(columns.getColumnIndex('name')) === column) return true;
       }
+      return false;
     } finally {
       columns.close();
-    }
-    if (!hasColor) {
-      await this.execSql('ALTER TABLE events ADD COLUMN color INTEGER NOT NULL DEFAULT 0');
     }
   }
 
@@ -809,6 +824,93 @@ export class RdbHelper {
     });
   }
 
+  /** Publish a school exam query as one change, preserving identities on unambiguous reschedules. */
+  async syncExamEvents(timetableId: string, source: string, exams: EasEventItem[], pendingKeys: string[],
+    complete: boolean): Promise<void> {
+    if (source.length === 0 || exams.some((exam: EasEventItem): boolean =>
+      exam.type !== EasEventType.EXAM || exam.timetableId !== timetableId || !exam.examSource.startsWith(source))) {
+      throw new Error('考试来源或目标课表无效');
+    }
+    await this.writeTransaction(async (tx: relationalStore.Transaction): Promise<void> => {
+      const table = RdbHelper.firstRow(await tx.query(
+        new relationalStore.RdbPredicates('timetable').equalTo('id', timetableId)), RdbHelper.timetableMapper, true);
+      if (table === undefined) throw new Error('目标课表已删除');
+      const saved = RdbHelper.readRows(await tx.query(new relationalStore.RdbPredicates('events')
+        .equalTo('timetableId', timetableId).equalTo('type', EasEventType.EXAM)), RdbHelper.eventMapper, true);
+      const available = new Map<string, EasEventItem>();
+      const legacyKeys = new Map<string, string>();
+      const local: EasEventItem[] = [];
+      for (const event of saved) {
+        if (event.examSource.startsWith(source)) available.set(event.id, event);
+        if (event.examSource.length > 0) continue;
+        local.push(event);
+        // Older imports used the exam type as the teacher and the default import color.
+        if (event.teacher.length === 0 || event.color !== 0xFFB24B63 || event.subjectId.length > 0 ||
+          event.fromNumber !== 0 || event.lastNumber !== 0 || event.from < table.startTime) continue;
+        legacyKeys.set(event.id, source + JSON.stringify([event.name.trim(), event.teacher]));
+        available.set(event.id, event);
+      }
+      const pending = new Set<string>(pendingKeys);
+      const seen = new Set<string>();
+      const incoming = exams.filter((exam: EasEventItem): boolean => {
+        const key: string = JSON.stringify([exam.examSource, exam.from]);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      // Match unchanged start times first so one moved sitting cannot take another sitting's ID.
+      const matches = new Map<string, EasEventItem>();
+      for (const exam of incoming) {
+        const candidates = Array.from(available.values());
+        const match = candidates.find((event: EasEventItem): boolean =>
+          event.examSource === exam.examSource && event.from === exam.from) ??
+          candidates.find((event: EasEventItem): boolean =>
+            legacyKeys.get(event.id) === exam.examSource && event.from === exam.from);
+        if (match === undefined) continue;
+        matches.set(exam.id, match);
+        available.delete(match.id);
+      }
+      let latest: EasEventItem | undefined = undefined;
+      for (const exam of incoming) {
+        let previous: EasEventItem | undefined = matches.get(exam.id);
+        if (previous === undefined && !pending.has(exam.examSource)) {
+          const moved = Array.from(available.values()).filter((event: EasEventItem): boolean =>
+            (legacyKeys.get(event.id) ?? event.examSource) === exam.examSource);
+          const unique = incoming.filter((item: EasEventItem): boolean =>
+            item.examSource === exam.examSource && !matches.has(item.id)).length === 1;
+          if (moved.length === 1 && unique) {
+            previous = moved[0];
+            available.delete(previous.id);
+          }
+        }
+        if (previous === undefined && local.some((event: EasEventItem): boolean =>
+          !legacyKeys.has(event.id) && event.name.trim() === exam.name && Math.abs(event.from - exam.from) < 60000)) {
+          continue;
+        }
+        if (previous === undefined) {
+          if (await tx.insert('events', RdbHelper.eventValues(exam)) < 0) throw new Error('考试保存失败');
+        } else if (previous.from !== exam.from || previous.to !== exam.to ||
+          previous.place !== exam.place || previous.examSource !== exam.examSource) {
+          const values: relationalStore.ValuesBucket = {
+            fromTime: exam.from, toTime: exam.to, place: exam.place, examSource: exam.examSource
+          };
+          const pred = new relationalStore.RdbPredicates('events').equalTo('id', previous.id);
+          if (await tx.update(values, pred) !== 1) throw new Error('考试更新失败');
+        }
+        if (latest === undefined || exam.to > latest.to) latest = exam;
+      }
+      if (complete) {
+        const removed = Array.from(available.values()).filter((event: EasEventItem): boolean =>
+          event.examSource.length > 0 && !pending.has(event.examSource)).map((event: EasEventItem): string => event.id);
+        if (removed.length > 0 &&
+          await tx.delete(new relationalStore.RdbPredicates('events').in('id', removed)) !== removed.length) {
+          throw new Error('旧考试清理失败');
+        }
+      }
+      if (latest !== undefined) await RdbHelper.coverEvent(tx, latest);
+    });
+  }
+
   /** Extend the term to the week of an event saved after it, so the week grid can still reach the event. */
   private static async coverEvent(transaction: relationalStore.Transaction, event: EasEventItem): Promise<void> {
     const table: relationalStore.ResultSet = await transaction.query(
@@ -974,7 +1076,8 @@ export class RdbHelper {
       'fromNumber': e.fromNumber,
       'lastNumber': e.lastNumber,
       'createdAt': e.createdAt,
-      'color': e.type === EasEventType.EXAM ? e.color : 0
+      'color': e.type === EasEventType.EXAM ? e.color : 0,
+      'examSource': e.type === EasEventType.EXAM ? (e.examSource ?? '') : ''
     };
   }
 
@@ -1094,6 +1197,12 @@ export class RdbHelper {
   async getLearningTasks(): Promise<LearningTask[]> {
     return RdbHelper.readRows(await this.s().query(new relationalStore.RdbPredicates('learning_task')),
       RdbHelper.learningTaskMapper, true);
+  }
+
+  async getTodayLearningTasks(timetableId: string): Promise<LearningTask[]> {
+    const predicate: relationalStore.RdbPredicates = new relationalStore.RdbPredicates('learning_task')
+      .equalTo('timetableId', timetableId).equalTo('showInToday', 1).equalTo('completedAt', 0);
+    return RdbHelper.readRows(await this.s().query(predicate), RdbHelper.learningTaskMapper, true);
   }
 
   private static studyOperationMapper(col: (name: string) => ValueGetter): StudyOperation {
@@ -1329,7 +1438,8 @@ export class RdbHelper {
       timetableId: task.timetableId, subjectId: task.subjectId, courseName: task.courseName, courseCode: task.courseCode,
       examId: task.examId, examName: task.examName, examAt: task.examAt, dueAt: task.dueAt,
       allDay: task.allDay ? 1 : 0, completedAt: task.completedAt, remindAt: task.remindAt,
-      notifiedAt: task.notifiedAt, createdAt: task.createdAt, updatedAt: task.updatedAt
+      notifiedAt: task.notifiedAt, showInToday: task.showInToday === false ? 0 : 1,
+      createdAt: task.createdAt, updatedAt: task.updatedAt
     };
   }
 
@@ -1351,6 +1461,7 @@ export class RdbHelper {
     task.completedAt = col('completedAt').num();
     task.remindAt = col('remindAt').num();
     task.notifiedAt = col('notifiedAt').num();
+    task.showInToday = col('showInToday').num() !== 0;
     task.createdAt = col('createdAt').num();
     task.updatedAt = col('updatedAt').num();
     if (LearningTaskRules.storedValidation(task).length > 0) throw new Error('Invalid learning task');
@@ -1465,6 +1576,7 @@ export class RdbHelper {
     e.lastNumber = col('lastNumber').num();
     e.createdAt = col('createdAt').num();
     e.color = col('color').num();
+    e.examSource = col('examSource').str();
     return e;
   }
 

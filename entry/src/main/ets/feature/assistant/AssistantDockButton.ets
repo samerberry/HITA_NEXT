@@ -9,11 +9,12 @@ import { DOCK_ACTION_SIZE } from '../../common/util/DockHandedness';
 export struct AssistantDockButton {
   @Prop darkMode: boolean = false;
   onButtonTouch: (event: TouchEvent) => void = () => {};
+  private readonly materialHostHeight: number = DOCK_ACTION_SIZE + HitaDesign.spaceMd + HitaDesign.spaceXs;
 
   build() {
     Stack({ alignContent: Alignment.TopStart }) {
       Column() {
-        ImmersiveHeader({ barHeight: DOCK_ACTION_SIZE + HitaDesign.spaceMd * 2 }) {
+        ImmersiveHeader({ barHeight: this.materialHostHeight }) {
           Column() {
             Stack() {
               AssistantDockItem()
@@ -23,18 +24,19 @@ export struct AssistantDockButton {
             .width(DOCK_ACTION_SIZE)
             .height(DOCK_ACTION_SIZE)
             .borderRadius(DOCK_ACTION_SIZE / 2)
-            .attributeModifier(new CompatibleRailModifier(this.darkMode))
+            .attributeModifier(new CompatibleRailModifier(this.darkMode, false))
             .onTouch((event: TouchEvent) => this.onButtonTouch(event));
           }
           .width('100%')
-          .height(DOCK_ACTION_SIZE + HitaDesign.spaceMd * 2)
-          .padding(HitaDesign.spaceMd)
+          .height(this.materialHostHeight)
+          .padding({ top: HitaDesign.spaceMd, left: HitaDesign.spaceMd, right: HitaDesign.spaceMd,
+            bottom: HitaDesign.spaceXs })
           .clip(false)
           .hitTestBehavior(HitTestMode.Transparent);
         }
       }
       .width(DOCK_ACTION_SIZE + HitaDesign.spaceMd * 2)
-      .height(DOCK_ACTION_SIZE + HitaDesign.spaceMd * 2)
+      .height(this.materialHostHeight)
       .position({ x: -HitaDesign.spaceMd, y: -HitaDesign.spaceMd })
       .clip(false)
       .hitTestBehavior(HitTestMode.Transparent);

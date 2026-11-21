@@ -149,7 +149,7 @@ test('campus labels use the main-campus name without changing the campus key', (
   const home = fs.readFileSync(path.join(root, 'pages/Home.ets'), 'utf8');
   const scores = fs.readFileSync(path.join(root, 'pages/ScorePage.ets'), 'utf8');
   assert.ok(home.includes(`return '${campusLabel}'`));
-  assert.ok(home.includes(`sessionCampusButton('BENBU', '${campusLabel}')`));
+  assert.ok(home.includes(`labels: ['深圳', '${campusLabel}', '威海']`));
   assert.ok(!home.includes('\u672c\u90e8\u6821\u533a'));
   assert.ok(!home.includes('\u6821\u672c\u90e8'));
   const declarations = ts.createSourceFile('ScorePage.ts', scores, ts.ScriptTarget.Latest, true).statements

@@ -146,10 +146,10 @@ test('wiring: the rail replaces the bottom dock and every surface keeps clear of
   assert.ok(host.includes('.position({ x: -RAIL_OVERFLOW, y: -RAIL_OVERFLOW })'));
   assert.match(host, /\} else \{\s*this\.capsule\(\);/);
   assert.ok(railUi.includes('.attributeModifier(new CompatibleRailModifier(this.darkMode))'));
-  // The rail wears exactly the bottom bar's glass and light; systemMaterial owns its border and shadow.
+  // The rail retains the default material shadow inside its enlarged title host.
   const glass = read('common/theme/ImmersiveDockModifier.ets');
   const applyRail = glass.slice(glass.indexOf('  static applyRail('), glass.indexOf('  private static styleForDevice'));
-  assert.ok(applyRail.includes('DockBarMaterial.material(lightAlpha);'));
+  assert.ok(applyRail.includes('DockBarMaterial.material(lightAlpha, applyShadow);'));
   assert.ok(!applyRail.includes('.border('));
   assert.ok(!glass.includes('materialColor'));
   // Same 92 vp edge mask as the bottom bar, hidden over a timetable wallpaper, sliding with the rail.
@@ -228,7 +228,7 @@ test('bottom navigation, assistant and light share one grip transform', () => {
   assert.match(shared, /\.hitTestBehavior\(HitTestMode\.Default\)/);
   assert.doesNotMatch(home, /trackDockBar|findDockCapsule|dockCapsuleX|dockBarModifier/);
   const ui = read('common/components/SplitDock.ets');
-  assert.match(ui, /ImmersiveHeader\([\s\S]*?new CompatibleRailModifier\(this\.darkMode\)/);
+  assert.match(ui, /ImmersiveHeader\([\s\S]*?new CompatibleRailModifier\(this\.darkMode, false\)/);
   assert.match(ui, /AssistantDockButton\([\s\S]*?\.position\(\{ x: DOCK_ACTION_START, y: 0 \}\)/);
   assert.doesNotMatch(ui, /sideOffset|dockSide|animateTo|(?<!TransitionEffect)\.translate\(/);
   assert.match(home, /group\.getPositionToWindowWithTransform\(\)/);

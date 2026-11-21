@@ -90,6 +90,7 @@ export class BackupModel {
           BackupModel.identity(e.id, eventIds);
           if (e.timetableId !== t.id || !['CLASS', 'EXAM', 'OTHER', 'TAG'].includes(e.type)) throw new Error();
           BackupModel.strings(e, ['name', 'place', 'teacher', 'subjectId']);
+          if (e.examSource !== undefined) BackupModel.strings(e, ['examSource']);
           if (e.subjectId.length > 0 && !localSubjects.has(e.subjectId)) throw new Error();
           BackupModel.integer(e.from, 0, 8640000000000000);
           BackupModel.integer(e.to, e.from, 8640000000000000);
@@ -114,6 +115,8 @@ export class BackupModel {
         BackupModel.identity(task.id, taskIds);
         BackupModel.strings(task, ['kind', 'title', 'note', 'timetableId', 'subjectId', 'courseName', 'courseCode', 'examId', 'examName']);
         BackupModel.bool(task.allDay);
+        if (task.showInToday === undefined) task.showInToday = true;
+        BackupModel.bool(task.showInToday);
         if (LearningTaskRules.storedValidation(task).length > 0) throw new Error();
         // Removed courses/exams may leave intentional name snapshots; existing references must still agree.
         for (const item of value.timetables) {

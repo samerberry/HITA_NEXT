@@ -333,9 +333,13 @@ test('timetable manager actions and campus selector receive the shadow-free cont
   assert.match(header, /fontColor\(HitaColors\.error\)/);
   assert.match(header, /this\.confirmDelete\(\)/);
   const home = read('pages/Home.ets');
-  const campus = home.slice(home.indexOf('ImmersiveHeader({ barHeight: HitaDesign.spaceXs + HitaDesign.space2xs * 2 + HitaDesign.controlHeight })'));
-  assert.match(campus, /sessionCampusButton\('SHENZHEN'[\s\S]*sessionCampusButton\('BENBU'[\s\S]*sessionCampusButton\('WEIHAI'/);
-  assert.match(campus, /new CompatibleMaterialModifier\(\$r\('app\.color\.hita_control_eaf0f7'\)\)/);
+  const campus = home.slice(home.indexOf('  sessionCampusSelector()'), home.indexOf('  moreShortcut('));
+  assert.match(home, /SESSION_CAMPUS_CHOICES: EasCampus\[\] = \[EasCampus\.SHENZHEN, EasCampus\.BENBU, EasCampus\.WEIHAI\]/);
+  assert.match(campus, /CourseModeSegment\(\{\s*labels: \['深圳', '本部', '威海'\],\s*selectedIndex: SESSION_CAMPUS_CHOICES\.indexOf\(Home\.campusFromCode\(this\.sessionSheetCampus\)\)/);
+  assert.match(campus, /onSelect: \(index: number\) => \{\s*const campus: EasCampus \| undefined = SESSION_CAMPUS_CHOICES\[index\];\s*if \(campus !== undefined\) void this\.selectSessionCampus\(campus\.toString\(\)\)/);
+  const segment = read('feature/timetable/views/ImmersiveCourseModeSegment.ets');
+  assert.match(segment, /buttonBackgroundColor: ColorMetrics\.resourceColor\(this\.material === undefined \?\s*\$r\('app\.color\.hita_control_eaf0f7'\) : Color\.Transparent\)/);
+  assert.match(segment, /itemShadow: \{ radius: 0, color: Color\.Transparent/);
 });
 
 test('news uses the native tab segment for drag selection, with 4vp insets and no selection shadow', () => {

@@ -155,11 +155,8 @@ export default class EntryAbility extends UIAbility {
     if (topVp < 24) {
       topVp = STATUS_BAR_INSET_FALLBACK;
     }
-    if (bottomVp < 20) {
-      bottomVp = NAV_BAR_INSET_FALLBACK;
-    }
     AppStorage.setOrCreate(STATUS_BAR_INSET_KEY, topVp);
-    AppStorage.setOrCreate(NAV_BAR_INSET_KEY, bottomVp);
+    AppStorage.setOrCreate(NAV_BAR_INSET_KEY, Math.max(NAV_BAR_INSET_FALLBACK, bottomVp));
   }
 
   onWindowStageDestroy(): void {

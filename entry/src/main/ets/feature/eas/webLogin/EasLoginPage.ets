@@ -15,7 +15,8 @@ import { common } from '@kit.AbilityKit';
 import { EasSession } from '../EasSession';
 import { EasSessionStore } from '../EasSessionStore';
 import { EasWebLoginController } from './EasWebLoginController';
-import { easWebLoginConfigFor, EasCampusConfig } from './EasWebLoginConfig';
+import { easWebLoginConfigFor, EasCampusConfig, isWeihaiDirect } from './EasWebLoginConfig';
+import { resolveEasLoginRoute } from './EasLoginRoute';
 import { HitaColors } from '../../../common/theme/HitaColors';
 import { HeaderBackButton } from '../../../common/components/HeaderBackButton';
 import { ImmersiveHeader } from '../../../common/components/ImmersiveHeader';
@@ -43,6 +44,8 @@ export struct EasLoginPage {
   private recoveryTimer: number = -1;
   private recoveryPending: boolean = false;
   private currentPageUrl: string = '';
+  private config: EasCampusConfig | undefined = undefined;
+  private firstPageLoaded: boolean = false;
 
   @State progressValue: number = 0;
   @State errorText: string = '';
@@ -60,8 +63,19 @@ export struct EasLoginPage {
     EasWebLoginController.configureWebCookies();
     const campus = EasWebLoginController.campusOfCode(this.campusCode);
     const cfg: EasCampusConfig = easWebLoginConfigFor(campus, this.studentType);
-    this.initialUrl = cfg.loginUrl;
+    this.config = cfg;
+    this.firstPageLoaded = false;
     this.campusDisplayName = cfg.displayName;
+    if (this.campusCode === 'WEIHAI') {
+      const generation: number = this.callbackGeneration;
+      resolveEasLoginRoute(campus, this.studentType).then((selected: EasCampusConfig) => {
+        if (!this.pageActive || generation !== this.callbackGeneration) return;
+        this.config = selected;
+        this.initialUrl = selected.loginUrl;
+      });
+    } else {
+      this.initialUrl = cfg.loginUrl;
+    }
 
     hilog.info(DOMAIN, TAG, 'EasLoginPage aboutToAppear: campus=%{public}s, initialUrl=%{public}s',
       this.campusCode, this.initialUrl);
@@ -137,11 +151,28 @@ export struct EasLoginPage {
       if (!this.pageActive) {
         return;
       }
+      if (this.fallbackToWeihaiVpn()) return;
       this.webReady = true;
       this.recoveryPending = false;
       this.recoveryBusy = false;
       this.errorText = '页面加载时间较长，可刷新或重置网页登录';
     }, 20000);
+  }
+
+  private fallbackToWeihaiVpn(): boolean {
+    if (this.config === undefined || !isWeihaiDirect(this.config.dataBaseUrl) ||
+      this.firstPageLoaded || this.recoveryBusy || this.recoveryPending) return false;
+    const fallback: EasCampusConfig = easWebLoginConfigFor(this.config.campus, this.config.studentType);
+    this.config = fallback;
+    try {
+      this.loginController.start(this.campusCode, this.studentType, fallback);
+      this.watchPageLoad(fallback.loginUrl);
+      this.webController.loadUrl(fallback.loginUrl);
+      return true;
+    } catch (_) {
+      this.clearPageLoadTimer();
+      return false;
+    }
   }
 
   private pageEnded(url: string): void {
@@ -156,13 +187,15 @@ export struct EasLoginPage {
       return;
     }
     this.clearPageLoadTimer();
+    this.firstPageLoaded = true;
     this.webReady = true;
     this.updateWebNavigation();
     this.loginController.notifyPageEnd(url);
   }
 
   private pageLoadFinished(url: string): void {
-    if (this.campusCode !== 'BENBU' || !this.pageActive || this.loginCompleted || this.recoveryBusy || url.length === 0) {
+    if ((this.campusCode !== 'BENBU' && this.campusCode !== 'WEIHAI') ||
+      !this.pageActive || this.loginCompleted || this.recoveryBusy || url.length === 0) {
       return;
     }
     // ArkWeb's final main-frame callback also covers redirects and fragment navigation.
@@ -247,9 +280,11 @@ export struct EasLoginPage {
       webview.WebStorage.deleteAllData();
       this.webController.removeCache(true);
       this.recoveryBusy = false;
-      this.loginController.start(this.campusCode, this.studentType);
-      this.watchPageLoad(this.initialUrl);
-      this.webController.loadUrl(this.initialUrl);
+      const startUrl: string = this.config?.loginUrl ?? this.initialUrl;
+      this.firstPageLoaded = false;
+      this.loginController.start(this.campusCode, this.studentType, this.config);
+      this.watchPageLoad(startUrl);
+      this.webController.loadUrl(startUrl);
     } catch (e) {
       if (this.pageActive && generation === this.callbackGeneration) {
         this.recoveryBusy = false;
@@ -347,7 +382,7 @@ export struct EasLoginPage {
           .enabled(!this.recoveryBusy)
           .onClick(() => {
             try {
-              this.loginController.start(this.campusCode, this.studentType);
+              this.loginController.start(this.campusCode, this.studentType, this.config);
               this.watchPageLoad(this.currentPageUrl);
               this.progressValue = 0;
               this.webController.refresh();
@@ -479,6 +514,7 @@ export struct EasLoginPage {
                   return;
                 }
                 if (event.request !== undefined && event.request.isMainFrame()) {
+                  if (this.fallbackToWeihaiVpn()) return;
                   this.clearPageLoadTimer();
                   if (this.recoveryPending) {
                     this.recoveryPending = false;

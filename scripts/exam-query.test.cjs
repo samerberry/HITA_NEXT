@@ -25,7 +25,7 @@ function load(file, mocks = {}, cache = new Map()) {
   return mod.exports;
 }
 
-const { EasEventItem, EasEventType } = load('common/model/timetable/TimetableModels.ets');
+const { EasEventType } = load('common/model/timetable/TimetableModels.ets');
 const { EasExamItem, EasTermItem } = load('feature/eas/model/EasModels.ets');
 const { parseShenzhenWebExams } = load('feature/eas/data/ShenzhenWebExams.ets');
 const { ExamSchedule } = load('feature/eas/ExamSchedule.ets');
@@ -65,7 +65,8 @@ test('only recognized empty exam lists count as no exams', () => {
     assert.deepEqual(parseShenzhenWebExams(body, term()).list, []);
   }
   for (const body of ['<html>maintenance</html>', '{}', '{"message":"service unavailable"}',
-    '{"rows":[{"unknown":"value"}]}']) {
+    '{"rows":[{"unknown":"value"}]}', JSON.stringify({ rows: [webExam, {}] }),
+    '{"rows":[null]}']) {
     assert.equal(parseShenzhenWebExams(body, term()), undefined);
   }
 });
@@ -151,7 +152,7 @@ test('exam schedule parses Chinese dates and countdown labels', () => {
   assert.equal(ExamSchedule.remainingLabel(range[0], range[1], range[1] + 1000), '已结束');
 });
 
-test('imported exams keep identity fields and skip already saved courses', () => {
+test('imported exams keep source identity when the school changes their time or room', () => {
   const item = Object.assign(new EasExamItem(), {
     courseName: '线性代数',
     examDate: '2026-12-20',
@@ -159,12 +160,11 @@ test('imported exams keep identity fields and skip already saved courses', () =>
     examLocation: 'A-101',
     examType: '期末'
   });
-  const event = ExamSchedule.toEvent(item, 'current');
+  const source = 'SHENZHEN:2026-20271/';
+  const event = ExamSchedule.toEvent(item, 'current', source);
   assert.equal(event.type, EasEventType.EXAM);
   assert.equal(event.timetableId, 'current');
   assert.equal(event.place, 'A-101');
-  assert.equal(ExamSchedule.sameAsEvent(item, event), true);
-  const other = Object.assign(new EasEventItem(), event);
-  other.name = '高等数学';
-  assert.equal(ExamSchedule.sameAsEvent(item, other), false);
+  assert.equal(event.examSource, ExamSchedule.sourceKey(source, { ...item, examDate: '2026-12-22' }));
+  assert.notEqual(event.examSource, ExamSchedule.sourceKey(source, { ...item, examType: '补考' }));
 });

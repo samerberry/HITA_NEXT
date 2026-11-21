@@ -269,6 +269,9 @@ test('the window fills the status bar instead of leaving a white top inset', () 
   assert.match(home, /\.margin\(\{ bottom: HitaDesign\.spaceSm \+ this\.navBarInset \}\)/);
   assert.match(ability, /captureSystemInsets/);
   assert.match(ability, /TYPE_NAVIGATION_INDICATOR/);
+  const systemInsets = fs.readFileSync(path.join(etsRoot, 'common/theme/StatusBarInset.ets'), 'utf8');
+  assert.match(systemInsets, /NAV_BAR_INSET_FALLBACK: number = 28;/);
+  assert.match(ability, /AppStorage\.setOrCreate\(NAV_BAR_INSET_KEY, Math\.max\(NAV_BAR_INSET_FALLBACK, bottomVp\)\)/);
   // The school Web uses system keyboard avoidance.
   assert.match(home, /setKeyboardAvoidMode\(\s*this\.sessionSheetOpen && this\.sessionWebVisible \? KeyboardAvoidMode\.OFFSET : KeyboardAvoidMode\.NONE\)/);
   assert.match(home, /setKeyboardAvoidMode\(KeyboardAvoidMode\.OFFSET\)/);

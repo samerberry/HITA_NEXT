@@ -16,12 +16,15 @@ import { CourseTimePickerDialog } from '../feature/timetable/views/CourseTimePic
 import { CourseTextPickerDialog } from '../feature/timetable/views/CourseTextPickerDialog';
 import { HeaderBackButton } from '../common/components/HeaderBackButton';
 import { ImmersiveHeader } from '../common/components/ImmersiveHeader';
+import { SheetContent } from '../common/components/SheetContent';
+import { SelectionSheetList, SelectionSheetOption } from '../common/components/SelectionSheetList';
+import { HitaColors } from '../common/theme/HitaColors';
 import { CompatibleMaterialModifier } from '../common/theme/CompatibleMaterialModifier';
 import { CompatibleSheetMaterial } from '../common/theme/CompatibleSheetMaterial';
 import { CompatiblePickerMaterial } from '../common/theme/CompatiblePickerMaterial';
 import { CompatibleLightModifier } from '../common/theme/CompatibleLightModifier';
 import { HeaderFade } from '../common/theme/HeaderFade';
-import { STATUS_BAR_INSET_FALLBACK } from '../common/theme/StatusBarInset';
+import { NAV_BAR_INSET_FALLBACK, STATUS_BAR_INSET_FALLBACK } from '../common/theme/StatusBarInset';
 import { RdbHelper } from '../common/db/RdbHelper';
 import { TimetableResolver } from '../feature/timetable/data/TimetableResolver';
 import { TimetableSelectionStore } from '../feature/timetable/data/TimetableSelectionStore';
@@ -49,6 +52,7 @@ export struct EventEditorForm {
   @Prop targetTimetableId: string = '';
   @Prop initialType: string = '';
   @Prop sheetMode: boolean = false;
+  @StorageProp('hita_nav_bar_vp') navBarInset: number = NAV_BAR_INSET_FALLBACK;
   onCancel: () => void = () => {};
   onChanged: () => Promise<void> = async () => {};
   onSaved: (event: EasEventItem, occurrences: EasEventItem[]) => void =
@@ -60,6 +64,11 @@ export struct EventEditorForm {
   @State toPeriod: number = 0;
   @State selectedSubjectId: string = '';
   @State pickingExisting: boolean = false;
+  @State existingCourseSheetVisible: boolean = false;
+  @State existingCourseChoices: EasEventItem[] = [];
+  @State examCourseChoices: EasTermSubject[] = [];
+  @State examSubjectId: string = '';
+  @State examSubjectName: string = '';
   @State typeIdx: number = 0;
   @State name: string = '';
   @State place: string = '';
@@ -90,6 +99,9 @@ export struct EventEditorForm {
   private editId: string = '';
   private timetableId: string = '';
   private subjectId: string = '';
+  private examSubjectTimetableId: string = '';
+  private examCourseCanClear: boolean = false;
+  private courseSheetDismissing: boolean = false;
   private editorActive: boolean = false;
   private leavingEditor: boolean = false;
   private timePicker: CustomDialogController | undefined = undefined;
@@ -199,6 +211,14 @@ export struct EventEditorForm {
     this.timetableId = ev.timetableId.length > 0 ? ev.timetableId : this.timetableId;
     this.subjectId = ev.subjectId;
     this.typeIdx = EventEditorForm.idxOf(ev.type);
+    if (ev.type === EasEventType.EXAM && ev.subjectId.length > 0) {
+      this.examSubjectId = ev.subjectId;
+      this.examSubjectTimetableId = this.timetableId;
+      if (this.timetableId.length > 0) {
+        const subjects = await RdbHelper.getInstance().getSubjectsOfTimetable(this.timetableId);
+        this.examSubjectName = subjects.find((subject: EasTermSubject): boolean => subject.id === ev.subjectId)?.name ?? '';
+      }
+    }
     const d: Date = new Date(ev.from);
     this.hour = d.getHours();
     this.minute = d.getMinutes();
@@ -236,20 +256,22 @@ export struct EventEditorForm {
     });
   }
 
-  private async loadCourseTimetable(initializeSelection: boolean = true): Promise<void> {
+  private async resolveEditorTimetable(): Promise<EasTimetable | undefined> {
     const ctx: common.Context = this.getUIContext().getHostContext() as common.Context;
     const rdb: RdbHelper = RdbHelper.getInstance();
     await rdb.init(ctx);
-    let timetable: EasTimetable | undefined;
     if (this.timetableId.length > 0) {
-      timetable = await rdb.getTimetableById(this.timetableId);
-    } else {
-      const selection: TimetableSelectionStore = TimetableSelectionStore.getInstance();
-      await selection.init(ctx);
-      const selectedId: string = await selection.load();
-      timetable = selectedId.length > 0 ? await rdb.getTimetableById(selectedId) : undefined;
-      if (timetable === undefined) timetable = await TimetableResolver.getForDisplay(rdb);
+      return await rdb.getTimetableById(this.timetableId);
     }
+    const selection: TimetableSelectionStore = TimetableSelectionStore.getInstance();
+    await selection.init(ctx);
+    const selectedId: string = await selection.load();
+    const selected: EasTimetable | undefined = selectedId.length > 0 ? await rdb.getTimetableById(selectedId) : undefined;
+    return selected ?? await TimetableResolver.getForDisplay(rdb);
+  }
+
+  private async loadCourseTimetable(initializeSelection: boolean = true): Promise<void> {
+    const timetable: EasTimetable | undefined = await this.resolveEditorTimetable();
     this.courseTimetable = timetable;
     if (timetable === undefined) {
       this.hint = '请先新建或导入课表，再添加课程';
@@ -356,7 +378,8 @@ export struct EventEditorForm {
   }
 
   private async chooseExistingCourse(): Promise<void> {
-    if (this.pickingExisting || this.loading || this.saving) return;
+    if (!this.editorActive || this.leavingEditor || this.pickingExisting || this.loading || this.saving ||
+      this.existingCourseSheetVisible || this.courseSheetDismissing || this.existingCourseChoices.length > 0) return;
     this.pickingExisting = true;
     try {
       const rdb = RdbHelper.getInstance();
@@ -379,24 +402,74 @@ export struct EventEditorForm {
         choices.push(event);
       }
       choices.sort((a: EasEventItem, b: EasEventItem): number => a.name.localeCompare(b.name));
-      if (!this.editorActive) return;
+      if (!this.editorActive || this.leavingEditor || this.saving || this.saved || this.typeIdx !== 1) return;
       if (choices.length === 0) { this.hint = '当前课表还没有课程，请手动填写'; return; }
-      this.showCourseTextPicker({
-        range: choices.map((event: EasEventItem): string => [event.name, event.place, event.teacher]
-          .filter((value: string): boolean => value.length > 0).join(' · ')),
-        selected: Math.max(0, choices.findIndex((event: EasEventItem): boolean => event.subjectId === this.selectedSubjectId)),
-        canLoop: false,
-        onAccept: (result: TextPickerResult) => {
-          if (this.editorActive && typeof result.index === 'number' && choices[result.index] !== undefined) {
-            this.selectExistingCourse(choices[result.index]);
-          }
-        }
-      });
+      this.existingCourseChoices = choices;
+      this.existingCourseSheetVisible = true;
     } catch (_) { this.hint = '读取已有课程失败，请重试'; }
     finally { this.pickingExisting = false; }
   }
 
-  private validationHint(): string {
+  private pickExistingCourse(event: EasEventItem): void {
+    if (!this.editorActive || this.leavingEditor || this.courseSheetDismissing || !this.existingCourseSheetVisible) return;
+    this.selectExistingCourse(event);
+    this.existingCourseSheetVisible = false;
+  }
+
+  private async chooseExamCourse(): Promise<void> {
+    if (!this.editorActive || this.leavingEditor || this.pickingExisting || this.loading || this.saving ||
+      this.existingCourseSheetVisible || this.courseSheetDismissing) return;
+    this.pickingExisting = true;
+    try {
+      const timetable = await this.resolveEditorTimetable();
+      const subjects: EasTermSubject[] = timetable === undefined ? [] :
+        await RdbHelper.getInstance().getSubjectsOfTimetable(timetable.id);
+      if (!this.editorActive || this.leavingEditor || this.saving || this.saved || this.typeIdx !== 2) return;
+      if (subjects.length === 0 && this.examSubjectId.length === 0) {
+        this.hint = '当前课表还没有课程';
+        return;
+      }
+      this.hint = '';
+      this.examCourseCanClear = this.examSubjectId.length > 0;
+      this.examCourseChoices = subjects.sort((a: EasTermSubject, b: EasTermSubject): number => a.name.localeCompare(b.name));
+      this.existingCourseSheetVisible = true;
+    } catch (_) { this.hint = '读取已有课程失败，请重试'; }
+    finally { this.pickingExisting = false; }
+  }
+
+  private coursePickerOptions(): SelectionSheetOption[] {
+    if (this.typeIdx !== 2) {
+      return this.existingCourseChoices.map((event: EasEventItem): SelectionSheetOption => ({
+        id: event.id, title: event.name,
+        subtitle: [event.place, event.teacher].filter((value: string): boolean => value.length > 0).join(' · ')
+      }));
+    }
+    const options = this.examCourseChoices.map((subject: EasTermSubject): SelectionSheetOption => ({
+      id: subject.id, title: subject.name, subtitle: subject.code
+    }));
+    if (this.examCourseCanClear) options.unshift({ id: '', title: '不关联课程', subtitle: '' });
+    return options;
+  }
+
+  private pickCourseOption(id: string): void {
+    if (!this.editorActive || this.leavingEditor || this.saving || this.courseSheetDismissing ||
+      !this.existingCourseSheetVisible) return;
+    if (this.typeIdx !== 2) {
+      const event = this.existingCourseChoices.find((item: EasEventItem): boolean => item.id === id);
+      if (event !== undefined) this.pickExistingCourse(event);
+      return;
+    }
+    const subject = this.examCourseChoices.find((item: EasTermSubject): boolean => item.id === id);
+    if (id.length > 0 && subject === undefined) return;
+    this.existingCourseSheetVisible = false;
+    this.examSubjectId = subject?.id ?? '';
+    this.examSubjectName = subject?.name ?? '';
+    this.examSubjectTimetableId = subject?.timetableId ?? '';
+    if (this.name.trim().length === 0) this.name = this.examSubjectName;
+    this.hint = '';
+  }
+
+  private validationHint(checkTimeOrder: boolean = false): string {
     if (this.name.trim().length === 0) return this.typeIdx === 1 ? '请填写课程名称' : '请填写名称';
     if (this.typeIdx === 1 && this.editId.length === 0) {
       const timetable = this.courseTimetable;
@@ -410,7 +483,7 @@ export struct EventEditorForm {
     }
     const time = this.selectedTime();
     if (time[0] < 0 || time[1] < 0) return '请选择上课节次';
-    if (time[1] <= time[0]) return '结束时间必须晚于开始时间';
+    if (checkTimeOrder && time[1] <= time[0]) return '结束时间必须晚于开始时间';
     return '';
   }
 
@@ -452,15 +525,7 @@ export struct EventEditorForm {
   }
 
   private acceptTime(start: boolean, hour: number, minute: number): boolean {
-    if (!this.editorActive) return false;
-    const selectedMinutes: number = hour * 60 + minute;
-    if ((start && selectedMinutes >= this.endHour * 60 + this.endMinute) ||
-      (!start && selectedMinutes <= this.hour * 60 + this.minute)) {
-      this.getUIContext().getPromptAction().showToast({
-        message: start ? '开始时间必须早于结束时间' : '结束时间必须晚于开始时间'
-      });
-      return false;
-    }
+    if (!this.editorActive || this.leavingEditor) return false;
     if (start) {
       this.hour = hour;
       this.minute = minute;
@@ -526,7 +591,7 @@ export struct EventEditorForm {
     if (this.editId.length > 0 && this.typeIdx === 1 && this.editTargets().length === 0) {
       this.hint = '所选范围没有课次，请重新选择'; return;
     }
-    const invalid: string = this.stoppingCourse ? '' : this.validationHint();
+    const invalid: string = this.stoppingCourse ? '' : this.validationHint(true);
     if (invalid.length > 0) { this.hint = invalid; return; }
     this.saving = true;
     try {
@@ -632,9 +697,19 @@ export struct EventEditorForm {
     ev.name = this.name.trim();
     ev.place = this.place.trim();
     ev.teacher = this.teacher.trim();
-    ev.subjectId = this.subjectId;
+    ev.subjectId = ev.type === EasEventType.EXAM ? this.examSubjectId : this.subjectId;
     // Prefer the explicit target, then the user's current timetable.
     ev.timetableId = this.timetableId;
+    if (ev.type === EasEventType.EXAM && this.examSubjectTimetableId.length > 0) {
+      ev.timetableId = this.examSubjectTimetableId;
+      if (this.examSubjectId !== this.subjectId) {
+        const subjects = await rdb.getSubjectsOfTimetable(ev.timetableId);
+        if (!subjects.some((subject: EasTermSubject): boolean => subject.id === ev.subjectId)) {
+          this.hint = '所选课程已不存在，请重新选择';
+          return;
+        }
+      }
+    }
     let occurrences: EasEventItem[] = [ev];
     if (this.typeIdx === 1 && this.editId.length === 0) {
       // Resolve the explicit target again before writing; never fall back to another timetable if it was deleted.
@@ -795,6 +870,8 @@ export struct EventEditorForm {
     if (this.name.trim().length === 0) return '';
     const invalid: string = this.validationHint();
     if (invalid.length > 0) return invalid;
+    const time: number[] = this.selectedTime();
+    if (time[1] <= time[0]) return '';
     if (this.editId.length > 0) return '将' + (this.stoppingCourse ? '停课 ' : '修改 ') + this.editTargets().length.toString() + ' 个课次';
     if (this.dateMode === 0) return this.dateText() + ' · ' + this.startLabel() + '–' + this.endLabel();
     if (this.selectedWeekdays.length === 0) return '请选择上课的星期';
@@ -931,7 +1008,8 @@ export struct EventEditorForm {
             .fontWeight(FontWeight.Medium)
             .fontColor($r('app.color.hita_on_primary'))
             .backgroundColor($r('app.color.hita_primary_fill'))
-            .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_primary_fill'), true))
+            .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_primary_fill'), true,
+              true, undefined, false))
             .enabled(this.canSave())
             .onClick(() => {
               this.save();
@@ -943,7 +1021,8 @@ export struct EventEditorForm {
         left: HitaDesign.inset,
         right: HitaDesign.inset,
         top: HitaDesign.spaceXs,
-        bottom: HitaDesign.spaceSm
+        // Lift the native material host and its button above the fullscreen navigation indicator.
+        bottom: this.sheetMode ? HitaDesign.spaceSm : this.navBarInset + HitaDesign.spaceXs
       })
       .backgroundColor(this.editorBackground())
     }
@@ -952,6 +1031,29 @@ export struct EventEditorForm {
     .backgroundColor(this.editorBackground())
     .attributeModifier(new CompatibleLightModifier(24, this.sheetMode && this.courseMaterialsEnabled(), true))
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
+    .bindSheet($$this.existingCourseSheetVisible, this.existingCourseSheet(), CompatibleSheetMaterial.options({
+      height: SheetSize.MEDIUM,
+      dragBar: true,
+      showClose: false,
+      preferType: SheetType.BOTTOM,
+      backgroundColor: $r('app.color.hita_surface'),
+      maskColor: $r('app.color.hita_sheet_mask'),
+      onWillDisappear: () => { this.courseSheetDismissing = true; },
+      onDisappear: () => {
+        this.existingCourseSheetVisible = false;
+        this.existingCourseChoices = [];
+        this.examCourseChoices = [];
+        this.courseSheetDismissing = false;
+      }
+    }))
+  }
+
+  @Builder
+  private existingCourseSheet() {
+    SheetContent({ fillHeight: true }) {
+      SelectionSheetList({ title: this.typeIdx === 2 ? '选择关联课程' : '选择已有课程',
+        options: this.coursePickerOptions(), onSelect: (id: string) => this.pickCourseOption(id) })
+    }
   }
 
   @Builder
@@ -1062,6 +1164,23 @@ export struct EventEditorForm {
   @Builder
   private eventInfoCard() {
     Column({ space: HitaDesign.gap }) {
+      if (this.typeIdx === 2) {
+        Row({ space: HitaDesign.gap }) {
+          Text('关联课程').fontSize(HitaDesign.body).fontColor(HitaColors.onSurfaceVariant).flexShrink(0)
+          Blank()
+          Text(this.pickingExisting ? '正在读取…' : (this.examSubjectId.length === 0 ? '选填' :
+            (this.examSubjectName || '课程已移除')))
+            .fontSize(HitaDesign.caption).fontColor(HitaColors.onSurfaceVariant)
+            .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis }).textAlign(TextAlign.End)
+            .constraintSize({ maxWidth: '65%' })
+          SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(HitaDesign.iconSm).fontColor([HitaColors.onSurfaceVariant])
+        }
+        .width('100%')
+        .constraintSize({ minHeight: HitaDesign.rowMinHeight })
+        .enabled(!this.pickingExisting)
+        .accessibilityGroup(true)
+        .onClick(() => { void this.chooseExamCourse(); })
+      }
       Row({ space: HitaDesign.gap }) {
         Text('名称').fontSize(HitaDesign.body).fontColor($r('app.color.hita_text_secondary'))
           .width(56).flexShrink(0)

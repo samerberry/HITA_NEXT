@@ -72,6 +72,8 @@ function harness() {
       sessionSheetLoading = false;
       sheetRequestGeneration = 0;
       sessionSheetCampus = 'WEIHAI';
+      sessionSheetStudentType = '1';
+      sessionStudentTypeManuallySelected = false;
       sessionSheetInfo;
       sessionSheetStatus = Status.UNKNOWN;
       sessionInfo;
@@ -104,7 +106,7 @@ function harness() {
   }).outputText;
   const page = new Function('context', 'EasSessionStore', 'EasCampus', 'KeyboardAvoidMode',
     'TAB_TIMETABLE', 'EasSessionStatus', 'EasDataProvider', 'EasApiClient', 'Status', 'EasWebLoginState',
-    'SheetSize', 'ScrollSizeMode', 'SheetKeyboardAvoidMode', 'HitaDesign',
+    'SheetSize', 'ScrollSizeMode', 'SheetKeyboardAvoidMode', 'HitaDesign', 'EasStudentType',
     compiled + '; return new Home();')(
     context, { getInstance: () => store },
     { WEIHAI: 'WEIHAI', BENBU: 'BENBU', SHENZHEN: 'SHENZHEN' }, { OFFSET: 'offset', NONE: 'none' }, 1,
@@ -112,9 +114,41 @@ function harness() {
       async checkSessionStatus(session) { state.checks.push(session); return state.verify(session); }
     }, class {}, Status, { clear: async () => { state.webCleared++; } },
     { FIT_CONTENT: 'fit', MEDIUM: 'medium', LARGE: 'large' }, { CONTINUOUS: 'continuous' },
-    { TRANSLATE_AND_SCROLL: 'translate-and-scroll', NONE: 'none' }, { spaceLg: 24 });
+    { TRANSLATE_AND_SCROLL: 'translate-and-scroll', NONE: 'none' }, { spaceLg: 24 }, { GRAD: 'GRAD' });
   return { page, state };
 }
+
+test('campus account panel restores the saved student type only for Weihai and Benbu', async () => {
+  const { page, state } = harness();
+  state.load = async campus => ({ campus, stutype: 'GRAD' });
+  await page.openSessionSheet();
+  assert.equal(page.sessionSheetCampus, 'WEIHAI');
+  assert.equal(page.sessionSheetStudentType, '2');
+  await page.selectSessionCampus('BENBU');
+  assert.equal(page.sessionSheetStudentType, '2');
+  await page.selectSessionCampus('SHENZHEN');
+  assert.equal(page.sessionSheetStudentType, '1');
+  const panel = slice('  sessionSheet()', '  sessionCampusSelector(');
+  assert.match(panel, /if \(this\.sessionSheetCampus !== 'SHENZHEN'\) \{\s*Column\(\) \{\s*CourseModeSegment\(\{\s*labels: \['本科', '研究生'\],\s*selectedIndex: this\.sessionSheetStudentType === '2' \? 1 : 0,\s*onSelect: \(index: number\) => this\.selectSessionStudentType\(index\)/);
+});
+
+test('a manual student type selection survives a pending campus account load', async () => {
+  const { page, state } = harness();
+  await page.openSessionSheet();
+  const pending = deferred();
+  state.load = campus => campus === 'BENBU' ? pending.promise : Promise.resolve({ campus, stutype: 'GRAD' });
+  const selecting = page.selectSessionCampus('BENBU');
+  assert.equal(page.sessionSheetLoading, true);
+  page.selectSessionStudentType(1);
+  assert.equal(page.sessionSheetStudentType, '2');
+  page.selectSessionStudentType(0);
+  assert.equal(page.sessionSheetStudentType, '1');
+  pending.resolve({ campus: 'BENBU', stutype: 'GRAD' });
+  await selecting;
+  assert.equal(page.sessionSheetStudentType, '1');
+  await page.selectSessionCampus('WEIHAI');
+  assert.equal(page.sessionSheetStudentType, '2');
+});
 
 test('native dismissal synchronizes visibility immediately and has no default session-sheet fallback', () => {
   assert.match(home, /\.bindSheet\(\$\$this\.activeSheetVisible,/);
@@ -363,7 +397,7 @@ test('missing session and completed relogin use local state without automatic va
 });
 
 test('campus notice is reachable before selecting a campus and normal login opens the genuine Web', () => {
-  const account = slice('  sessionSheet()', '  sessionCampusButton(');
+  const account = slice('  sessionSheet()', '  sessionCampusSelector(');
   assert.match(account, /if \(this\.sessionWebVisible\) \{\s*EasLoginPage\(/);
   assert.match(account, /active: this\.activeSheetVisible && this\.sessionSheetOpen/);
   assert.match(account, /label: '网页登录'[\s\S]*this\.beginSessionLogin\(\)/);

@@ -10,6 +10,8 @@ import { CompatibleSheetMaterial } from '../../common/theme/CompatibleSheetMater
 import { ImmersiveHeader } from '../../common/components/ImmersiveHeader';
 import { HeaderBackButton } from '../../common/components/HeaderBackButton';
 import { HitaButton, HitaButtonVariant } from '../../common/components/HitaButton';
+import { SelectionSheetList, SelectionSheetOption } from '../../common/components/SelectionSheetList';
+import { SheetContent } from '../../common/components/SheetContent';
 import { ClassReminderScheduler } from '../timetable/data/ClassReminderScheduler';
 import { LearningTaskReminders } from './LearningTaskReminders';
 
@@ -27,8 +29,11 @@ export struct LearningTaskEditor {
   @State note: string = '';
   @State saving: boolean = false;
   @State error: string = '';
+  @State associationSheetVisible: boolean = false;
+  @State associationChoices: SelectionSheetOption[] = [];
   @StorageProp('hita_nav_bar_vp') navBarInset: number = 16;
   private active: boolean = false;
+  private associationSheetDismissing: boolean = false;
 
   aboutToAppear(): void {
     this.active = true;
@@ -56,46 +61,53 @@ export struct LearningTaskEditor {
       exam.name + ' · ' + EasTimeTools.printDate(exam.from);
   }
 
-  private selectSubject(): void {
-    if (this.saving) return;
-    const choices: EasTermSubject[] = this.data.subjects;
-    if (choices.length === 0) { this.error = '请先新建或导入课程'; return; }
-    this.getUIContext().showTextPickerDialog(CompatiblePickerMaterial.textOptions({
-      range: choices.map((subject: EasTermSubject): string => subject.name + ' · ' +
-        (this.data.timetables.find(table => table.id === subject.timetableId)?.name ?? '课表')),
-      selected: Math.max(0, choices.findIndex(subject => subject.id === this.draft.subjectId)), canLoop: false,
-      onAccept: (result: TextPickerResult) => {
-        const subject: EasTermSubject | undefined = choices[Number(result.index)];
-        if (subject === undefined) return;
-        const next: LearningTask = LearningTaskRules.copy(this.draft);
-        next.subjectId = subject.id; next.timetableId = subject.timetableId;
-        next.courseName = subject.name; next.courseCode = subject.code;
-        this.update(next);
-      }
-    }, true));
+  private chooseAssociation(): void {
+    if (!this.active || this.saving || this.associationSheetVisible || this.associationSheetDismissing) return;
+    const homework: boolean = this.draft.kind === LearningTaskKind.HOMEWORK;
+    const choices: SelectionSheetOption[] = homework ?
+      this.data.subjects.map((subject: EasTermSubject): SelectionSheetOption => ({
+        id: subject.id, title: subject.name, subtitle: this.timetableName(subject.timetableId)
+      })) : this.data.events.filter(event => event.type === EasEventType.EXAM).sort((a, b) => a.from - b.from)
+        .map((exam: EasEventItem): SelectionSheetOption => ({
+          id: exam.id, title: exam.name,
+          subtitle: EasTimeTools.printDate(exam.from) + ' · ' + this.timetableName(exam.timetableId)
+        }));
+    if (choices.length === 0) {
+      this.error = homework ? '请先新建或导入课程' : '请先在考试页面导入或添加考试';
+      return;
+    }
+    this.associationChoices = choices;
+    this.associationSheetVisible = true;
   }
 
-  private selectExam(): void {
-    if (this.saving) return;
-    const choices: EasEventItem[] = this.data.events.filter(event => event.type === EasEventType.EXAM)
-      .sort((a, b) => a.from - b.from);
-    if (choices.length === 0) { this.error = '请先在考试页面导入或添加考试'; return; }
-    this.getUIContext().showTextPickerDialog(CompatiblePickerMaterial.textOptions({
-      range: choices.map(exam => exam.name + ' · ' + EasTimeTools.printDate(exam.from) + ' · ' +
-        (this.data.timetables.find(table => table.id === exam.timetableId)?.name ?? '课表')),
-      selected: Math.max(0, choices.findIndex(exam => exam.id === this.draft.examId)), canLoop: false,
-      onAccept: (result: TextPickerResult) => {
-        const exam: EasEventItem | undefined = choices[Number(result.index)];
-        if (exam === undefined) return;
-        const next: LearningTask = LearningTaskRules.copy(this.draft);
-        next.examId = exam.id; next.examName = exam.name; next.examAt = exam.from; next.timetableId = exam.timetableId;
-        const matches: EasTermSubject[] = this.data.subjects.filter(subject => subject.timetableId === exam.timetableId &&
-          (exam.subjectId.length > 0 ? subject.id === exam.subjectId : subject.name === exam.name));
-        const subject: EasTermSubject | undefined = matches.length === 1 ? matches[0] : undefined;
-        next.subjectId = subject?.id ?? ''; next.courseName = subject?.name ?? ''; next.courseCode = subject?.code ?? '';
-        this.update(next);
-      }
-    }, true));
+  private timetableName(id: string): string {
+    return this.data.timetables.find(table => table.id === id)?.name ?? '课表';
+  }
+
+  private pickAssociation(id: string): void {
+    if (!this.active || this.saving || this.associationSheetDismissing || !this.associationSheetVisible) return;
+    const next: LearningTask = LearningTaskRules.copy(this.draft);
+    let subject: EasTermSubject | undefined;
+    if (next.kind === LearningTaskKind.HOMEWORK) {
+      subject = this.data.subjects.find(item => item.id === id);
+      if (subject === undefined) return;
+      next.timetableId = subject.timetableId;
+    } else {
+      const exam: EasEventItem | undefined = this.data.events.find(item => item.id === id && item.type === EasEventType.EXAM);
+      if (exam === undefined) return;
+      next.examId = exam.id;
+      next.examName = exam.name;
+      next.examAt = exam.from;
+      next.timetableId = exam.timetableId;
+      const matches: EasTermSubject[] = this.data.subjects.filter(item => item.timetableId === exam.timetableId &&
+        (exam.subjectId.length > 0 ? item.id === exam.subjectId : item.name === exam.name));
+      subject = matches.length === 1 ? matches[0] : undefined;
+    }
+    next.subjectId = subject?.id ?? '';
+    next.courseName = subject?.name ?? '';
+    next.courseCode = subject?.code ?? '';
+    this.associationSheetVisible = false;
+    this.update(next);
   }
 
   private pickDate(reminder: boolean = false): void {
@@ -222,9 +234,9 @@ export struct LearningTaskEditor {
               .backgroundColor(Color.Transparent).maxLength(120).onChange(value => { this.title = value; this.error = ''; })
               .enabled(!this.saving)
             if (this.draft.kind === LearningTaskKind.HOMEWORK) {
-              this.field('关联课程', () => this.subjectText(), () => this.selectSubject())
+              this.field('关联课程', () => this.subjectText(), () => this.chooseAssociation())
             } else {
-              this.field('关联考试', () => this.examText(), () => this.selectExam())
+              this.field('关联考试', () => this.examText(), () => this.chooseAssociation())
             }
           }.width('100%').borderRadius(HitaDesign.cardRadius).backgroundColor(CompatibleSheetMaterial.cardColor($r('app.color.hita_surface')))
 
@@ -257,11 +269,24 @@ export struct LearningTaskEditor {
           Column() {
             this.field('提醒', () => this.draft.remindAt > 0 ? EasTimeTools.printDate(this.draft.remindAt) + ' ' +
               EasTimeTools.printTime(this.draft.remindAt) : '不提醒', () => this.chooseReminder())
+            if (this.draft.remindAt > 0) {
+              Text('应用在前台或后台运行时会通知。').fontSize(HitaDesign.caption)
+                .fontColor($r('app.color.hita_text_secondary')).width('100%')
+                .padding({ left: HitaDesign.inset, right: HitaDesign.inset, bottom: HitaDesign.spaceXs })
+            }
+            Divider().color($r('app.color.hita_divider')).margin({ left: HitaDesign.inset, right: HitaDesign.inset })
+            Row() {
+              Text('显示在今日页').fontSize(HitaDesign.body).fontColor($r('app.color.hita_text')).layoutWeight(1)
+              Toggle({ type: ToggleType.Switch, isOn: this.draft.showInToday })
+                .accessibilityText('显示在今日页')
+                .enabled(!this.saving)
+                .onChange((value: boolean) => {
+                  const next: LearningTask = LearningTaskRules.copy(this.draft);
+                  next.showInToday = value;
+                  this.update(next);
+                })
+            }.width('100%').constraintSize({ minHeight: 52 }).padding({ left: HitaDesign.inset, right: HitaDesign.inset })
           }.width('100%').borderRadius(HitaDesign.cardRadius).backgroundColor(CompatibleSheetMaterial.cardColor($r('app.color.hita_surface')))
-          if (this.draft.remindAt > 0) {
-            Text('应用在前台或后台运行时会通知。').fontSize(HitaDesign.caption)
-              .fontColor($r('app.color.hita_text_secondary')).width('100%').padding({ left: 4, right: 4 })
-          }
           TextArea({ text: this.note, placeholder: '备注（选填）' }).fontSize(HitaDesign.body).constraintSize({ minHeight: 112 })
             .maxLength(4000).backgroundColor(CompatibleSheetMaterial.cardColor($r('app.color.hita_surface')))
             .borderRadius(HitaDesign.cardRadius).onChange(value => { this.note = value; }).enabled(!this.saving)
@@ -275,5 +300,27 @@ export struct LearningTaskEditor {
         }.width('100%').padding({ left: 16, right: 16, top: 12, bottom: this.navBarInset + 24 })
       }.width('100%').layoutWeight(1).scrollBar(BarState.Off).align(Alignment.Top)
     }.width('100%').height('100%')
+    .bindSheet($$this.associationSheetVisible, this.associationSheet(), CompatibleSheetMaterial.options({
+      height: SheetSize.MEDIUM,
+      dragBar: true,
+      showClose: false,
+      preferType: SheetType.BOTTOM,
+      backgroundColor: $r('app.color.hita_surface'),
+      maskColor: $r('app.color.hita_sheet_mask'),
+      onWillDisappear: () => { this.associationSheetDismissing = true; },
+      onDisappear: () => {
+        this.associationSheetVisible = false;
+        this.associationChoices = [];
+        this.associationSheetDismissing = false;
+      }
+    }))
+  }
+
+  @Builder
+  private associationSheet() {
+    SheetContent({ fillHeight: true }) {
+      SelectionSheetList({ title: this.draft.kind === LearningTaskKind.HOMEWORK ? '选择关联课程' : '选择关联考试',
+        options: this.associationChoices, onSelect: (id: string) => this.pickAssociation(id) })
+    }
   }
 }

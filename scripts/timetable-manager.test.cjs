@@ -105,6 +105,7 @@ function summaryHarness() {
     checkTimetableUpdate() {}
     async openPendingReminder() {}
     openPendingLearningTask() {}
+    async refreshTodayLearningTasks() {}
     updateTodayHighlights() {}
     drawTimetableNow() {}
     static defaultCanvasColor() { return 1; }

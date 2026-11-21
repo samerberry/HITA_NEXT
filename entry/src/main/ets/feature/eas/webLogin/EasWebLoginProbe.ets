@@ -344,7 +344,7 @@ export function isPortalHomePage(url: string, campus: EasCampus): boolean {
     const isWeihaiHost: boolean = (host === 'webvpn.hitwh.edu.cn');
     const isLoginPath: boolean = path === '/login' || path.startsWith('/login/') ||
       lowerUrl.indexOf('authserver') >= 0 || lowerUrl.indexOf('logincas') >= 0;
-    const hasPortalIndicator: boolean = path.startsWith('/portal') ||
+    const hasPortalIndicator: boolean = path.startsWith('/portal') || path === '/m/portal' ||
       lowerUrl.indexOf('#/portal') >= 0 || lowerUrl.indexOf('#/') >= 0;
     // Android WebViewLoginActivity 将根路径也视为门户，并在 CAS 返回根路径时
     // 再次打开 WEIHAI_JWTS；否则认证成功后会停在根页面。

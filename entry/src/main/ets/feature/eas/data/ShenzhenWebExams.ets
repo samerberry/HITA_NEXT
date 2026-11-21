@@ -60,9 +60,8 @@ function rowsFromValue(value: Object | undefined): Array<Record<string, Object>>
     const values: Object[] = value as Object[];
     for (let i = 0; i < values.length; i++) {
       const row: Record<string, Object> | undefined = asRecord(values[i]);
-      if (row !== undefined) {
-        result.push(row);
-      }
+      if (row === undefined) return undefined;
+      result.push(row);
     }
     return result;
   }
@@ -149,12 +148,9 @@ export function parseShenzhenWebExams(body: string, term: EasTermItem): ParsedSh
   }
   for (let i = 0; i < rows.length; i++) {
     const item: EasExamItem = itemFromJson(rows[i], term);
-    if (item.courseName.length > 0) {
-      parsed.list.push(item);
-    }
-  }
-  if (rows.length > 0 && parsed.list.length === 0) {
-    return undefined;
+    // A malformed row cannot be treated as a removed exam when syncing the whole result.
+    if (item.courseName.length === 0) return undefined;
+    parsed.list.push(item);
   }
   return parsed;
 }

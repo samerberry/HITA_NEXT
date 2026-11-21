@@ -57,18 +57,11 @@ export class ExamSchedule {
     return [day + clocks[0] * 60 * 1000, day + clocks[1] * 60 * 1000];
   }
 
-  static sameAsEvent(item: EasExamItem, event: EasEventItem): boolean {
-    if (item.courseName.trim() !== event.name.trim()) {
-      return false;
-    }
-    const range: number[] | undefined = ExamSchedule.parseRange(item.examDate, item.examTime);
-    if (range === undefined) {
-      return ExamSchedule.dateOf(event.from) === ExamSchedule.normalizeDate(item.examDate);
-    }
-    return Math.abs(range[0] - event.from) < 60 * 1000;
+  static sourceKey(source: string, item: EasExamItem): string {
+    return source + JSON.stringify([item.courseName.trim(), item.examType.trim()]);
   }
 
-  static toEvent(item: EasExamItem, timetableId: string): EasEventItem | undefined {
+  static toEvent(item: EasExamItem, timetableId: string, source: string = ''): EasEventItem | undefined {
     const range: number[] | undefined = ExamSchedule.parseRange(item.examDate, item.examTime);
     if (range === undefined || timetableId.length === 0) {
       return undefined;
@@ -83,6 +76,7 @@ export class ExamSchedule {
     event.from = range[0];
     event.to = range[1];
     event.color = 0xFFD93025;
+    if (source.length > 0) event.examSource = ExamSchedule.sourceKey(source, item);
     return event;
   }
 
@@ -99,11 +93,6 @@ export class ExamSchedule {
 
   private static pad(n: number): string {
     return n < 10 ? '0' + n.toString() : n.toString();
-  }
-
-  private static normalizeDate(raw: string): string {
-    const day: number | undefined = ExamSchedule.parseDay(raw);
-    return day === undefined ? raw.trim() : ExamSchedule.dateOf(day);
   }
 
   private static parseDay(text: string): number | undefined {

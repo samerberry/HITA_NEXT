@@ -37,12 +37,12 @@ export class DockBarMaterial {
   }
 
   /** The same glass for the bottom bar and the tablet side rail. */
-  static material(lightAlpha: number = 0): uiMaterial.ImmersiveMaterial | undefined {
+  static material(lightAlpha: number = 0, applyShadow: boolean = true): uiMaterial.ImmersiveMaterial | undefined {
     try {
       if (uiMaterial.isImmersiveMaterialSupported()) {
         return new uiMaterial.ImmersiveMaterial({
           style: DockBarMaterial.styleForDevice(),
-          applyShadow: true,
+          applyShadow: applyShadow,
           // 按背景亮度反色，避免深色课表上图标发灰；具体色值走系统文本色，避免纯黑超对比度上限。
           colorInvert: true,
           // Keep the light white in both themes; opacity controls its strength.
@@ -57,8 +57,8 @@ export class DockBarMaterial {
   }
 
   /** Returns false when the rail must draw its own blurred fallback. */
-  static applyRail(instance: CommonAttribute, lightAlpha: number): boolean {
-    const material: uiMaterial.ImmersiveMaterial | undefined = DockBarMaterial.material(lightAlpha);
+  static applyRail(instance: CommonAttribute, lightAlpha: number, applyShadow: boolean): boolean {
+    const material: uiMaterial.ImmersiveMaterial | undefined = DockBarMaterial.material(lightAlpha, applyShadow);
     if (material === undefined) {
       return false;
     }

@@ -23,6 +23,7 @@ export class LearningTask {
   completedAt: number = 0;
   remindAt: number = 0;
   notifiedAt: number = 0;
+  showInToday: boolean = true;
   createdAt: number = Date.now();
   updatedAt: number = Date.now();
 }
@@ -35,7 +36,9 @@ export class LearningContext {
 
 export class LearningTaskRules {
   static copy(task: LearningTask): LearningTask {
-    return JSON.parse(JSON.stringify(task)) as LearningTask;
+    const copy: LearningTask = JSON.parse(JSON.stringify(task)) as LearningTask;
+    copy.showInToday = task.showInToday ?? true;
+    return copy;
   }
 
   static dayStart(time: number): number {

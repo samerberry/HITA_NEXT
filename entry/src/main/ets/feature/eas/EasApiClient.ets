@@ -9,7 +9,8 @@
  */
 import { http } from '@kit.NetworkKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { EasCampusConfig, EasCampusUrls, EasUserAgent } from './webLogin/EasWebLoginConfig';
+import { EasCampusConfig, EasCampusUrls, EasUserAgent, isWeihaiDirect,
+  weihaiDataBaseUrl } from './webLogin/EasWebLoginConfig';
 import { EasCampus, EasSession } from './EasSession';
 import { EasSessionStore } from './EasSessionStore';
 import { describeExpiredEvidence, EasSessionResponse, expiredEvidence, isShenzhenGatewayLoginRedirect } from './EasSessionStatus';
@@ -41,6 +42,7 @@ export class EasApiClientOptions {
   useCache: boolean = true;
   /** 是否跟随重定向（http 模块默认跟随，保留开关以便抓包期关闭）。 */
   followRedirects: boolean = true;
+  weihaiRefererPath: string = '';
 }
 
 /**
@@ -72,12 +74,21 @@ export class EasApiClient {
     if (session.demoMode) throw new Error('暂无数据');
     const attempts: number = 2;
     for (let i = 0; i < attempts; i++) {
-      // 重登可能换到深圳另一数据基址，每次尝试都按当前会话取地址。
-      const url: string = EasApiClient.joinUrl(this.dataBaseUrl(session, cfg), path);
+      // 续期可能改变线路，地址和请求头都使用当前会话。
+      const base: string = this.dataBaseUrl(session, cfg);
+      const weihai: boolean = session.campus === EasCampus.WEIHAI;
+      const directWeihai: boolean = weihai && isWeihaiDirect(base);
+      const requestPath: string = directWeihai ? path.replace(/\?vpn-12-o1-jwts\.hitwh\.edu\.cn$/, '') : path;
+      const url: string = EasApiClient.joinUrl(base, requestPath);
       const header: Map<string, string> = new Map<string, string>();
       options.extraHeaders.forEach((value: string, key: string) => {
         header.set(key, value);
       });
+      if (weihai) {
+        header.set('Origin', directWeihai ? base : EasCampusUrls.WEIHAI_BASE);
+        const referer: string = options.weihaiRefererPath || requestPath;
+        header.set('Referer', EasApiClient.joinUrl(base, referer));
+      }
       const cookieHeader: string = EasSession.buildCookieHeader(session.webCookies);
       if (cookieHeader.length > 0) {
         header.set('Cookie', cookieHeader);
@@ -101,7 +112,7 @@ export class EasApiClient {
       // 深圳 aTrust 网关失效时的重定向只能在第一跳识别；其他重定向照常跟随。
       const gatewayChecked: boolean = session.campus === EasCampus.SHENZHEN;
       let resp: EasApiResponse = await EasApiClient.doHttp(url, options.method, header, options.body,
-        options.timeoutMs, useCache, options.followRedirects && !gatewayChecked);
+        options.timeoutMs, useCache, options.followRedirects && !gatewayChecked && !directWeihai);
       if (gatewayChecked && resp.statusCode >= 300 && resp.statusCode < 400) {
         const gatewayLogin: boolean = isShenzhenGatewayLoginRedirect(resp);
         hilog.info(DOMAIN, TAG, 'Shenzhen redirect status=%{public}d gatewayLogin=%{public}s target=%{public}s',
@@ -129,13 +140,13 @@ export class EasApiClient {
     return new EasApiResponse(); // 理论不可达
   }
 
-  /** 数据基址：深圳用 webBaseUrl；威海用 webvpn 前缀；本部按培养层次选 jwts/yjsgl 域。 */
+  /** 威海按培养层次及已登录线路访问；历史威海本科会话默认走 WebVPN。 */
   private dataBaseUrl(session: EasSession, cfg: EasCampusConfig): string {
     if (session.campus.toString() === 'SHENZHEN' && session.webBaseUrl.length > 0) {
       return session.webBaseUrl;
     }
     if (session.campus.toString() === 'WEIHAI') {
-      return EasCampusUrls.WEIHAI_EAS_PREFIX;
+      return weihaiDataBaseUrl(session);
     }
     if (session.getStudentType() === '2') {
       return EasCampusUrls.GRADUATE_BASE;

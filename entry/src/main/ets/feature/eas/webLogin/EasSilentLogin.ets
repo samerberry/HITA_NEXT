@@ -8,7 +8,7 @@ import { webview } from '@kit.ArkWeb';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { EasCampus, EasSession } from '../EasSession';
 import { EasWebLoginController } from './EasWebLoginController';
-import { EasCampusConfig, easWebLoginConfigFor } from './EasWebLoginConfig';
+import { EasCampusConfig, easWebLoginConfigFor, isWeihaiDirect } from './EasWebLoginConfig';
 import { hostOf, ignoresLoginFormDuringRenewal, isCredentialPromptPage } from './EasWebLoginProbe';
 
 const TAG: string = 'HitaSilentLogin';
@@ -56,8 +56,8 @@ export class EasSilentLogin {
   private timeoutTimer: number = -1;
   private probeTimer: number = -1;
 
-  constructor(campus: EasCampus, studentType: string) {
-    this.cfg = easWebLoginConfigFor(campus, studentType);
+  constructor(campus: EasCampus, studentType: string, webBaseUrl: string = '') {
+    this.cfg = easWebLoginConfigFor(campus, studentType, isWeihaiDirect(webBaseUrl));
   }
 
   /** 结果为新的网页登录会话；需要用户介入、出错或超时则为 undefined。 */
@@ -104,7 +104,7 @@ export class EasSilentLogin {
     this.activate();
     this.currentPageUrl = this.cfg.loginUrl;
     this.loginController.attachWeb(this.webController);
-    this.loginController.start(this.cfg.campus.toString(), this.cfg.studentType);
+    this.loginController.start(this.cfg.campus.toString(), this.cfg.studentType, this.cfg);
     this.schedulePromptProbe();
   }
 
@@ -133,7 +133,8 @@ export class EasSilentLogin {
 
   /** 本部页面的重定向和片段导航只在最终加载回调里出现。 */
   loadFinished(url: string): void {
-    if (this.done || this.cfg.campus !== EasCampus.BENBU || url.length === 0) {
+    if (this.done || (this.cfg.campus !== EasCampus.BENBU && this.cfg.campus !== EasCampus.WEIHAI) ||
+      url.length === 0) {
       return;
     }
     try {

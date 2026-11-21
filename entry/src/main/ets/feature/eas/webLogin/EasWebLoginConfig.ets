@@ -4,7 +4,7 @@
  * 校区 URL、User-Agent 和 Cookie 探针配置参考 HITA Android。
  * 页面与会话判定见 EasWebLoginProbe.ets。
  */
-import { EasCampus } from '../EasSession';
+import { EasCampus, EasSession } from '../EasSession';
 
 /** 校园统一认证/门户 URL 常量（对应 CampusUrls 全部静态量）。 */
 export class EasCampusUrls {
@@ -30,6 +30,10 @@ export class EasCampusUrls {
   static readonly WEIHAI_EAS_PREFIX: string =
     'https://webvpn.hitwh.edu.cn/http/77726476706e69737468656265737421fae0558f693861446900c7a99c406d3667';
   static readonly WEIHAI_LOGIN: string = 'https://webvpn.hitwh.edu.cn/';
+  static readonly WEIHAI_DIRECT_BASE: string = 'http://jwts.hitwh.edu.cn';
+  static readonly WEIHAI_GRADUATE_DIRECT_BASE: string = 'https://yjsgl.hitwh.edu.cn';
+  static readonly WEIHAI_GRADUATE_VPN_BASE: string = EasCampusUrls.WEIHAI_BASE +
+    '/https/77726476706e69737468656265737421e9fd529b2b7e60596a1f81e29d51367b6311';
   static readonly WEIHAI_JWTS: string =
     'https://webvpn.hitwh.edu.cn/http/77726476706e69737468656265737421fae0558f693861446900c7a99c406d3667/loginCAS';
 }
@@ -70,15 +74,16 @@ export class EasCampusConfig {
   readonly loginUrl: string;
   readonly jwtsUrl: string;
   readonly cookieProbeUrls: string[];
-  /** "1"=本科 / "2"=研究生（默认 "1"；仅本部区分）。 */
+  /** "1"=本科 / "2"=研究生。 */
   readonly studentType: string;
   /** 供 HTTP 数据访问合并 Cookie 的域集合（ArkTS 侧扩展，抓包阶段校准）。 */
   readonly cookieDomains: string[];
   /** 展示名。 */
   readonly displayName: string;
+  readonly dataBaseUrl: string;
 
   constructor(campus: EasCampus, loginUrl: string, jwtsUrl: string, cookieProbeUrls: string[],
-    studentType: string, cookieDomains: string[], displayName: string) {
+    studentType: string, cookieDomains: string[], displayName: string, dataBaseUrl: string = '') {
     this.campus = campus;
     this.loginUrl = loginUrl;
     this.jwtsUrl = jwtsUrl;
@@ -86,11 +91,26 @@ export class EasCampusConfig {
     this.studentType = studentType;
     this.cookieDomains = cookieDomains;
     this.displayName = displayName;
+    this.dataBaseUrl = dataBaseUrl;
   }
 }
 
+export function weihaiDataBaseUrl(session: EasSession): string {
+  if (session.getStudentType() === '2') {
+    return session.webBaseUrl === EasCampusUrls.WEIHAI_GRADUATE_DIRECT_BASE ?
+      EasCampusUrls.WEIHAI_GRADUATE_DIRECT_BASE : EasCampusUrls.WEIHAI_GRADUATE_VPN_BASE;
+  }
+  return session.webBaseUrl === EasCampusUrls.WEIHAI_DIRECT_BASE ?
+    EasCampusUrls.WEIHAI_DIRECT_BASE : EasCampusUrls.WEIHAI_EAS_PREFIX;
+}
+
+export function isWeihaiDirect(base: string): boolean {
+  return base === EasCampusUrls.WEIHAI_DIRECT_BASE || base === EasCampusUrls.WEIHAI_GRADUATE_DIRECT_BASE;
+}
+
 /** 按 校区×培养层次 取配置。 */
-export function easWebLoginConfigFor(campus: EasCampus, studentType: string): EasCampusConfig {
+export function easWebLoginConfigFor(campus: EasCampus, studentType: string,
+  weihaiDirect: boolean = false): EasCampusConfig {
   if (campus === EasCampus.SHENZHEN) {
     // 对齐安卓 CampusWebConfig(campus = SHENZHEN, loginUrl = SHENZHEN_JWTS, jwtsUrl = SHENZHEN_JWTS)
     // 携带 /authentication/main 目标地址进入，确保网关正确定向并保留回跳地址
@@ -109,20 +129,24 @@ export function easWebLoginConfigFor(campus: EasCampus, studentType: string): Ea
     );
   }
   if (campus === EasCampus.WEIHAI) {
+    const graduate: boolean = studentType.trim() === '2';
+    const base: string = graduate ?
+      (weihaiDirect ? EasCampusUrls.WEIHAI_GRADUATE_DIRECT_BASE : EasCampusUrls.WEIHAI_GRADUATE_VPN_BASE) :
+      (weihaiDirect ? EasCampusUrls.WEIHAI_DIRECT_BASE : EasCampusUrls.WEIHAI_EAS_PREFIX);
+    const target: string = graduate ? (weihaiDirect ? base + '/' : base + '/cas') : base + '/loginCAS';
+    const probes: string[] = graduate ? [base + '/user/me', base + '/authentication/main', base + '/student_index'] :
+      [base + '/kbcx/queryGrkb', target, base + '/kjscx/queryJxlListBySjid', base + '/cjcx/queryQmcj'];
+    probes.push(base + '/');
+    if (!weihaiDirect) probes.push(EasCampusUrls.WEIHAI_LOGIN);
     return new EasCampusConfig(
       EasCampus.WEIHAI,
-      EasCampusUrls.WEIHAI_LOGIN,
-      EasCampusUrls.WEIHAI_JWTS,
-      [
-        EasCampusUrls.WEIHAI_JWTS,
-        EasCampusUrls.WEIHAI_EAS_PREFIX + '/kjscx/queryJxlListBySjid',
-        EasCampusUrls.WEIHAI_EAS_PREFIX + '/kbcx/queryGrkb',
-        EasCampusUrls.WEIHAI_EAS_PREFIX + '/cjcx/queryQmcj',
-        EasCampusUrls.WEIHAI_LOGIN
-      ],
-      '1',
-      ['webvpn.hitwh.edu.cn'],
-      '威海'
+      weihaiDirect ? target : EasCampusUrls.WEIHAI_LOGIN,
+      target,
+      probes,
+      graduate ? '2' : '1',
+      [weihaiDirect ? (graduate ? 'yjsgl.hitwh.edu.cn' : 'jwts.hitwh.edu.cn') : 'webvpn.hitwh.edu.cn'],
+      graduate ? '威海（研究生）' : '威海',
+      base
     );
   }
   // BENBU：按培养层次选 jwts/探针（对应 CampusUrls 本科/研究生两套）。

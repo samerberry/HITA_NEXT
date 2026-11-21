@@ -29,7 +29,6 @@ import { NAV_BAR_INSET_FALLBACK, STATUS_BAR_INSET_FALLBACK } from '../common/the
 import { CompatibleMaterialModifier } from '../common/theme/CompatibleMaterialModifier';
 import { CompatibleSheetMaterial } from '../common/theme/CompatibleSheetMaterial';
 import { CompatibleLightModifier } from '../common/theme/CompatibleLightModifier';
-import { CirclePaintModifier } from '../common/theme/CirclePaintModifier';
 import { FrostedDock } from '../common/components/FrostedDock';
 import { DockLightOverlay } from '../common/components/DockLightOverlay';
 import { DockLightController } from '../common/util/DockLightEffect';
@@ -44,15 +43,17 @@ import { DockRail } from '../common/components/DockRail';
 import { FLOATING_ACTION_EXIT_DURATION, FLOATING_ACTION_GAP, floatingActionExitProgress } from '../feature/timetable/views/FloatingActionsMotion';
 import { HoldingHandObserver } from '../feature/timetable/data/HoldingHandObserver';
 import { DeleteEffectController } from '../common/util/DeleteEffectController';
-import { CourseControlHost } from '../feature/timetable/views/CourseControlHost';
+import { CourseModeSegment } from '../feature/timetable/views/CourseModeSegment';
 import { TimetableFloatingActions } from '../feature/timetable/views/TimetableFloatingActions';
 import { TimetableCardMaterials } from '../feature/timetable/views/TimetableCardMaterials';
 import { TimetableCardPainter } from '../feature/timetable/views/TimetableCardPainter';
 import { RdbHelper } from '../common/db/RdbHelper';
-import { EasEventItem, EasEventType, EasTermSubject, EasTimetable } from '../common/model/timetable/TimetableModels';
+import { EasEventItem, EasEventType, EasTermSubject, EasTimetable, newId } from '../common/model/timetable/TimetableModels';
 import { CurrentClassSelection } from '../common/model/timetable/CurrentClassSelection';
+import { LearningTask, LearningTaskKind, LearningTaskRules } from '../common/model/learning/LearningTask';
 import { DOW_FULL, EasTimeTools } from '../common/util/EasTimeTools';
-import { EasCampus, EasSession } from '../feature/eas/EasSession';
+import { ScheduleChangeSignal } from '../common/util/ScheduleChangeSignal';
+import { EasCampus, EasSession, EasStudentType } from '../feature/eas/EasSession';
 import { EasSessionStore, EAS_SESSION_REVISION_KEY } from '../feature/eas/EasSessionStore';
 import { EasLocalDataConfirmation } from '../feature/eas/demo/EasLocalDataConfirmation';
 import { DemoTimetableData } from '../feature/eas/demo/DemoTimetableData';
@@ -119,7 +120,7 @@ const COLOR_CLASS: ResourceColor = $r('app.color.hita_primary');
 const COLOR_EXAM: ResourceColor = $r('app.color.hita_error_8a2e42');
 const COLOR_OTHER: ResourceColor = $r('app.color.hita_link');
 const COLOR_TAG: ResourceColor = $r('app.color.hita_success_0f6e56');
-const TIMETABLE_BOTTOM_SAFE_EXTENSION: number = 56;
+const TIMETABLE_HOUR_FIT_ALLOWANCE: number = 56;
 const TAB_TODAY: number = 0;
 const TAB_TIMETABLE: number = 1;
 const NAV_TAB_COUNT: number = 3;
@@ -130,6 +131,7 @@ const EVENT_RAIL_HEIGHT: number = 40;
 const TIMETABLE_HEADER_FONT: number = 10;
 const TIMETABLE_HEADER_EMPHASIS_FONT: number = 11;
 const USER_AVATAR_SIZE: number = 48;
+const SESSION_CAMPUS_CHOICES: EasCampus[] = [EasCampus.SHENZHEN, EasCampus.BENBU, EasCampus.WEIHAI];
 const TIMETABLE_CHROME_FALLBACK: number = 200;
 const COLOR_SURFACE_RGB: string = '245,246,248';
 // 周切换：位移超过页宽的该比例即翻周；位移较短时抬手速度够快（vp/s）同样翻周。
@@ -239,6 +241,9 @@ struct Home {
     undefined;
   private widgetBackgroundSpringBack: (() => void) | undefined = undefined;
   @State todayItems: EasEventItem[] = [];
+  @State todayLearningTasks: LearningTask[] = [];
+  private todayLearningGeneration: number = 0;
+  private todayLearningSignalKey: string = 'today-learning-' + newId();
   @State timelineText: string = '暂无今日日程';
   @State @Watch('updateTimetableSystemBars') currentTab: number = 0;
   @State hasTimetable: boolean = false;
@@ -259,6 +264,8 @@ struct Home {
   @State @Watch('updateTimetableSystemBars') activeSheetVisible: boolean = false;
   @State sessionSheetOpen: boolean = false;
   @State sessionSheetCampus: string = 'WEIHAI';
+  @State sessionSheetStudentType: string = '1';
+  private sessionStudentTypeManuallySelected: boolean = false;
   @State sessionSheetInfo: EasSession | undefined = undefined;
   @State sessionSheetStatus: EasSessionStatus = EasSessionStatus.UNKNOWN;
   private sheetRequestGeneration: number = 0;
@@ -382,6 +389,9 @@ struct Home {
 
   async aboutToAppear(): Promise<void> {
     this.pageVisible = true;
+    ScheduleChangeSignal.subscribe(this.todayLearningSignalKey, () => {
+      if (this.pageVisible) void this.refreshTodayLearningTasks();
+    });
     this.assistantDockVisible = AppearanceStore.getInstance().showsAssistantDock();
     this.updateHomeKeyboardAvoidMode();
     const ctx: common.Context = this.getUIContext().getHostContext() as common.Context;
@@ -601,6 +611,8 @@ struct Home {
 
   aboutToDisappear(): void {
     this.pageVisible = false;
+    this.todayLearningGeneration++;
+    ScheduleChangeSignal.unsubscribe(this.todayLearningSignalKey);
     this.dockHandObserver.stop();
     this.timetableWallpaperGeneration++;
     this.resetDockInteraction();
@@ -740,7 +752,9 @@ struct Home {
     this.timetableCount = allTimetables.length;
     this.recentTimetable = recent;
     this.hasTimetable = display !== undefined;
+    if (this.currentTimetable?.id !== display?.id) this.todayLearningTasks = [];
     this.currentTimetable = display;
+    void this.refreshTodayLearningTasks();
     this.timetableEvents = allEvents;
     if (!keepWeek) {
       const currentWeek: number = display?.getWeekNumber(this.nowTick) ?? 1;
@@ -941,7 +955,7 @@ struct Home {
     }
     const hourHeight: number = this.timetableHourHeight();
     const bodyViewportHeight: number = Math.max(1,
-      this.timetableAreaH - this.timetableChromeH + TIMETABLE_BOTTOM_SAFE_EXTENSION);
+      this.timetableAreaH - this.timetableChromeH);
     const contentHeight: number = TIMETABLE_GRID_TOP_PADDING + axis.hours() * hourHeight + 8;
     const canvasHeight: number = Math.max(bodyViewportHeight, contentHeight);
     if (this.timetableCanvasHeight !== canvasHeight) {
@@ -1017,7 +1031,7 @@ struct Home {
     // the iOS compact layout's 56vp/hour as the upper bound.
     const visibleHours: number = 19 - AXIS_START_HOUR;
     const availableGridHeight: number = this.timetableAreaH - this.timetableChromeH -
-      TIMETABLE_GRID_TOP_PADDING - 8 + TIMETABLE_BOTTOM_SAFE_EXTENSION;
+      TIMETABLE_GRID_TOP_PADDING - 8 + TIMETABLE_HOUR_FIT_ALLOWANCE;
     return Math.max(42, Math.min(TIMETABLE_HOUR_HEIGHT, availableGridHeight / visibleHours));
   }
 
@@ -1333,6 +1347,11 @@ struct Home {
     return this.railMode() ? this.navBarInset : 64 + this.navBarInset;
   }
 
+  private timetableScrollEndInset(): number {
+    return this.navBarInset + HitaDesign.spaceMd +
+      (this.railMode() ? 0 : DOCK_ACTION_SIZE + HitaDesign.spaceSm);
+  }
+
   private railMode(): boolean {
     return dockRailMode(this.homeWidth, this.homeHeight - this.statusBarInset - this.navBarInset,
       deviceInfo.deviceType === 'tablet', this.foldRailDevice);
@@ -1486,7 +1505,7 @@ struct Home {
     this.timetableAreaH = h;
     const hourHeight: number = this.timetableHourHeight();
     const bodyViewportHeight: number = Math.max(1,
-      h - this.timetableChromeH + TIMETABLE_BOTTOM_SAFE_EXTENSION);
+      h - this.timetableChromeH);
     const contentHeight: number = TIMETABLE_GRID_TOP_PADDING + this.timetableAxis.hours() * hourHeight + 8;
     this.timetableCanvasHeight = Math.max(bodyViewportHeight, contentHeight);
     this.drawTimetableNow();
@@ -1498,7 +1517,8 @@ struct Home {
       return;
     }
     const weekEvents = eventsOfWeek(this.currentTimetable, this.timetableEvents, this.timetableWeek);
-    const maxOffset = Math.max(0, this.timetableChromeH + this.timetableCanvasHeight - this.timetableAreaH);
+    const maxOffset = Math.max(0,
+      this.timetableChromeH + this.timetableCanvasHeight + this.timetableScrollEndInset() - this.timetableAreaH);
     this.showEveningCourseHint = eveningHintVisible(hasEveningCourse(weekEvents),
       this.timetableScroller.currentOffset().yOffset, maxOffset);
   }
@@ -1642,10 +1662,15 @@ struct Home {
 
   private onPendingLearningTaskChanged(): void { this.openPendingLearningTask(); }
 
+  private openLearningTask(taskId: string): void {
+    if (!this.canOpenSheet()) return;
+    this.learningTaskId = taskId;
+    this.openAcademicPanel(5);
+  }
+
   private openPendingLearningTask(): void {
     if (!this.remindersReady || this.pendingLearningTask.length === 0 || !this.canOpenSheet()) return;
-    this.learningTaskId = this.pendingLearningTask;
-    this.openAcademicPanel(5);
+    this.openLearningTask(this.pendingLearningTask);
     if (this.activeSheetVisible && this.academicPanelKind === 5) AppStorage.setOrCreate('hita_learning_open_task', '');
   }
 
@@ -2026,6 +2051,32 @@ struct Home {
     return days.toString() + ' 天后';
   }
 
+  private async refreshTodayLearningTasks(): Promise<void> {
+    const generation: number = ++this.todayLearningGeneration;
+    const timetable: EasTimetable | undefined = this.currentTimetable;
+    if (timetable === undefined) return;
+    try {
+      const tasks: LearningTask[] = await RdbHelper.getInstance().getTodayLearningTasks(timetable.id);
+      if (generation === this.todayLearningGeneration && this.pageVisible) {
+        this.todayLearningTasks = LearningTaskRules.sort(tasks, Date.now());
+      }
+    } catch (_) {
+      // Keep the last successful list for this timetable while a read is temporarily unavailable.
+    }
+  }
+
+  private static learningTaskWhenText(task: LearningTask, now: number): string {
+    const related: string = task.kind === LearningTaskKind.REVIEW ? task.examName : task.courseName;
+    let text: string = '无截止时间';
+    if (task.dueAt > 0) {
+      const date: Date = new Date(task.dueAt);
+      const status: string = LearningTaskRules.deadline(task) < now ? '已逾期 ' : '截止 ';
+      text = status + (date.getMonth() + 1).toString() + '月' + date.getDate().toString() + '日';
+      if (!task.allDay) text += ' ' + EasTimeTools.printTime(task.dueAt);
+    }
+    return related.length > 0 && related !== task.title ? text + ' · ' + related : text;
+  }
+
   private static placeTeacher(event: EasEventItem): string {
     const parts: string[] = [];
     if (event.place.length > 0) parts.push(event.place);
@@ -2085,6 +2136,7 @@ struct Home {
         return;
       }
       this.sessionSheetCampus = campus.toString();
+      this.sessionSheetStudentType = campus !== EasCampus.SHENZHEN && session?.stutype === EasStudentType.GRAD ? '2' : '1';
       this.sessionSheetInfo = session;
       this.sessionWebVisible = false;
       this.sessionSheetStatus = EasSessionStatus.UNKNOWN;
@@ -2110,6 +2162,8 @@ struct Home {
     }
     const generation: number = ++this.sheetRequestGeneration;
     this.sessionSheetCampus = code;
+    this.sessionSheetStudentType = '1';
+    this.sessionStudentTypeManuallySelected = false;
     this.sessionSheetInfo = undefined;
     this.localDataLoginTaps = 0;
     this.sessionDemoVisible = false;
@@ -2121,6 +2175,9 @@ struct Home {
       const session: EasSession | undefined = await EasSessionStore.getInstance().load(Home.campusFromCode(code));
       if (generation === this.sheetRequestGeneration && this.activeSheetVisible && this.sessionSheetOpen) {
         this.sessionSheetInfo = session;
+        if (!this.sessionStudentTypeManuallySelected && code !== 'SHENZHEN' && session?.stutype === EasStudentType.GRAD) {
+          this.sessionSheetStudentType = '2';
+        }
         this.sessionSheetStatus = session?.loginExpired ? EasSessionStatus.EXPIRED : EasSessionStatus.SAVED;
       }
     } catch (_) {
@@ -2132,6 +2189,13 @@ struct Home {
         this.sessionSheetLoading = false;
       }
     }
+  }
+
+  private selectSessionStudentType(index: number): void {
+    if (!this.activeSheetVisible || !this.sessionSheetOpen || this.sessionWebVisible ||
+      this.sessionDemoVisible || this.sessionSheetCampus === 'SHENZHEN') return;
+    this.sessionStudentTypeManuallySelected = true;
+    this.sessionSheetStudentType = index === 1 ? '2' : '1';
   }
 
   private beginSessionLogin(): void {
@@ -3024,6 +3088,12 @@ struct Home {
         }, (exam: EasEventItem) => exam.id + '|' + exam.from.toString() + '|' + exam.to.toString() + '|' + exam.name +
           '|' + exam.place)
 
+        ForEach(this.todayLearningTasks, (task: LearningTask) => {
+          ListItem() {
+            this.todayLearningTaskCard(task);
+          }
+        }, (task: LearningTask) => task.id + '|' + task.updatedAt.toString())
+
         if (!this.hasTimetable) {
           ListItem() {
             this.emptyToday();
@@ -3195,20 +3265,36 @@ struct Home {
 
   @Builder
   todayExamCard(exam: EasEventItem) {
+    this.todayReminderCard(exam.name, (_now: number) => Home.examWhenText(exam),
+      (now: number) => Home.examDistanceText(exam, now), HitaTagTone.EXAM, COLOR_EXAM,
+      () => { this.getUIContext().getRouter().pushUrl({ url: 'pages/ExamPage' }); });
+  }
+
+  @Builder
+  private todayLearningTaskCard(task: LearningTask) {
+    this.todayReminderCard(task.title, (now: number) => Home.learningTaskWhenText(task, now),
+      (_now: number) => task.kind === LearningTaskKind.REVIEW ? '复习' : '作业',
+      task.kind === LearningTaskKind.REVIEW ? HitaTagTone.EXAM : HitaTagTone.BRAND,
+      task.kind === LearningTaskKind.REVIEW ? COLOR_EXAM : COLOR_CLASS, () => this.openLearningTask(task.id));
+  }
+
+  @Builder
+  private todayReminderCard(name: string, detail: (now: number) => string, tag: (now: number) => string, tone: HitaTagTone,
+    railColor: ResourceColor, onOpen: () => void) {
     Row() {
       Row()
         .width(EVENT_RAIL_WIDTH)
         .height(EVENT_RAIL_HEIGHT)
         .borderRadius(EVENT_RAIL_WIDTH / 2)
-        .backgroundColor(COLOR_EXAM);
+        .backgroundColor(railColor);
       Column() {
-        Text(exam.name)
+        Text(name)
           .fontSize(HitaDesign.body)
           .fontWeight(FontWeight.Medium)
           .fontColor(COLOR_TEXT_PRIMARY)
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis });
-        Text(Home.examWhenText(exam))
+        Text(detail(this.nowTick))
           .fontSize(HitaDesign.caption)
           .fontColor(COLOR_TEXT_SECONDARY)
           .maxLines(1)
@@ -3218,16 +3304,14 @@ struct Home {
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start)
       .margin({ left: HitaDesign.spaceSm, right: HitaDesign.spaceSm });
-      HitaTag({ text: Home.examDistanceText(exam, this.nowTick), tone: HitaTagTone.EXAM });
+      HitaTag({ text: tag(this.nowTick), tone: tone });
     }
     .width('100%')
     .padding(HitaDesign.inset)
     .backgroundColor(COLOR_CARD)
     .borderRadius(HitaDesign.cardRadius)
     .alignItems(VerticalAlign.Center)
-    .onClick(() => {
-      this.getUIContext().getRouter().pushUrl({ url: 'pages/ExamPage' });
-    });
+    .onClick(onOpen);
   }
 
   @Builder
@@ -3487,6 +3571,7 @@ struct Home {
               .onDisAppear(() => {
                 this.stopTimetableMarquee();
               })
+              Blank().height(this.timetableScrollEndInset());
             }
             .width('100%')
           }
@@ -4179,7 +4264,7 @@ struct Home {
     if (this.sessionWebVisible) {
       EasLoginPage({
         campusCode: this.sessionSheetCampus,
-        studentType: '1',
+        studentType: this.sessionSheetCampus === 'SHENZHEN' ? '1' : this.sessionSheetStudentType,
         active: this.activeSheetVisible && this.sessionSheetOpen,
         onCancel: () => this.closeActiveSheet(),
         onLoggedIn: (session: EasSession) => this.onSessionLoggedIn(this.sessionSheetCampus, session)
@@ -4252,23 +4337,23 @@ struct Home {
             .fontColor(COLOR_TEXT_SECONDARY)
             .width('100%');
 
-          ImmersiveHeader({ barHeight: HitaDesign.spaceXs + HitaDesign.space2xs * 2 + HitaDesign.controlHeight }) {
-            Row({ space: HitaDesign.space2xs }) {
-              this.sessionCampusButton('SHENZHEN', '深圳');
-              this.sessionCampusButton('BENBU', '本部');
-              this.sessionCampusButton('WEIHAI', '威海');
-            }
-            .width('100%')
-            .padding(HitaDesign.space2xs)
-            .backgroundColor($r('app.color.hita_control_eaf0f7'))
-            .borderRadius(HitaDesign.cardRadius)
-            .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_control_eaf0f7')))
-            .margin({ top: HitaDesign.spaceXs });
-          }
+          this.sessionCampusSelector();
         }
         .width('100%')
         .alignItems(HorizontalAlign.Start)
         .margin({ top: HitaDesign.spaceMd });
+
+        if (this.sessionSheetCampus !== 'SHENZHEN') {
+          Column() {
+            CourseModeSegment({
+              labels: ['本科', '研究生'],
+              selectedIndex: this.sessionSheetStudentType === '2' ? 1 : 0,
+              onSelect: (index: number) => this.selectSessionStudentType(index)
+            });
+          }
+          .width('100%')
+          .margin({ top: HitaDesign.spaceXs });
+        }
 
         if (this.sessionSheetLoading) {
           Row({ space: HitaDesign.spaceXs }) {
@@ -4302,6 +4387,8 @@ struct Home {
                 .textOverflow({ overflow: TextOverflow.Ellipsis });
               Text(this.sessionSheetInfo.demoMode ? '本地数据' :
                 Home.campusName(this.sessionSheetInfo.campus) +
+                  (this.sessionSheetInfo.campus !== EasCampus.SHENZHEN ?
+                    (this.sessionSheetInfo.stutype === EasStudentType.GRAD ? ' · 研究生' : ' · 本科') : '') +
                   (this.sessionSheetInfo.stuId.length > 0 ? ' · ' + this.sessionSheetInfo.stuId : ''))
                 .fontSize(HitaDesign.caption)
                 .fontColor(COLOR_TEXT_SECONDARY)
@@ -4403,28 +4490,19 @@ struct Home {
   }
 
   @Builder
-  sessionCampusButton(code: string, label: string) {
-    Row() {
-      Circle()
-        .width(HitaDesign.spaceXs)
-        .height(HitaDesign.spaceXs)
-        .attributeModifier(new CirclePaintModifier(this.sessionSheetCampus === code ? COLOR_PRIMARY : 'transparent',
-          this.sessionSheetCampus === code ? COLOR_PRIMARY : $r('app.color.hita_text_hint_a9b4c2')))
-        .strokeWidth(1.5);
-      Text(label)
-        .fontSize(HitaDesign.body)
-        .fontWeight(this.sessionSheetCampus === code ? FontWeight.Medium : FontWeight.Regular)
-        .fontColor(this.sessionSheetCampus === code ? COLOR_TEXT_PRIMARY : COLOR_TEXT_SECONDARY)
-        .margin({ left: HitaDesign.spaceXs });
+  sessionCampusSelector() {
+    Column() {
+      CourseModeSegment({
+        labels: ['深圳', '本部', '威海'],
+        selectedIndex: SESSION_CAMPUS_CHOICES.indexOf(Home.campusFromCode(this.sessionSheetCampus)),
+        onSelect: (index: number) => {
+          const campus: EasCampus | undefined = SESSION_CAMPUS_CHOICES[index];
+          if (campus !== undefined) void this.selectSessionCampus(campus.toString());
+        }
+      });
     }
-    .layoutWeight(1)
-    .height(HitaDesign.controlHeight)
-    .justifyContent(FlexAlign.Center)
-    .borderRadius(HitaDesign.radiusMd)
-    .backgroundColor(this.sessionSheetCampus === code ? COLOR_CARD : 'transparent')
-    .onClick(() => {
-      this.selectSessionCampus(code);
-    });
+    .width('100%')
+    .margin({ top: HitaDesign.spaceXs });
   }
 
   @Builder

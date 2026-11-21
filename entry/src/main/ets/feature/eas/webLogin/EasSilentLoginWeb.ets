@@ -71,6 +71,6 @@ function silentWebMount(uiContext: UIContext): EasSilentWebMount {
 /** 主页面就绪后调用，使教务请求遇到认证失效时先尝试静默续期。 */
 export function attachEasSilentRenewal(uiContext: UIContext): void {
   const mount: EasSilentWebMount = silentWebMount(uiContext);
-  EasSessionRenewal.getInstance().attach((campus: EasCampus, studentType: string) =>
-    new EasSilentLogin(campus, studentType).run(mount));
+  EasSessionRenewal.getInstance().attach((campus: EasCampus, studentType: string, webBaseUrl: string) =>
+    new EasSilentLogin(campus, studentType, webBaseUrl).run(mount));
 }

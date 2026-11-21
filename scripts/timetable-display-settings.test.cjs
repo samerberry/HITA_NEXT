@@ -179,18 +179,27 @@ test('native switch state synchronization does not rewrite manual colors or trig
 test('evening hints respect the preference without changing course/exam detection or return-week behavior', () => {
   const home = fs.readFileSync(path.join(root, 'pages/Home.ets'), 'utf8');
   const method = home.slice(home.indexOf('  private updateEveningCourseHint()'), home.indexOf('  private hasTimetableBackground()'));
-  const code = ts.transpileModule('class Page {' + method + '}', {
+  const inset = home.slice(home.indexOf('  private timetableScrollEndInset()'), home.indexOf('  private railMode()'));
+  const code = ts.transpileModule('class Page {' + method + inset + '}', {
     compilerOptions: { target: ts.ScriptTarget.ES2020 }
   }).outputText;
   let detects = 0;
-  const page = new Function('eventsOfWeek', 'hasEveningCourse', 'eveningHintVisible',
-    code + '; return new Page();')(() => ['exam'], () => { detects++; return true; }, () => true);
+  let maxOffset = 0;
+  const page = new Function('eventsOfWeek', 'hasEveningCourse', 'eveningHintVisible', 'DOCK_ACTION_SIZE', 'HitaDesign',
+    code + '; return new Page();')(() => ['exam'], () => { detects++; return true; },
+    (_hasCourse, _offset, end) => { maxOffset = end; return true; }, 56, { spaceMd: 16, spaceSm: 12 });
   Object.assign(page, { timetableDisplay: new Options(), currentTimetable: {}, timetableAreaH: 700,
+    navBarInset: 24, railMode: () => false,
     timetableChromeH: 160, timetableCanvasHeight: 1000, timetableScroller: { currentOffset: () => ({ yOffset: 0 }) } });
   page.updateEveningCourseHint(); assert.equal(page.showEveningCourseHint, true);
+  assert.equal(maxOffset, 160 + 1000 - 700 + 56 + 12 + 24 + 16);
   page.timetableDisplay.eveningHint = false; page.updateEveningCourseHint();
   assert.equal(page.showEveningCourseHint, false); assert.equal(detects, 1);
   page.timetableDisplay.eveningHint = true; page.updateEveningCourseHint();
   assert.equal(page.showEveningCourseHint, true);
+  page.railMode = () => true;
+  page.updateEveningCourseHint();
+  assert.equal(maxOffset, 160 + 1000 - 700 + 24 + 16);
+  assert.match(home, /Scroll\(this\.timetableScroller\)[\s\S]*?Blank\(\)\.height\(this\.timetableScrollEndInset\(\)\)/);
   assert.match(home, /returnVisible: this\.showReturnToCurrentWeek\(\)/);
 });

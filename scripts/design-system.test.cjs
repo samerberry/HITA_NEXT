@@ -43,7 +43,7 @@ const literalRadii = text => text.match(/\.borderRadius\(\s*\d/g) || [];
 const hexColors = text => text.match(/['"]#[0-9A-Fa-f]{6,8}['"]/g) || [];
 
 function builder(source, name) {
-  const start = source.indexOf(`  ${name}(`);
+  const start = source.search(new RegExp(`^  (?:private )?${name}\\(`, 'm'));
   assert.ok(start >= 0, name);
   const next = source.indexOf('  @Builder', start + 1);
   return source.slice(start, next < 0 ? source.length : next);
@@ -116,8 +116,9 @@ test('white icons outside a material host sit on solid fills', () => {
 test('pages brought onto the scale keep 4 vp spacing and token sizes', () => {
   const home = read('pages/Home.ets');
   const pilot = ['tabToday', 'todayHeader', 'todayHeroCard', 'todayExamCard', 'todaySectionHeader', 'emptyToday',
+    'todayLearningTaskCard', 'todayReminderCard',
     'eventRow', 'tabMine', 'desktopWidgetSettings', 'appearanceSettings', 'appearanceOption', 'userCard',
-    'sessionSheet', 'sessionAccountPanel', 'sessionCampusButton', 'moreShortcut', 'moreSectionTitle', 'classReminderSettings'];
+    'sessionSheet', 'sessionAccountPanel', 'sessionCampusSelector', 'moreShortcut', 'moreSectionTitle', 'classReminderSettings'];
   for (const name of pilot) {
     const source = builder(home, name);
     assert.deepEqual(offGrid(source), [], `${name}: spacing off the 4 vp grid`);
@@ -130,7 +131,9 @@ test('pages brought onto the scale keep 4 vp spacing and token sizes', () => {
   assert.ok((more.match(/HitaListRow\(\{/g) || []).length >= 12);
   assert.doesNotMatch(home, /moreNavigationRow/);
   assert.match(builder(home, 'eventRow'), /HitaTag\(\{ text: Home\.todayChipText/);
-  assert.match(builder(home, 'todayExamCard'), /HitaTag\(\{ text: Home\.examDistanceText\(exam, this\.nowTick\), tone: HitaTagTone\.EXAM \}\)/);
+  assert.match(builder(home, 'todayExamCard'), /this\.todayReminderCard\([\s\S]*Home\.examDistanceText\(exam, now\), HitaTagTone\.EXAM/);
+  assert.match(builder(home, 'todayLearningTaskCard'), /this\.todayReminderCard\([\s\S]*Home\.learningTaskWhenText\(task, now\)/);
+  assert.match(builder(home, 'todayReminderCard'), /HitaTag\(\{ text: tag\(this\.nowTick\), tone: tone \}\)/);
   assert.match(builder(home, 'sessionAccountPanel'), /HitaTag\(\{ text: .*this\.sessionSheetStatus/);
   // List group headings are quieter than the 22 fp page title.
   assert.match(builder(home, 'moreSectionTitle'),

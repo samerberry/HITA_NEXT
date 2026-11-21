@@ -15,7 +15,8 @@ const TAG: string = 'HitaSessionRenewal';
 const DOMAIN: number = 0x0000;
 
 /** 执行一次无界面网页登录；无法静默完成时返回 undefined。 */
-export type EasSilentLoginRunner = (campus: EasCampus, studentType: string) => Promise<EasSession | undefined>;
+export type EasSilentLoginRunner = (campus: EasCampus, studentType: string,
+  webBaseUrl: string) => Promise<EasSession | undefined>;
 
 export class EasSessionRenewal {
   private static instance: EasSessionRenewal | undefined = undefined;
@@ -85,7 +86,7 @@ export class EasSessionRenewal {
     const key: string = EasSessionRenewal.keyOf(expected);
     const store: EasSessionStore = EasSessionStore.getInstance();
     try {
-      const login: EasSession | undefined = await runner(expected.campus, expected.getStudentType());
+      const login: EasSession | undefined = await runner(expected.campus, expected.getStudentType(), expected.webBaseUrl);
       if (login !== undefined) {
         const renewed: EasSession | undefined = EasSession.decode(expected.encode());
         if (renewed !== undefined) {

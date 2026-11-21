@@ -340,6 +340,8 @@ export class EasEventItem {
   createdAt: number = Date.now();
   /** 课程颜色由科目填充；考试颜色按事件保存，0 表示使用默认颜色。 */
   color: number = 0;
+  /** 教务考试的校区、学期、课程和考试类型，用于同步改期。 */
+  examSource: string = '';
 
   static getTagInstance(name: string): EasEventItem {
     const result: EasEventItem = new EasEventItem();

@@ -12,7 +12,7 @@ function setup(apiVersion = 26) {
   const cache = new Map();
   const state = { now: 10000, syncReads: 0, reads: 0, cookie: '', navigations: [],
     finished: [], errors: [], scripts: [], progress: [], requests: 0, exchanges: 0,
-    resetCookies: 0, resetStorage: 0, allReads: 0, userAgents: [] };
+    resetCookies: 0, resetStorage: 0, allReads: 0, userAgents: [], httpCalls: [] };
   let timerId = 0;
   const setTimer = (callback, delay) => {
     const id = ++timerId;
@@ -55,10 +55,13 @@ function setup(apiVersion = 26) {
     WebStorage: { deleteAllData: () => state.resetStorage++ }
   };
   const http = {
-    RequestMethod: { GET: 'GET' }, HttpDataType: { STRING: 'STRING' },
+    RequestMethod: { GET: 'GET', POST: 'POST' }, HttpDataType: { STRING: 'STRING' },
     createHttp: () => ({
       request: (url, options) => {
         state.requests++;
+        state.httpCalls.push({ url, options });
+        const response = state.onHttp?.(url, options);
+        if (response !== undefined) return Promise.resolve(response);
         if (url.includes('jwts-hit-edu-cn.vpn.hit.edu.cn') && url.includes('/kbcx/queryGrkb')) {
           state.benbuRequests = (state.benbuRequests ?? 0) + 1;
           state.benbuRequest = { url, options };
@@ -164,6 +167,154 @@ test('Benbu recognizes the new VPN gateway without accepting lookalike or other-
     assert.equal(isIvpnRedirectPage('https://' + host + '/login', 'WEIHAI'), false);
     assert.equal(isIvpnRedirectPage('https://' + host + '.evil.example/login', 'BENBU'), false);
   }
+});
+
+test('Weihai campus probe accepts a school redirect without sending cookies or following it', async () => {
+  const h = setup();
+  const { resolveEasLoginRoute } = h.load('feature/eas/webLogin/EasLoginRoute.ets');
+  h.state.cookie = 'JSESSIONID=prior-session';
+  h.state.onHttp = () => ({ responseCode: 302, header: { Location: 'https://ids.hitwh.edu.cn/authserver/login' } });
+  const route = await resolveEasLoginRoute('WEIHAI', '1');
+  assert.equal(route.loginUrl, h.urls.WEIHAI_DIRECT_BASE + '/loginCAS');
+  assert.equal(h.state.httpCalls.length, 1);
+  const { options } = h.state.httpCalls[0];
+  assert.equal(options.method, 'GET');
+  assert.equal(options.header.Cookie, undefined);
+  assert.equal(options.maxRedirects, 0);
+  assert.equal(options.usingCache, false);
+  await resolveEasLoginRoute('BENBU', '2');
+  await resolveEasLoginRoute('SHENZHEN', '1');
+  assert.equal(h.state.httpCalls.length, 1);
+});
+
+test('Weihai campus probe falls back to WebVPN on captive portal responses and on timeout', async () => {
+  const h = setup();
+  const { resolveEasLoginRoute } = h.load('feature/eas/webLogin/EasLoginRoute.ets');
+  h.state.onHttp = () => ({ responseCode: 302, header: { location: 'https://ids.hitwh.edu.cn.example/authserver/login' } });
+  assert.equal((await resolveEasLoginRoute('WEIHAI', '1')).loginUrl, h.urls.WEIHAI_LOGIN);
+  h.state.onHttp = () => new Promise(() => {});
+  const pending = resolveEasLoginRoute('WEIHAI', '2');
+  await h.tick(2000);
+  const graduate = await pending;
+  assert.equal(graduate.jwtsUrl, h.urls.WEIHAI_GRADUATE_VPN_BASE + '/cas');
+  assert.equal(graduate.loginUrl, h.urls.WEIHAI_LOGIN);
+});
+
+test('Weihai undergraduate direct login verifies the teaching session and uses that route for data', async () => {
+  const h = setup();
+  const { easWebLoginConfigFor } = h.load('feature/eas/webLogin/EasWebLoginConfig.ets');
+  const { EasApiClient, EasApiClientOptions } = h.load('feature/eas/EasApiClient.ets');
+  const base = h.urls.WEIHAI_DIRECT_BASE;
+  const cfg = easWebLoginConfigFor('WEIHAI', '1', true);
+  h.state.cookie = 'JSESSIONID=direct-session';
+  h.ctrl.start('WEIHAI', '1', cfg);
+  await h.page(cfg.loginUrl);
+  assert.equal(h.state.finished.length, 0);
+  await h.page(base + '/index');
+  assert.equal(h.state.exchanges, 0);
+  assert.equal(h.state.finished[0].webBaseUrl, base);
+  assert.equal(h.state.httpCalls[0].url, base + '/kbcx/queryGrkb');
+  const options = new EasApiClientOptions();
+  options.weihaiRefererPath = '/emptyClassroom/queryEmptyClassRoom';
+  await new EasApiClient().request(h.state.finished[0], easWebLoginConfigFor('WEIHAI', '1'),
+    '/kjscx/queryJxlListBySjid?vpn-12-o1-jwts.hitwh.edu.cn', options);
+  const last = h.state.httpCalls.at(-1);
+  assert.equal(last.url, base + '/kjscx/queryJxlListBySjid');
+  assert.equal(last.options.header.Referer, base + options.weihaiRefererPath);
+  assert.equal(last.options.header.Cookie, h.state.cookie);
+  h.ctrl.stop();
+});
+
+for (const direct of [false, true]) {
+  const route = direct ? 'direct' : 'WebVPN';
+  test(`Weihai graduate ${route} login finishes only after the graduate profile is verified`, async () => {
+    const h = setup();
+    const { easWebLoginConfigFor, EasUserAgent } = h.load('feature/eas/webLogin/EasWebLoginConfig.ets');
+    const cfg = easWebLoginConfigFor('WEIHAI', '2', direct);
+    h.state.cookie = direct ? 'JSESSIONID=graduate-session' : 'wengine_vpn_ticketwebvpn_hitwh_edu_cn=vpn-session';
+    const profile = { pylx: '1', sfxs: '1', rolecode: ['02'], yhdm: 'student', xm: '示例学生' };
+    h.state.onHttp = url => url.includes('/user/me') ? { responseCode: 200, result: JSON.stringify(profile) } : undefined;
+    h.ctrl.start('WEIHAI', '2', cfg);
+    await h.page(cfg.loginUrl);
+    if (!direct) assert.ok(h.state.navigations.includes(cfg.jwtsUrl));
+    await h.page('https://ids.hitwh.edu.cn/authserver/login');
+    assert.equal(h.state.userAgents.at(-1), 'test UA');
+    assert.equal(h.state.httpCalls.length, 0);
+    const landing = cfg.dataBaseUrl + (direct ? '/xtgl/index_initMenu.html' : '/authentication/main');
+    await h.page(landing);
+    assert.equal(h.state.finished.length, 0);
+    profile.pylx = '2';
+    await h.tick(1000);
+    assert.equal(h.state.userAgents.at(-1), EasUserAgent.SHENZHEN_DESKTOP);
+    assert.equal(h.state.exchanges, 0);
+    assert.equal(h.state.finished[0].stuId, 'student');
+    assert.equal(h.state.finished[0].getStudentType(), '2');
+    assert.equal(h.state.finished[0].webBaseUrl, cfg.dataBaseUrl);
+    const { url, options } = h.state.httpCalls.at(-1);
+    assert.equal(url, cfg.dataBaseUrl + '/user/me' + (direct ? '' : '?vpn-12-o2-yjsgl.hitwh.edu.cn'));
+    assert.equal(options.method, 'POST');
+    assert.equal(options.header.RoleCode, '02');
+    h.ctrl.stop();
+  });
+}
+
+test('Weihai graduate imports the selected term with campus-local periods and the authoritative weekday', async () => {
+  const h = setup();
+  const { WeihaiGraduateTimetable } = h.load('feature/eas/data/WeihaiGraduateTimetable.ets');
+  const { EasSession } = h.load('feature/eas/EasSession.ets');
+  const session = new EasSession();
+  session.campus = 'WEIHAI';
+  session.setStudentType('2');
+  const moduleTerm = { p_dqxn: '2027-2028', p_dqxq: '2', p_dqxnxq: '2027-20282' };
+  const term = { XN: '2026-2027', XQ: '1', XQMC: '秋季', XNXQ: '2026-20271' };
+  const bits = Array.from({ length: 34 }, (_, i) => [2, 9, 33].includes(i) ? '1' : '0').join('');
+  const selection = {
+    kbjclist: [
+      { XN: term.XN, XQ: term.XQ, XJ: 2, KSSJ: '8:55', JSSJ: '09:45:00' },
+      { XN: term.XN, XQ: term.XQ, XJ: 1, KSSJ: '2024-11-01T00:00:00.000+00:00', JSSJ: '2024-11-01T00:50:00Z' }
+    ],
+    yxkcList: [{ rwh: 'sample-task', kcdm: 'TEST01', kcmc: '测试课程' }]
+  };
+  const bodies = new Map([
+    ['/component/querydangqianxnxq', JSON.stringify(term)],
+    ['/component/queryxnxqdata', JSON.stringify([{ XN: '2027-2028', XQ: '2' }, term])],
+    ['/Xiaoli/queryMonthList', JSON.stringify({ xlList: [{ XNXQ: term.XNXQ, ZC: 2, RQ: '2026-09-08' }] })],
+    ['/xszykb/querykbsffb', '1'],
+    ['/xszykb/queryxszykbzong', JSON.stringify([
+      { KEY: 'bz' }, { RWH: 'sample-task', KEY: 'xq2_jc3', XQJ: 5, KSJC: 1, JSJC: 2,
+        ZC: bits, SKSJ: '测试课程<br>【示例老师】<br>【2-9周】【示例教室】' }
+    ])],
+    ['/Xsxk/query/2', ["var p_pylx = '2'", "var p_sfgldjr = '0'", "var p_sfredis = '0'", "var p_sfsyxkgwc = '0'"].join(';')],
+    ['/Xsxk/queryXkdqXnxq', JSON.stringify(moduleTerm)],
+    ['/Xsxk/queryYxkc', JSON.stringify(selection)]
+  ]);
+  const timetable = new WeihaiGraduateTimetable({
+    async request(_session, cfg, path, options) {
+      assert.equal(cfg.studentType, '2');
+      assert.equal(options.extraHeaders.get('RoleCode'), '02');
+      if (path === '/Xsxk/queryYxkc') {
+        const fields = new URLSearchParams(options.body);
+        assert.equal(fields.get('p_dqxnxq'), moduleTerm.p_dqxnxq);
+        assert.equal(fields.get('p_xnxq'), term.XNXQ);
+      }
+      assert.ok(bodies.has(path), path);
+      return { statusCode: 200, body: bodies.get(path) };
+    }
+  });
+  const [current, other] = await timetable.terms(session);
+  assert.equal(current.isCurrent, true);
+  assert.equal(other.isCurrent, false);
+  assert.equal(await timetable.startDate(session, current), new Date(2026, 7, 31).getTime());
+  const [course] = await timetable.courses(session, current);
+  assert.equal(course.dayOfWeek, 2);
+  assert.equal(course.name, '测试课程');
+  assert.equal(course.teacher, '示例老师');
+  assert.equal(course.classroom, '示例教室');
+  assert.deepEqual(course.weekNumbers, [2, 9, 33]);
+  const periods = await timetable.schedule(session, current);
+  assert.deepEqual(periods.map(period => period.toString()), ['8:00-8:50', '8:55-9:45']);
+  bodies.set('/xszykb/querykbsffb', '2');
+  await assert.rejects(timetable.courses(session, current), /课程评价/);
 });
 
 test('returning from authentication to the portal opens EAS again instead of keeping the old navigation latch', async () => {

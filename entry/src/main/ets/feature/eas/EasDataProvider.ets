@@ -21,6 +21,7 @@ import { ParsedShenzhenWebScores, parseShenzhenWebScores } from './data/Shenzhen
 import { ParsedShenzhenWebExams, parseShenzhenWebExams } from './data/ShenzhenWebExams';
 import { ExamSchedule } from './ExamSchedule';
 import { LegacyWebExams } from './data/LegacyWebExams';
+import { isWeihaiGraduate, WeihaiGraduateTimetable } from './data/WeihaiGraduateTimetable';
 import {
   parseShenzhenWebSelectedSubjects,
   parseShenzhenWebTerms,
@@ -124,6 +125,14 @@ export class EasDataProvider {
       const response: EasApiResponse = await this.getHtml(session, '/xs/index', timeoutMs, false);
       return isExpiredEasResponse(response) ? EasSessionStatus.EXPIRED : EasSessionStatus.UNKNOWN;
     }
+    if (isWeihaiGraduate(session)) {
+      try {
+        const terms: EasTermItem[] = await new WeihaiGraduateTimetable(this.api).terms(session);
+        return terms.length > 0 ? EasSessionStatus.CONNECTED : EasSessionStatus.UNKNOWN;
+      } catch (_) {
+        return session.loginExpired ? EasSessionStatus.EXPIRED : EasSessionStatus.UNKNOWN;
+      }
+    }
     const shenzhen: boolean = session.campus === EasCampus.SHENZHEN;
     if (shenzhen && session.webBaseUrl.length === 0) {
       return EasSessionStatus.UNKNOWN;
@@ -167,6 +176,9 @@ export class EasDataProvider {
     if (session.campus === EasCampus.SHENZHEN) {
       return await this.getShenzhenTerms(session);
     }
+    if (isWeihaiGraduate(session)) {
+      return new WeihaiGraduateTimetable(this.api).terms(session);
+    }
     if (session.campus === EasCampus.BENBU && session.getStudentType() === '2') {
       throw new Error('本部研究生课表接口暂未接入');
     }
@@ -207,6 +219,9 @@ export class EasDataProvider {
     if (DemoAccount.isSession(session)) {
       return DemoTimetableData.matchesTerm(term) ? DemoTimetableData.startDate() : undefined;
     }
+    if (isWeihaiGraduate(session)) {
+      return new WeihaiGraduateTimetable(this.api).startDate(session, term);
+    }
     let resp: EasApiResponse;
     if (session.campus === EasCampus.SHENZHEN) {
       const cfg = easWebLoginConfigFor(session.campus, session.getStudentType());
@@ -236,6 +251,9 @@ export class EasDataProvider {
     if (DemoAccount.isSession(session)) return DemoTimetableData.courses(term);
     if (session.campus === EasCampus.SHENZHEN) {
       return await this.getShenzhenTimetable(session, term);
+    }
+    if (isWeihaiGraduate(session)) {
+      return new WeihaiGraduateTimetable(this.api).courses(session, term);
     }
     if (session.campus === EasCampus.BENBU && session.getStudentType() === '2') {
       throw new Error('本部研究生课表接口暂未接入');
@@ -518,6 +536,10 @@ export class EasDataProvider {
       EasDataProvider.shenzhenFormOptions(session, body, 20000));
     const parsed = parseShenzhenWebScheduleStructure(resp.body);
     return parsed === undefined ? [] : parsed;
+  }
+
+  async getWeihaiGraduateSchedule(session: EasSession, term: EasTermItem): Promise<EasTimePeriodInDay[]> {
+    return new WeihaiGraduateTimetable(this.api).schedule(session, term);
   }
 
   private static shenzhenFormOptions(session: EasSession, body: string, timeoutMs: number,

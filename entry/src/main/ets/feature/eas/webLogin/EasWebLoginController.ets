@@ -20,7 +20,8 @@ import {
   EasCampusConfig,
   EasCampusUrls,
   easWebLoginConfigFor,
-  EasUserAgent
+  EasUserAgent,
+  isWeihaiDirect
 } from './EasWebLoginConfig';
 import {
   hasRequiredCookiesFor,
@@ -86,6 +87,7 @@ export class EasWebLoginController {
   private lastUrl: string = '';
   private mobileUa: string = EasUserAgent.ANDROID_MOBILE_REF;
   private shenzhenDesktopUaApplied: boolean = false;
+  private weihaiGraduateDesktopUaApplied: boolean = false;
   private shenzhenReauthenticationStarted: boolean = false;
   private shenzhenForceWebModeApplied: boolean = false;
   private autoOpeningJwts: boolean = false;
@@ -121,10 +123,10 @@ export class EasWebLoginController {
     this.webController = controller;
   }
 
-  start(campusCode: string, studentType: string): void {
+  start(campusCode: string, studentType: string, config?: EasCampusConfig): void {
     this.stop();
     const campus: EasCampus = EasWebLoginController.campusOfCode(campusCode);
-    this.cfg = easWebLoginConfigFor(campus, studentType);
+    this.cfg = config ?? easWebLoginConfigFor(campus, studentType);
     this.finished = false;
     this.cookieRetryCount = 0;
     this.weihaiExchangeAttempts = 0;
@@ -182,6 +184,8 @@ export class EasWebLoginController {
       } catch (e) {
         hilog.warn(DOMAIN, TAG, 'Failed to set desktop UA: %{public}s', String(e));
       }
+    } else {
+      this.setWeihaiGraduateUserAgent(this.cfg.loginUrl);
     }
   }
 
@@ -243,6 +247,7 @@ export class EasWebLoginController {
         return;
       }
     }
+    this.setWeihaiGraduateUserAgent(url);
   }
 
   async notifyPageEnd(url: string): Promise<void> {
@@ -346,12 +351,16 @@ export class EasWebLoginController {
       }
       return;
     }
-    // WebVPN can keep the inner JSESSIONID server-side, outside ArkWeb's cookie jar.
-    if (this.canExchangeWeihaiCookies(url, cookies)) {
-      this.handleSuccessPage(url, cookies);
+    if (this.cfg.campus === EasCampus.WEIHAI && this.isWeihaiTeachingPage(url)) {
+      this.autoOpeningJwts = false;
+      if (this.canVerifyWeihaiSession(url, cookies)) {
+        this.handleSuccessPage(url, cookies);
+      } else {
+        this.startCookiePolling();
+      }
       return;
     }
-    if (isSuccessPageFor(url, cookies, this.cfg.campus, this.cfg.studentType) &&
+    if (this.cfg.campus !== EasCampus.WEIHAI && isSuccessPageFor(url, cookies, this.cfg.campus, this.cfg.studentType) &&
       hasRequiredCookiesFor(cookies, url, this.cfg.campus, this.cfg.studentType)) {
       hilog.info(DOMAIN, TAG, 'Success page detected: %{public}s', logUrl(url));
       this.stopCookiePolling();
@@ -374,8 +383,6 @@ export class EasWebLoginController {
     // 注意：不在认证/登录页面上启动轮询
     if (this.cfg.campus === EasCampus.SHENZHEN && isShenzhenProxyJwPage(url) &&
       !isAuthenticationPage(url) && pathOf(url).indexOf('/authentication/') < 0) {
-      this.startCookiePolling();
-    } else if (this.cfg.campus === EasCampus.WEIHAI && (url.indexOf('/http/') >= 0 || url.indexOf('jwts') >= 0)) {
       this.startCookiePolling();
     } else if ((this.cfg.campus === EasCampus.BENBU && isBenbuEasPage(url, this.cfg.studentType)) ||
       isJwtsPage(url, this.cfg.campus, this.cfg.studentType)) {
@@ -456,6 +463,21 @@ export class EasWebLoginController {
     }
 
     return false;
+  }
+
+  private setWeihaiGraduateUserAgent(url: string): void {
+    const cfg: EasCampusConfig | undefined = this.cfg;
+    const web: webview.WebviewController | undefined = this.webController;
+    if (cfg === undefined || web === undefined || cfg.campus !== EasCampus.WEIHAI || cfg.studentType !== '2') return;
+    const needsDesktop: boolean = (url === cfg.dataBaseUrl || url.startsWith(cfg.dataBaseUrl + '/')) &&
+      !pathOf(url).toLowerCase().includes('/authserver/');
+    if (this.weihaiGraduateDesktopUaApplied === needsDesktop) return;
+    try {
+      web.setCustomUserAgent(needsDesktop ? EasUserAgent.SHENZHEN_DESKTOP : this.mobileUa);
+      this.weihaiGraduateDesktopUaApplied = needsDesktop;
+    } catch (_) {
+      hilog.warn(DOMAIN, TAG, 'Unable to set Weihai graduate web user agent');
+    }
   }
 
   // ------------------------------------------------------------------
@@ -631,6 +653,7 @@ export class EasWebLoginController {
     }
     this.autoOpeningJwts = true;
     hilog.info(DOMAIN, TAG, 'autoOpenJwts: loading %{public}s', this.cfg.jwtsUrl);
+    this.setWeihaiGraduateUserAgent(this.cfg.jwtsUrl);
     wc.loadUrl(this.cfg.jwtsUrl);
   }
 
@@ -668,7 +691,7 @@ export class EasWebLoginController {
         String(hasWeihaiVpnTicket(cookies)), String(!isBlank(cookies.get('JSESSIONID'))), logUrl(url));
     }
 
-    if (this.canExchangeWeihaiCookies(url, cookies)) {
+    if (this.canVerifyWeihaiSession(url, cookies)) {
       this.handleSuccessPage(url, cookies);
       return;
     }
@@ -679,7 +702,7 @@ export class EasWebLoginController {
     }
 
     // A stale cookie jar is not proof that the current authentication has finished.
-    if (hasRequiredCookiesFor(cookies, url, this.cfg.campus, this.cfg.studentType) &&
+    if (this.cfg.campus !== EasCampus.WEIHAI && hasRequiredCookiesFor(cookies, url, this.cfg.campus, this.cfg.studentType) &&
       isSuccessPageFor(url, cookies, this.cfg.campus, this.cfg.studentType)) {
       hilog.info(DOMAIN, TAG, 'Required cookies acquired during polling!');
       this.handleSuccessPage(url, cookies);
@@ -723,9 +746,14 @@ export class EasWebLoginController {
       return;
     }
 
-    if (this.cfg.campus === EasCampus.WEIHAI && hasWeihaiVpnTicket(cookies)) {
+    if (this.cfg.campus === EasCampus.WEIHAI) {
       this.setPhase(EasLoginPhase.SUCCESS_PROBE, '登录成功，正在同步威海教务会话…');
-      this.fetchWeihaiVpnCookies(cookies, url);
+      this.weihaiExchangeAttempts++;
+      if (this.cfg.studentType !== '2' && !isWeihaiDirect(this.cfg.dataBaseUrl)) {
+        this.fetchWeihaiVpnCookies(cookies, url);
+      } else {
+        this.verifyWeihaiCookies(cookies, url, this.loginGeneration, this.navigationGeneration);
+      }
       return;
     }
 
@@ -786,16 +814,31 @@ export class EasWebLoginController {
     }
   }
 
-  private canExchangeWeihaiCookies(url: string, cookies: Map<string, string>): boolean {
-    return this.cfg !== undefined && this.cfg.campus === EasCampus.WEIHAI &&
-      url.startsWith(EasCampusUrls.WEIHAI_EAS_PREFIX + '/') &&
-      !isAuthenticationPage(url) && !isMfaPage(url) && hasWeihaiVpnTicket(cookies);
+  private isWeihaiTeachingPage(url: string): boolean {
+    if (this.cfg === undefined || this.cfg.campus !== EasCampus.WEIHAI ||
+      !(url === this.cfg.dataBaseUrl || url.startsWith(this.cfg.dataBaseUrl + '/')) ||
+      isAuthenticationPage(url) || isMfaPage(url)) {
+      return false;
+    }
+    const path: string = pathOf(url).toLowerCase().replace(/\/+$/, '');
+    if (this.cfg.studentType === '2') {
+      if (isWeihaiDirect(this.cfg.dataBaseUrl)) {
+        return path.length > 0 && !/login|logout|\/cas|authserver|\/authentication\/require/.test(path);
+      }
+      return path.endsWith('/authentication/main') || path.endsWith('/student_index');
+    }
+    // The existing VPN flow also uses loginCAS responses to recover the inner teaching session.
+    return !isWeihaiDirect(this.cfg.dataBaseUrl) || !/\/(?:login(?:cas)?|reauth|logout)(?:[\/;]|$)/i.test(path);
+  }
+
+  private canVerifyWeihaiSession(url: string, cookies: Map<string, string>): boolean {
+    return this.isWeihaiTeachingPage(url) && this.cfg !== undefined &&
+      (isWeihaiDirect(this.cfg.dataBaseUrl) ? !isBlank(cookies.get('JSESSIONID')) : hasWeihaiVpnTicket(cookies));
   }
 
   private fetchWeihaiVpnCookies(cookies: Map<string, string>, url: string): void {
     const generation: number = this.loginGeneration;
     const navigation: number = this.navigationGeneration;
-    this.weihaiExchangeAttempts++;
     const cookieHeader: string = EasSession.buildCookieHeader(cookies);
     hilog.info(DOMAIN, TAG, 'Starting Weihai VPN cookie exchange header=%{public}s',
       EasWebLoginController.cookieKeys(cookies));
@@ -866,25 +909,39 @@ export class EasWebLoginController {
 
   private async verifyWeihaiCookies(cookies: Map<string, string>, url: string,
     generation: number, navigation: number): Promise<void> {
-    await this.mergeWeihaiBrowserCookies(cookies);
+    const cfg: EasCampusConfig | undefined = this.cfg;
+    if (cfg === undefined) return;
+    const graduate: boolean = cfg.studentType === '2';
+    const direct: boolean = isWeihaiDirect(cfg.dataBaseUrl);
+    if (!graduate && !direct) await this.mergeWeihaiBrowserCookies(cookies);
     if (this.finished || generation !== this.loginGeneration || navigation !== this.navigationGeneration) {
       return;
     }
     // A VPN ticket alone, or an old inner cookie, cannot establish an EAS session.
     const header: Map<string, string> = new Map<string, string>();
     header.set('Cookie', EasSession.buildCookieHeader(cookies));
-    header.set('User-Agent', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15');
-    header.set('Accept', 'text/html,application/xhtml+xml,*/*');
-    const response = await EasApiClient.doHttp(EasCampusUrls.WEIHAI_EAS_PREFIX + '/kbcx/queryGrkb',
-      EasHttpMethod.GET, header, '', 10000);
+    header.set('User-Agent', graduate ? EasUserAgent.SHENZHEN_DESKTOP :
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15');
+    header.set('Accept', graduate ? 'application/json, */*' : 'text/html,application/xhtml+xml,*/*');
+    let path: string = '/kbcx/queryGrkb';
+    if (graduate) {
+      path = '/user/me' + (direct ? '' : '?vpn-12-o2-yjsgl.hitwh.edu.cn');
+      header.set('Referer', cfg.dataBaseUrl + '/authentication/main');
+      header.set('RoleCode', '02');
+      header.set('X-Requested-With', 'XMLHttpRequest');
+      header.set('Content-Type', 'application/x-www-form-urlencoded; charset=UTF-8');
+    }
+    const response = await EasApiClient.doHttp(cfg.dataBaseUrl + path,
+      graduate ? EasHttpMethod.POST : EasHttpMethod.GET, header, '', 10000, false, !graduate && !direct);
     if (this.finished || generation !== this.loginGeneration || navigation !== this.navigationGeneration) {
       return;
     }
-    const termCount: number = response.statusCode === 200 ?
-      EasLegacyTimetableParser.parseTermsBySelect(response.body, 'xnxq').length : 0;
-    hilog.info(DOMAIN, TAG, 'Weihai EAS verification attempt=%{public}d status=%{public}d terms=%{public}d jsession=%{public}s',
-      this.weihaiExchangeAttempts, response.statusCode, termCount, String(!isBlank(cookies.get('JSESSIONID'))));
-    if (termCount > 0) {
+    const verified: boolean = response.statusCode === 200 && (graduate ?
+      this.readWeihaiGraduateIdentity(response.body) :
+      EasLegacyTimetableParser.parseTermsBySelect(response.body, 'xnxq').length > 0);
+    hilog.info(DOMAIN, TAG, 'Weihai EAS verification attempt=%{public}d status=%{public}d studentType=%{public}s verified=%{public}s',
+      this.weihaiExchangeAttempts, response.statusCode, cfg.studentType, String(verified));
+    if (verified) {
       this.finish(cookies, url, '');
       return;
     }
@@ -896,14 +953,30 @@ export class EasWebLoginController {
         }
         const latest: Map<string, string> = await this.collectCookies(url);
         if (!this.finished && generation === this.loginGeneration && navigation === this.navigationGeneration &&
-          this.canExchangeWeihaiCookies(url, latest)) {
+          this.canVerifyWeihaiSession(url, latest)) {
           this.handleSuccessPage(url, latest);
         }
       }, 1000);
       return;
     }
     this.setPhase(EasLoginPhase.ERROR, '威海教务会话验证未完成');
-    this.setError('已连接威海网关，但教务会话尚未就绪，请刷新或重置网页登录后重试');
+    this.setError(direct ? '威海教务会话尚未就绪，请刷新或重新登录' :
+      '已连接威海网关，但教务会话尚未就绪，请刷新或重置网页登录后重试');
+  }
+
+  private readWeihaiGraduateIdentity(body: string): boolean {
+    try {
+      const user = JSON.parse(body) as Record<string, Object>;
+      const roles = user['rolecode'] as string[];
+      const id: string = String(user['yhdm'] ?? '').trim() || String(user['username'] ?? '').trim();
+      if (id.length === 0 || String(user['pylx']) !== '2' || String(user['sfxs']) !== '1' ||
+        !Array.isArray(roles) || roles.indexOf('02') < 0) return false;
+      this.session.stuId = id;
+      this.session.name = String(user['xm'] ?? '').trim();
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   private async mergeWeihaiBrowserCookies(cookies: Map<string, string>): Promise<void> {
@@ -925,7 +998,8 @@ export class EasWebLoginController {
       return out;
     }
     // Prefer the current page over old cookies from another EAS host or path.
-    const urls: string[] = url.startsWith('http') ? [url] : [];
+    const urls: string[] = url.startsWith('http') && (this.cfg.campus !== EasCampus.WEIHAI ||
+      this.isWeihaiTeachingPage(url)) ? [url] : [];
     for (let i: number = 0; i < this.cfg.cookieProbeUrls.length; i++) {
       if (urls.indexOf(this.cfg.cookieProbeUrls[i]) < 0) {
         urls.push(this.cfg.cookieProbeUrls[i]);
@@ -936,7 +1010,7 @@ export class EasWebLoginController {
     for (let i = 0; i < urls.length; i++) {
       EasWebLoginController.mergePutIfAbsent(out, parseCookiesHeader(headers[i]));
     }
-    if (!out.has('JSESSIONID')) {
+    if (!out.has('JSESSIONID') && (this.cfg.campus !== EasCampus.WEIHAI || this.isWeihaiTeachingPage(url))) {
       const fromUrl: string = EasWebLoginController.extractJsessionid(url);
       if (fromUrl.length > 0) {
         out.set('JSESSIONID', fromUrl);
@@ -953,7 +1027,9 @@ export class EasWebLoginController {
     this.stop();
     const s: EasSession = this.session;
     s.webCookies = cookies;
-    if (this.cfg.campus === EasCampus.SHENZHEN) {
+    if (this.cfg.campus === EasCampus.WEIHAI) {
+      s.webBaseUrl = this.cfg.dataBaseUrl;
+    } else if (this.cfg.campus === EasCampus.SHENZHEN) {
       const host: string = hostOf(url);
       if (host === 'jw.hitsz.edu.cn') {
         s.webBaseUrl = EasCampusUrls.SHENZHEN_DIRECT_BASE.replace(/\/+$/, '');

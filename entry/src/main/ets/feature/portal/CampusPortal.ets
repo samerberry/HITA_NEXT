@@ -41,6 +41,7 @@ export class CampusPortal {
     ]),
     new CampusPortalGroup('网络与系统', [
       new CampusPortal('校园网', 'https://net.hitsz.edu.cn/'),
+      new CampusPortal('aTrust', 'https://trust.hitsz.edu.cn/', $r('sys.symbol.lock_shield')),
       new CampusPortal('HPC 服务', 'http://hpc.hitsz.edu.cn/'),
       new CampusPortal('仪器共享系统', 'https://17.hitsz.edu.cn/'),
       new CampusPortal('邮箱', 'https://mail.hit.edu.cn/')
@@ -106,6 +107,7 @@ export class CampusPortal {
     ]),
     new CampusPortalGroup('资源', [
       new CampusPortal('教师主页', 'http://homepage.hit.edu.cn/home-index', $r('sys.symbol.person_crop_circle_fill')),
+      new CampusPortal('哈威文件空间', 'https://hitwh.space/', $r('sys.symbol.doc_plaintext')),
       new CampusPortal('资料共享站', 'https://qqptr.top/', $r('sys.symbol.doc_plaintext'))
     ])
   ];
