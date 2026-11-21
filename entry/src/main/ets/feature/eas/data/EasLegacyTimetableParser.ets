@@ -248,7 +248,7 @@ export class EasLegacyTimetableParser {
     return items;
   }
 
-  private static parseWeeksString(weeksStr: string, oddEvenHint: string): number[] {
+  static parseWeeksString(weeksStr: string, oddEvenHint: string): number[] {
     let source: string = weeksStr.replace(/\u00a0/g, ' ').replace(/\s/g, '');
     if (source.length === 0) {
       return [];
@@ -484,7 +484,7 @@ export class EasLegacyTimetableParser {
     return bare === null ? '' : bare[1];
   }
 
-  private static decodeHtml(raw: string): string {
+  static decodeHtml(raw: string): string {
     return normalizeHtmlSpaces(raw)
       .replace(/&amp;/gi, '&').replace(/&lt;/gi, '<').replace(/&gt;/gi, '>')
       .replace(/&quot;/gi, '"').replace(/&#39;|&apos;/gi, "'");

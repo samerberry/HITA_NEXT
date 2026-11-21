@@ -34,6 +34,7 @@ export struct ScorePage {
   @State demoMode: boolean = false;
   @State termIndex: number = 0;
   @State typeIndex: number = 0;
+  @State graduateScores: boolean = false;
   @State terms: EasTermItem[] = [];
   @State scores: EasCourseScoreItem[] = [];
   @State summary: OfficialScoreSummary = new OfficialScoreSummary();
@@ -87,7 +88,7 @@ export struct ScorePage {
   private async loadTerms(): Promise<void> {
     const generation = ++this.generation;
     const oldCode = this.terms[this.termIndex]?.getCode() ?? '';
-    this.resetResult(); this.loading = true; this.terms = [];
+    this.resetResult(); this.loading = true; this.terms = []; this.graduateScores = false;
     try {
       const session = await EasSessionStore.getInstance().load(CAMPUSES[this.campusIndex]);
       if (generation !== this.generation) return;
@@ -95,9 +96,8 @@ export struct ScorePage {
       if (session === undefined || !session.isLogin()) {
         throw new Error('请先在“更多 → 教务账号”登录' + CAMPUS_NAMES[this.campusIndex] + '教务');
       }
-      if (session.campus !== EasCampus.SHENZHEN && session.getStudentType() === '2') {
-        throw new Error('该校区研究生成绩接口暂未接入，请到教务网站查询');
-      }
+      this.graduateScores = session.campus !== EasCampus.SHENZHEN && session.getStudentType() === '2';
+      if (this.graduateScores) this.typeIndex = TYPES.indexOf(ScoreTestType.ALL);
       const terms = await new EasDataProvider(new EasApiClient()).getAllTerms(session);
       if (generation !== this.generation) return;
       if (terms.length === 0) throw new Error('未获取到学期列表，请稍后重试');
@@ -210,9 +210,11 @@ export struct ScorePage {
             if (this.demoMode || index === this.campusIndex) return;
             this.campusIndex = index; this.typeIndex = 0; this.terms = []; this.loadTerms();
           })
-        Select(TYPE_NAMES.slice(0, this.campusIndex === 0 ? 2 : 4).map((name: string): SelectOption => ({ value: name })))
-          .selected(this.typeIndex).value(TYPE_NAMES[this.typeIndex]).layoutWeight(1).enabled(this.terms.length > 0)
-          .onSelect((index: number) => { this.typeIndex = index; this.queryReal(); })
+        if (!this.graduateScores) {
+          Select(TYPE_NAMES.slice(0, this.campusIndex === 0 ? 2 : 4).map((name: string): SelectOption => ({ value: name })))
+            .selected(this.typeIndex).value(TYPE_NAMES[this.typeIndex]).layoutWeight(1).enabled(this.terms.length > 0)
+            .onSelect((index: number) => { this.typeIndex = index; this.queryReal(); })
+        }
       }.width('100%').padding({ top: 8, bottom: 8 })
       Select(this.terms.map((term: EasTermItem): SelectOption => ({ value: term.name })))
         .selected(this.termIndex).value(this.terms[this.termIndex]?.name ?? '学期').enabled(this.terms.length > 0)

@@ -68,6 +68,7 @@ export class EasCourseScoreItem {
 
 /** 考试条目（ExamItem.kt 直迁）。 */
 export class EasExamItem {
+  courseCode: string = '';
   courseName: string = '';
   examDate: string = '';
   examTime: string = '';

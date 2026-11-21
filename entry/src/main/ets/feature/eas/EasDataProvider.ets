@@ -6,6 +6,8 @@
  */
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { EasCampus, EasSession } from './EasSession';
+import { BenbuGraduateData, isBenbuGraduate } from './data/BenbuGraduateData';
+import { WeihaiGraduateRecords } from './data/WeihaiGraduateRecords';
 import { DemoAccount } from './demo/DemoAccount';
 import { DemoTimetableData } from './demo/DemoTimetableData';
 import { EasApiClient, EasApiClientOptions, EasApiResponse, EasHttpMethod } from './EasApiClient';
@@ -120,10 +122,11 @@ export class EasDataProvider {
   }
 
   private async querySessionStatus(session: EasSession, timeoutMs: number): Promise<EasSessionStatus> {
-    if (session.campus === EasCampus.BENBU && session.getStudentType() === '2') {
-      // The graduate portal has a separate schema; do not claim its cookie is valid without verification.
-      const response: EasApiResponse = await this.getHtml(session, '/xs/index', timeoutMs, false);
-      return isExpiredEasResponse(response) ? EasSessionStatus.EXPIRED : EasSessionStatus.UNKNOWN;
+    if (isBenbuGraduate(session)) {
+      const response: EasApiResponse = await new BenbuGraduateData(this.api).verify(session, timeoutMs);
+      if (isExpiredEasResponse(response)) return EasSessionStatus.EXPIRED;
+      return EasDataProvider.isHttpOk(response) && BenbuGraduateData.studentId(response).length > 0 ?
+        EasSessionStatus.CONNECTED : EasSessionStatus.UNKNOWN;
     }
     if (isWeihaiGraduate(session)) {
       try {
@@ -179,8 +182,8 @@ export class EasDataProvider {
     if (isWeihaiGraduate(session)) {
       return new WeihaiGraduateTimetable(this.api).terms(session);
     }
-    if (session.campus === EasCampus.BENBU && session.getStudentType() === '2') {
-      throw new Error('本部研究生课表接口暂未接入');
+    if (isBenbuGraduate(session)) {
+      return new BenbuGraduateData(this.api).terms(session);
     }
 
     const scorePath: string = EasDataProvider.scoreTermsPathOf(session);
@@ -222,6 +225,7 @@ export class EasDataProvider {
     if (isWeihaiGraduate(session)) {
       return new WeihaiGraduateTimetable(this.api).startDate(session, term);
     }
+    if (isBenbuGraduate(session)) return undefined;
     let resp: EasApiResponse;
     if (session.campus === EasCampus.SHENZHEN) {
       const cfg = easWebLoginConfigFor(session.campus, session.getStudentType());
@@ -255,8 +259,8 @@ export class EasDataProvider {
     if (isWeihaiGraduate(session)) {
       return new WeihaiGraduateTimetable(this.api).courses(session, term);
     }
-    if (session.campus === EasCampus.BENBU && session.getStudentType() === '2') {
-      throw new Error('本部研究生课表接口暂未接入');
+    if (isBenbuGraduate(session)) {
+      return new BenbuGraduateData(this.api).courses(session, term);
     }
 
     const path: string = EasDataProvider.timetablePathOf(session);
@@ -778,10 +782,11 @@ export class EasDataProvider {
 
   /** Prefer the exam page's selected term over unrelated course-registration terms. */
   async getExamTerms(session: EasSession): Promise<EasTermItem[]> {
-    if (session.campus === EasCampus.SHENZHEN) {
+    if (DemoAccount.isSession(session) || session.campus === EasCampus.SHENZHEN) {
       return this.getAllTerms(session);
     }
-    EasDataProvider.assertLegacyExamSession(session);
+    EasDataProvider.assertSchoolExamSession(session);
+    if (isWeihaiGraduate(session)) return this.getAllTerms(session);
     const path: string = session.campus === EasCampus.WEIHAI ?
       EasWeihaiEndpoints.examsPath : EasBenbuEndpoints.examsPath;
     const response: EasApiResponse = await this.getHtml(session, path);
@@ -795,7 +800,7 @@ export class EasDataProvider {
 
   async getExamResult(session: EasSession, term: EasTermItem | undefined): Promise<EasExamQueryResult> {
     if (DemoAccount.isSession(session)) return new EasExamQueryResult();
-    if (term === undefined) {
+    if (term === undefined || term.yearCode.trim().length === 0 || term.termCode.trim().length === 0) {
       throw new Error('未获取到学期列表');
     }
     if (session.campus === EasCampus.SHENZHEN) {
@@ -803,15 +808,21 @@ export class EasDataProvider {
       result.items = await this.getShenzhenExams(session, term);
       return result;
     }
+    EasDataProvider.assertSchoolExamSession(session);
+    if (isWeihaiGraduate(session)) {
+      const result: EasExamQueryResult = new EasExamQueryResult();
+      result.items = await new WeihaiGraduateRecords(this.api).exams(session, term);
+      return result;
+    }
     return this.getLegacyExams(session, term);
   }
 
-  private static assertLegacyExamSession(session: EasSession): void {
+  private static assertSchoolExamSession(session: EasSession): void {
     if (session.campus !== EasCampus.BENBU && session.campus !== EasCampus.WEIHAI) {
       throw new Error('当前校区暂不支持考试查询，请手动添加考试');
     }
-    if (session.getStudentType() === '2') {
-      throw new Error('本部和威海研究生考试接口暂未接入，请到教务网站查询');
+    if (isBenbuGraduate(session)) {
+      throw new Error('本部研究生考试请查看研究生院或所在学院通知，也可手动添加');
     }
     if (session.webCookies.size === 0) {
       throw new Error('教务会话已失效，请重新登录');
@@ -848,10 +859,6 @@ export class EasDataProvider {
   }
 
   private async getLegacyExams(session: EasSession, term: EasTermItem): Promise<EasExamQueryResult> {
-    EasDataProvider.assertLegacyExamSession(session);
-    if (term.yearCode.trim().length === 0 || term.termCode.trim().length === 0) {
-      throw new Error('未获取到学期列表');
-    }
     const path: string = session.campus === EasCampus.WEIHAI ?
       EasWeihaiEndpoints.examsPath : EasBenbuEndpoints.examsPath;
     const codes: string[] = ['01', '02', '03'];

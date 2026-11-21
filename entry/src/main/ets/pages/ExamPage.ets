@@ -39,6 +39,7 @@ import { EasUserMessages } from '../feature/eas/EasUserMessages';
 import { EasApiClient } from '../feature/eas/EasApiClient';
 import { EasExamItem, EasTermItem } from '../feature/eas/model/EasModels';
 import { ExamSchedule } from '../feature/eas/ExamSchedule';
+import { EasTimetableImporter } from '../feature/eas/EasTimetableImporter';
 import { EventEditorForm } from './AddEventPage';
 
 const HEADER_HEIGHT: number = 60;
@@ -339,7 +340,7 @@ export struct ExamPage {
   private async syncQueriedExams(session: EasSession, term: EasTermItem, result: EasExamQueryResult,
     generation: number): Promise<void> {
     try {
-      const termCode: string = session.campus.toString() + ':' + term.getCode();
+      const termCode: string = EasTimetableImporter.timetableCode(session, term);
       const target: string = await this.resolveTargetTimetable(termCode);
       if (generation !== this.queryGeneration) return;
       if (target.length === 0) {

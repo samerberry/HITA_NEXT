@@ -37,12 +37,12 @@ HITA NEXT 是基于开源项目 [HITA Android](https://github.com/HIT-A/HITA_And
 
 - 提供深圳、本部和威海校区的 ArkWeb 网页登录入口。
 - 保存登录会话，并在再次启动应用时恢复当前登录状态。
-- 支持深圳、威海和本部本科生课表导入。
+- 支持深圳、威海和本部本科生课表导入，以及威海、本部研究生课表导入。本部研究生课表首次导入需选择开学日期。
 - 自动获取当前学期，将课程、科目和每周课次写入本地数据库。
-- 支持三校区本科成绩查询、学期和类型选择；分别展示教务官方统计与当前列表的本地统计。
+- 支持三校区本科成绩查询，以及本部、威海研究生已公布成绩查询。
 - 学分查询沿用安卓端逻辑：深圳读取教务培养方案完成度、学分类别要求、培养课组与课程成绩明细；本部、威海及未登录时按本地课表去重统计分类学分，支持设置目标和查看领域、课程明细。本地统计不等同于已获学分或毕业审核结果。
-- 支持本部、威海本科教务考试查询，合并期末、期中与补考安排；保留深圳查询及手动考试管理，已确定时间的考试可导入当前课表。
-- 支持三校区本科教务空教室查询：沿用安卓 3.0.0 的教学楼／学期／周次自动查询、双列教室卡片及底部每日节次详情。
+- 支持本部、威海本科及威海研究生教务考试查询。已确定时间的考试可同步至对应课表，深圳查询及手动考试管理也可使用。本部研究生个人考试请查看研究生院或所在学院的通知。
+- 支持三校区本科及威海研究生教务空教室查询：沿用安卓 3.0.0 的教学楼／学期／周次自动查询、双列教室卡片及底部每日节次详情。本部研究生可通过空教室页面打开学校的场地课表。
 
 ### 更多
 
@@ -103,8 +103,8 @@ HitaNEXT/
 
 - `entry/src/main/ets/pages/Home.ets`：今日、时间表、更多三个主页面。
 - `entry/src/main/ets/feature/eas/webLogin/`：ArkWeb 登录和 Cookie 会话采集。
-- `entry/src/main/ets/feature/eas/EasDataProvider.ets`：深圳、本部本科与威海课表数据适配。
-- `entry/src/main/ets/feature/eas/ScoreService.ets`：三校区成绩及官方统计查询；本部、威海研究生接口尚未接入。
+- `entry/src/main/ets/feature/eas/EasDataProvider.ets`：三校区课表及考试数据适配。
+- `entry/src/main/ets/feature/eas/ScoreService.ets`：三校区成绩查询与统计，含本部、威海研究生成绩。
 - `entry/src/main/ets/feature/eas/EasTimetableImporter.ets`：远端课程到本地课表的转换与写入。
 - `entry/src/main/ets/feature/timetable/views/TimetableWeekDraw.ets`：周课表网格及课程卡片绘制。
 - `entry/src/main/ets/common/db/RdbHelper.ets`：本地课表、科目和事件数据库。

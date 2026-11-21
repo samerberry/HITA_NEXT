@@ -58,7 +58,8 @@ export class ExamSchedule {
   }
 
   static sourceKey(source: string, item: EasExamItem): string {
-    return source + JSON.stringify([item.courseName.trim(), item.examType.trim()]);
+    const identity: string = item.courseCode?.trim() || item.courseName.trim();
+    return source + JSON.stringify([identity, item.examType.trim()]);
   }
 
   static toEvent(item: EasExamItem, timetableId: string, source: string = ''): EasEventItem | undefined {

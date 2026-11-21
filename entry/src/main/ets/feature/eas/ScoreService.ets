@@ -1,4 +1,7 @@
 import { EasCampus, EasSession } from './EasSession';
+import { BenbuGraduateData, isBenbuGraduate } from './data/BenbuGraduateData';
+import { WeihaiGraduateRecords } from './data/WeihaiGraduateRecords';
+import { isWeihaiGraduate } from './data/WeihaiGraduateTimetable';
 import { DemoAccount } from './demo/DemoAccount';
 import { EasApiClient, EasApiClientOptions, EasApiResponse, EasHttpMethod } from './EasApiClient';
 import { EasCourseScoreItem, EasTermItem } from './model/EasModels';
@@ -31,10 +34,18 @@ export class ScoreService {
 
   async query(session: EasSession, term: EasTermItem, type: ScoreTestType): Promise<ScoreQueryResult> {
     if (DemoAccount.isSession(session)) return new ScoreQueryResult();
-    if (session.campus !== EasCampus.SHENZHEN && session.getStudentType() === '2') {
-      throw new Error('该校区研究生成绩接口暂未接入，请到教务网站查询');
-    }
     const result = new ScoreQueryResult();
+    if (isWeihaiGraduate(session)) {
+      result.items = await new WeihaiGraduateRecords(this.api).grades(session, term);
+      result.summaryMessage = '教务未提供官方统计';
+      return result;
+    }
+    if (isBenbuGraduate(session)) {
+      const grades = await new BenbuGraduateData(this.api).grades(session, term);
+      result.items = grades.items;
+      result.summaryMessage = grades.includesAllTerms ? '教务成绩表未区分学期，已显示全部成绩' : '教务未提供官方统计';
+      return result;
+    }
     if (session.campus === EasCampus.SHENZHEN) {
       const midterm = type === ScoreTestType.MIDTERM;
       const body: ShenzhenScoreBody = {

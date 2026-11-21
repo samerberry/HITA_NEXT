@@ -21,6 +21,9 @@ import { EasUserMessages } from '../feature/eas/EasUserMessages';
 import { DemoAccount } from '../feature/eas/demo/DemoAccount';
 import { ClassroomBuilding, ClassroomQueryError, ClassroomRoom } from '../feature/eas/classroom/EmptyClassroomData';
 import { EmptyClassroomService } from '../feature/eas/classroom/EmptyClassroomService';
+import { isBenbuGraduate } from '../feature/eas/data/BenbuGraduateData';
+import { EasCampusUrls } from '../feature/eas/webLogin/EasWebLoginConfig';
+import { isWeihaiGraduate } from '../feature/eas/data/WeihaiGraduateTimetable';
 import { ClassroomScheduleRow, EmptyClassroomDisplay } from '../feature/eas/classroom/EmptyClassroomDisplay';
 import { ClassroomSnapshot, EmptyClassroomCache } from '../feature/eas/classroom/EmptyClassroomCache';
 
@@ -47,6 +50,7 @@ export struct EmptyClassroomPage {
   @State queried: boolean = false;
   @State loginNeeded: boolean = false;
   @State localTestData: boolean = false;
+  @State useSchoolRoomPage: boolean = false;
   @State error: string = '';
   @State cachedAt: number = 0;
   @State sheetVisible: boolean = false;
@@ -119,6 +123,7 @@ export struct EmptyClassroomPage {
     this.schedule = [];
     this.session = undefined;
     this.localTestData = false;
+    this.useSchoolRoomPage = false;
     try {
       const context: common.Context = this.getUIContext().getHostContext() as common.Context;
       const store: EasSessionStore = EasSessionStore.getInstance();
@@ -126,6 +131,8 @@ export struct EmptyClassroomPage {
       const session: EasSession | undefined = await store.loadPreferred();
       if (generation !== this.generation) { return; }
       if (session === undefined) { throw new ClassroomQueryError('AUTH', '请先登录教务系统'); }
+      this.useSchoolRoomPage = isBenbuGraduate(session) && !DemoAccount.isSession(session);
+      if (this.useSchoolRoomPage) return;
       EmptyClassroomService.assertSession(session);
       this.session = session;
       this.localTestData = DemoAccount.isSession(session);
@@ -143,6 +150,7 @@ export struct EmptyClassroomPage {
       }
       const keep: boolean = preserveSelection && previousSession !== undefined &&
         previousSession.campus === session.campus &&
+        previousSession.getStudentType() === session.getStudentType() &&
         DemoAccount.isSession(previousSession) === DemoAccount.isSession(session) &&
         (previousSession.stuId || previousSession.username) === (session.stuId || session.username);
       const previousIndex: number = keep ? this.terms.findIndex((term: EasTermItem): boolean =>
@@ -177,11 +185,13 @@ export struct EmptyClassroomPage {
       week = saved === undefined ? 1 : Math.max(1, saved.getWeekNumber(Date.now()));
     } catch (e) { week = 1; }
     let schedule: EasTimePeriodInDay[] = EasTimetableImporter.scheduleStructure(session.campus);
-    if (session.demoMode || session.campus === EasCampus.SHENZHEN) {
+    if (session.demoMode || session.campus === EasCampus.SHENZHEN || isWeihaiGraduate(session)) {
       schedule = [];
       try {
-        const remote: EasTimePeriodInDay[] = await new EasDataProvider(new EasApiClient())
-          .getShenzhenScheduleStructure(session, term);
+        const provider: EasDataProvider = new EasDataProvider(new EasApiClient());
+        const remote: EasTimePeriodInDay[] = isWeihaiGraduate(session) ?
+          await provider.getWeihaiGraduateSchedule(session, term) :
+          await provider.getShenzhenScheduleStructure(session, term);
         if (remote.length > 0) { schedule = remote; }
       } catch (e) {
         // Shenzhen web mode requires the actual bell schedule; keep the card state unknown on failure.
@@ -373,11 +383,19 @@ export struct EmptyClassroomPage {
           .onClick(async () => { await this.loadOptions(); })
         }.width('100%').height(60).padding({ left: 4, right: 4 })
       }
-      Row({ space: 4 }) {
-        this.selector(0, '选择教学楼', FlexAlign.Start, () => this.chooseBuilding())
-        this.selector(1, '选择学期', FlexAlign.Center, () => this.chooseTerm())
-        this.selector(2, '选择周次', FlexAlign.End, () => this.chooseWeek())
-      }.width('100%').padding({ left: 12, right: 12 }).backgroundColor($r('app.color.hita_surface')).borderRadius(HitaDesign.cardRadius)
+      if (this.useSchoolRoomPage) {
+        Button('在校方网页查看场地课表', { type: ButtonType.Capsule })
+          .fontSize(HitaDesign.body).fontColor(PRIMARY).backgroundColor($r('app.color.hita_control'))
+          .height(48).width('100%').margin({ top: 8 })
+          .onClick(() => { void this.openGraduateRoomPage(); })
+      } else {
+        Row({ space: 4 }) {
+          this.selector(0, '选择教学楼', FlexAlign.Start, () => this.chooseBuilding())
+          this.selector(1, '选择学期', FlexAlign.Center, () => this.chooseTerm())
+          this.selector(2, '选择周次', FlexAlign.End, () => this.chooseWeek())
+        }.width('100%').padding({ left: 12, right: 12 })
+          .backgroundColor($r('app.color.hita_surface')).borderRadius(HitaDesign.cardRadius)
+      }
       if (this.cachedAt > 0) {
         Text(this.cacheLabel()).fontSize(HitaDesign.caption).fontColor(SECONDARY).padding({ left: 8, right: 8 }).width('100%')
       }
@@ -408,6 +426,17 @@ export struct EmptyClassroomPage {
       })
       .attributeModifier(new CompatibleLightModifier(24, this.presentedAsSheet &&
         CompatibleSheetMaterial.isEnabled(), true))
+  }
+
+  private async openGraduateRoomPage(): Promise<void> {
+    try {
+      await this.getUIContext().getRouter().pushUrl({
+        url: 'pages/WebBrowserPage',
+        params: { 'url': EasCampusUrls.GRADUATE_BASE + '/yjsgl/outInterface/cdkb', 'title': '研究生场地课表' }
+      });
+    } catch (_) {
+      this.error = '无法打开场地课表，请到学校研究生系统查询';
+    }
   }
 
   @Builder

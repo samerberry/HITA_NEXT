@@ -220,6 +220,44 @@ export class EmptyClassroomData {
     }
   }
 
+  static applyWeihaiGraduateOccupancy(rooms: ClassroomRoom[], body: string): void {
+    const payload: Object = EmptyClassroomData.json(body);
+    if (!Array.isArray(payload)) throw EmptyClassroomData.dataError();
+    const rows: Record<string, Object>[] = EmptyClassroomData.requireRows(payload);
+    const byId: Map<string, ClassroomRoom> = new Map<string, ClassroomRoom>();
+    const seen: Set<string> = new Set<string>();
+    rooms.forEach((room: ClassroomRoom) => byId.set(room.id, room));
+    for (const row of rows) {
+      const keys: string[] = ['PKBJ', 'JYBJ', 'PKJYBJ', 'PKSB', 'JYSB'];
+      if (keys.some((key: string): boolean => row[key] === undefined ||
+        (row[key] !== null && typeof row[key] !== 'string' && typeof row[key] !== 'number'))) {
+        throw EmptyClassroomData.dataError();
+      }
+      const id: string = EmptyClassroomData.text(row, ['CDDM']);
+      const day: number = Number(EmptyClassroomData.text(row, ['XQJ']));
+      const period: number = Number(EmptyClassroomData.text(row, ['XJ']));
+      const slot: string = JSON.stringify([id, day, period]);
+      const scheduled: string = EmptyClassroomData.text(row, ['PKBJ']);
+      const borrowed: string = EmptyClassroomData.text(row, ['JYBJ']);
+      const combined: string = EmptyClassroomData.text(row, ['PKJYBJ']);
+      const scheduleStatus: string = EmptyClassroomData.text(row, ['PKSB']);
+      const borrowStatus: string = EmptyClassroomData.text(row, ['JYSB']);
+      if (id.length === 0 || !Number.isInteger(day) || day < 1 || day > 7 ||
+        !Number.isInteger(period) || period < 1 || period > 16 || seen.has(slot) ||
+        !['', '排', '考'].includes(scheduled) || !['', '借'].includes(borrowed) ||
+        !['', '0', '1'].includes(combined) || !['', '0'].includes(scheduleStatus) || !['', '0'].includes(borrowStatus) ||
+        (scheduled.length > 0 && borrowed.length > 0 ? combined !== '1' :
+          scheduled.length > 0 || borrowed.length > 0 ? combined !== '0' : combined === '1')) {
+        throw EmptyClassroomData.dataError();
+      }
+      seen.add(slot);
+      const room: ClassroomRoom | undefined = byId.get(id);
+      if (room !== undefined && (scheduled.length > 0 || borrowed.length > 0)) {
+        EmptyClassroomData.addSlot(room.occupied, day, period);
+      }
+    }
+  }
+
   private static htmlText(html: string): string {
     return normalizeHtmlSpaces(html.replace(/<[^>]*>/g, ' '))
       .replace(/&#(\d+);/g, (_: string, code: string): string => String.fromCharCode(Number(code)))

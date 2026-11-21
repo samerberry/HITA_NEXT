@@ -13,6 +13,7 @@ import {
   newId
 } from '../../common/model/timetable/TimetableModels';
 import { EasCampus, EasSession } from './EasSession';
+import { BenbuGraduateData, isBenbuGraduate } from './data/BenbuGraduateData';
 import { DemoAccount } from './demo/DemoAccount';
 import { DemoTimetableData } from './demo/DemoTimetableData';
 import { EasSessionStore } from './EasSessionStore';
@@ -104,10 +105,6 @@ export class EasTimetableImporter {
       if (studentType !== undefined && studentType.length > 0) {
         session.setStudentType(studentType);
       }
-      if (!session.demoMode && session.campus === EasCampus.BENBU && session.getStudentType() === '2') {
-        result.message = '暂不支持导入本部研究生课表';
-        return result;
-      }
       const provider: EasDataProvider = new EasDataProvider(new EasApiClient());
       hilog.info(DOMAIN, TAG, 'loading terms campus=%{public}s', session.campus.toString());
       const terms: EasTermItem[] = await provider.getAllTerms(session);
@@ -177,7 +174,9 @@ export class EasTimetableImporter {
       }
       let schedule: EasTimePeriodInDay[] = scheduleOverride !== undefined && scheduleOverride.length > 0 ?
         scheduleOverride : EasTimetableImporter.scheduleStructure(session.campus);
-      if ((scheduleOverride === undefined || scheduleOverride.length === 0) && isWeihaiGraduate(session)) {
+      if ((scheduleOverride === undefined || scheduleOverride.length === 0) && isBenbuGraduate(session)) {
+        schedule = BenbuGraduateData.schedule();
+      } else if ((scheduleOverride === undefined || scheduleOverride.length === 0) && isWeihaiGraduate(session)) {
         schedule = await provider.getWeihaiGraduateSchedule(session, term);
       } else if ((scheduleOverride === undefined || scheduleOverride.length === 0) &&
         (session.demoMode || session.campus === EasCampus.SHENZHEN)) {
@@ -267,8 +266,7 @@ export class EasTimetableImporter {
     const storeSession: EasSessionStore = EasSessionStore.getInstance();
     const session: EasSession | undefined = isLocal ? await storeSession.loadPreferred() : await storeSession.load(campus);
     if (session === undefined || !session.isLogin() || session.loginExpired ||
-      (campus === EasCampus.BENBU && session.getStudentType() === '2') ||
-      (campus === EasCampus.WEIHAI && isWeihaiGraduate(session) !== (source[2] === '2'))) {
+      ((isBenbuGraduate(session) || isWeihaiGraduate(session)) !== (source[2] === '2'))) {
       return undefined;
     }
     if (DemoAccount.isSession(session) !== isLocal) return undefined;
@@ -375,7 +373,8 @@ export class EasTimetableImporter {
     }
     const campus: string = code.substring(0, separator);
     const termCode: string = code.substring(separator + 1);
-    if (campus === EasCampus.WEIHAI.toString() && termCode.startsWith('GRAD:') && termCode.length > 5) {
+    if ((campus === EasCampus.WEIHAI.toString() || campus === EasCampus.BENBU.toString()) &&
+      termCode.startsWith('GRAD:') && termCode.length > 5) {
       return [campus, termCode.substring(5), '2'];
     }
     if (campus !== EasCampus.SHENZHEN.toString() && campus !== EasCampus.BENBU.toString() &&
@@ -387,7 +386,7 @@ export class EasTimetableImporter {
 
   static timetableCode(session: EasSession, term: EasTermItem): string {
     if (DemoAccount.isSession(session)) return DemoTimetableData.CODE;
-    if (isWeihaiGraduate(session)) return 'WEIHAI:GRAD:' + term.getCode();
+    if (isBenbuGraduate(session) || isWeihaiGraduate(session)) return session.campus.toString() + ':GRAD:' + term.getCode();
     return session.campus.toString() + ':' + term.getCode();
   }
 
@@ -402,7 +401,8 @@ export class EasTimetableImporter {
   private static async fetchCourses(provider: EasDataProvider, session: EasSession,
     term: EasTermItem): Promise<EasCourseItem[]> {
     const courses: EasCourseItem[] = await provider.getTimetableOfTerm(session, term);
-    if (courses.length > 0 && !session.demoMode && session.campus !== EasCampus.SHENZHEN && !isWeihaiGraduate(session)) {
+    if (courses.length > 0 && !session.demoMode && session.campus !== EasCampus.SHENZHEN &&
+      !isWeihaiGraduate(session) && !isBenbuGraduate(session)) {
       const fetched: LegacyCatalogFetch = await provider.getLegacyCourseAttributes(session, term);
       const matched: number = EasTimetableImporter.applyLegacyAttributes(courses, fetched.rows, term);
       hilog.info(DOMAIN, TAG, 'course attributes %{public}s matched=%{public}d/%{public}d',

@@ -75,6 +75,13 @@ function load(file, mocks = {}, cache = new Map()) {
 
 const { EasEventItem, EasEventType } = load('common/model/timetable/TimetableModels.ets');
 const { EasExamItem, EasTermItem } = load('feature/eas/model/EasModels.ets');
+const { EasSession } = load('feature/eas/EasSession.ets');
+function examSession(campus, studentType = '1') {
+  const session = new EasSession();
+  session.campus = campus;
+  session.setStudentType(studentType);
+  return session;
+}
 const clone = item => Object.assign(new EasEventItem(), item);
 const term = Object.assign(new EasTermItem(), { yearCode: '2026-2027', yearName: '2026', termCode: '1', termName: '秋季' });
 const remoteExam = (fields = {}) => Object.assign(new EasExamItem(), {
@@ -586,7 +593,7 @@ test('initial loading stays active until the remote query settles, including fai
     }
     const { page } = setup([exam('saved')], {
       EasDataProvider: Provider,
-      sessionStore: { init: async () => {}, loadPreferred: async () => ({ campus: 'SHENZHEN' }) }
+      sessionStore: { init: async () => {}, loadPreferred: async () => (examSession('SHENZHEN')) }
     });
     assert.equal(page.preparingQuery, true);
     const shown = page.onPageShow();
@@ -636,7 +643,7 @@ test('failed exam queries show actionable messages without internal error detail
       async getExamTerms() { throw new Error(detail); }
     }
     const { page, calls } = setup([exam('a')], { EasDataProvider: FakeProvider });
-    page.session = { campus: 'SHENZHEN' };
+    page.session = examSession('SHENZHEN');
     await page.queryEasExams();
     assert.equal(page.queryMsg, message);
     assert.equal(page.querying, false);
@@ -653,7 +660,7 @@ test('a query automatically syncs timed exams to the current timetable in one ba
     async getExamResult() { return { items: [remote, remoteExam({ courseName: '高等数学' })], failedTypes: [] }; }
   }
   const { page, calls, rows } = setup([exam('a')], { EasDataProvider: FakeProvider });
-  page.session = { campus: 'SHENZHEN' };
+  page.session = examSession('SHENZHEN');
   await page.loadExams();
   await page.queryEasExams();
   assert.equal(page.remoteExams.length, 0);
@@ -678,7 +685,7 @@ test('a query leaves a different campus timetable alone and finds the matching t
   const matching = { id: 'original', code: 'SHENZHEN:' + term.getCode() };
   db.getTimetableById = async () => other;
   db.getTimetables = async () => [other];
-  page.session = { campus: 'SHENZHEN' };
+  page.session = examSession('SHENZHEN');
   await page.queryEasExams();
   assert.equal(calls.syncs.length, 0);
   assert.equal(page.remoteExams.length, 1);
@@ -687,8 +694,25 @@ test('a query leaves a different campus timetable alone and finds the matching t
   assert.equal(calls.syncs[0].target, matching.id);
 });
 
+test('Weihai graduate exams sync to the graduate timetable even with the matching undergraduate term selected', async () => {
+  class Provider {
+    async getExamTerms() { return [term]; }
+    async getExamResult() { return { items: [remoteExam({ courseCode: 'G001' })], failedTypes: [] }; }
+  }
+  const { page, db, calls } = setup([], { EasDataProvider: Provider });
+  const undergraduate = { id: 'current', code: 'WEIHAI:' + term.getCode() };
+  const graduate = { id: 'original', code: 'WEIHAI:GRAD:' + term.getCode() };
+  db.getTimetableById = async () => undergraduate;
+  db.getTimetables = async () => [undergraduate, graduate];
+  page.session = examSession('WEIHAI', '2');
+  await page.queryEasExams();
+  assert.equal(calls.syncs.length, 1);
+  assert.equal(calls.syncs[0].target, graduate.id);
+  assert.equal(calls.syncs[0].source, graduate.code + '/');
+});
+
 test('exam queries use the preferred campus and the selected current term instead of the first term', async () => {
-  const preferred = { campus: 'WEIHAI' };
+  const preferred = examSession('WEIHAI');
   const current = Object.assign(new EasTermItem(), term, { isCurrent: true });
   const calls = [];
   class Provider {
@@ -734,8 +758,8 @@ test('leaving while the page initializes prevents a late automatic query', async
     class Provider { async getExamTerms() { requests++; return []; } }
     const { page, db } = setup([], {
       sessionStore: { init: async () => {}, loadPreferred: async () => stage === 'session'
-        ? new Promise(resolve => { finish = () => resolve({ campus: 'SHENZHEN' }); })
-        : { campus: 'SHENZHEN' } },
+        ? new Promise(resolve => { finish = () => resolve(examSession('SHENZHEN')); })
+        : examSession('SHENZHEN') },
       EasDataProvider: Provider
     });
     if (stage === 'local') {
@@ -758,7 +782,7 @@ test('manual query during local loading prevents a duplicate auto query', async 
     async getExamResult() { return { items: [], failedTypes: [] }; }
   }
   const { page, db } = setup([], {
-    sessionStore: { init: async () => {}, loadPreferred: async () => ({ campus: 'SHENZHEN' }) },
+    sessionStore: { init: async () => {}, loadPreferred: async () => (examSession('SHENZHEN')) },
     EasDataProvider: Provider
   });
   const readTimetables = db.getTimetables;
@@ -785,7 +809,7 @@ test('partial exam results never claim there are no exams or that the query comp
       async getExamResult() { return { items, failedTypes: ['补考'] }; }
     }
     const { page } = setup([], { EasDataProvider: Provider });
-    page.session = { campus: 'BENBU' };
+    page.session = examSession('BENBU');
     await page.queryEasExams();
     assert.equal(page.queryWarning, true);
     assert.match(page.queryMsg, /补考查询失败/);
@@ -809,14 +833,14 @@ test('late exam requests cannot replace results or dismiss loading after leaving
     }
   }
   const { page } = setup([], { EasDataProvider: Provider });
-  page.session = { campus: 'BENBU' };
+  page.session = examSession('BENBU');
   const first = page.queryEasExams();
   await new Promise(resolve => setImmediate(resolve));
   const duplicate = page.queryEasExams();
   await duplicate;
   assert.equal(requests, 1);
   page.onPageHide();
-  page.session = { campus: 'WEIHAI' };
+  page.session = examSession('WEIHAI');
   const second = page.queryEasExams();
   await new Promise(resolve => setImmediate(resolve));
   finishOld({ items: [{ courseName: 'Old' }], failedTypes: [] });
@@ -838,7 +862,7 @@ test('exams without complete valid times stay visible and protect their previous
     async getExamResult() { return { items, failedTypes: [] }; }
   }
   const { page, calls } = setup([], { EasDataProvider: Provider });
-  page.session = { campus: 'SHENZHEN' };
+  page.session = examSession('SHENZHEN');
   await page.queryEasExams();
   assert.equal(page.remoteExams.length, 3);
   assert.equal(calls.inserts.length, 0);
@@ -897,7 +921,7 @@ test('an unsuccessful sync keeps saved exams visible and shows the failed result
   }
   const { page, db } = setup([exam('saved')], { EasDataProvider: Provider });
   db.syncExamEvents = async () => { throw new Error('disk full'); };
-  page.session = { campus: 'SHENZHEN' };
+  page.session = examSession('SHENZHEN');
   await page.loadExams();
   await page.queryEasExams();
   assert.equal(page.exams[0].id, 'saved');

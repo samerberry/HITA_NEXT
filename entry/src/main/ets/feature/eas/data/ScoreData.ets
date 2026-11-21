@@ -5,7 +5,6 @@ export enum ScoreTestType { ALL = 'ALL', NORMAL = 'NORMAL', MIDTERM = 'MIDTERM',
 
 export function scoreErrorMessage(message: string): string {
   const known: string[] = [
-    '该校区研究生成绩接口暂未接入，请到教务网站查询',
     '未获取到学期列表，请稍后重试', '成绩响应解析失败，请稍后重试',
     '教务未返回有效成绩列表，请稍后重试', '未识别到成绩表，请确认教务登录状态后重试',
     '教务会话已过期，请在“更多”的教务账号中重新登录', '成绩查询失败，请检查网络或稍后重试'
@@ -89,7 +88,8 @@ function column(headers: string[], values: string[], names: string[]): string {
 }
 
 /** undefined means an unrecognised response, distinct from a recognised empty grade table. */
-export function parseLegacyScores(html: string, term: EasTermItem): EasCourseScoreItem[] | undefined {
+export function parseLegacyScores(html: string, term: EasTermItem,
+  fallbackTerm: boolean = true): EasCourseScoreItem[] | undefined {
   const tables = /<table\b[^>]*>([\s\S]*?)<\/table>/gi;
   let table = tables.exec(html);
   let best: EasCourseScoreItem[] | undefined = undefined;
@@ -106,12 +106,13 @@ export function parseLegacyScores(html: string, term: EasTermItem): EasCourseSco
       } else if (values.length >= headers.length) {
         const item = new EasCourseScoreItem();
         item.courseName = column(headers, values, ['课程名称']);
-        item.courseCode = column(headers, values, ['课程代码', '课程号']);
+        item.courseCode = column(headers, values, ['课程代码', '课程号', '课程编号']);
         item.finalScoresText = column(headers, values, ['最终成绩', '成绩', '总成绩']);
         item.finalScores = numericScore(item.finalScoresText);
         item.credits = Number(column(headers, values, ['学分'])) || 0;
         item.hours = Number(column(headers, values, ['学时'])) || 0;
-        item.termName = column(headers, values, ['学年学期']) || term.name;
+        item.termName = column(headers, values, ['学年学期', '开课学期', '学期']) ||
+          (fallbackTerm ? term.name : '');
         item.courseProperty = column(headers, values, ['课程性质']);
         item.courseCategory = column(headers, values, ['课程类别']);
         item.assessMethod = column(headers, values, ['考核方式', '是否考试课']);

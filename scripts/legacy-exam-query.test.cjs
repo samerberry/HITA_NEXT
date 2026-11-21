@@ -234,19 +234,20 @@ test('POST-only deployments use the normal term list and the Aura exam form on a
   assert.equal(calls.filter(x => x.options.method === 'POST').length, 3);
 });
 
-test('missing terms, missing web cookies and unsupported graduate sessions cannot issue requests', async () => {
+test('missing exam terms, missing cookies and Benbu graduate sessions avoid unsupported requests', async () => {
   const provider = new Provider({ request: async () => assert.fail('Invalid request') });
   await assert.rejects(provider.getExamResult(session(Campus.BENBU), undefined), /学期/);
   await assert.rejects(provider.getExamResult(session(Campus.BENBU), new EasTermItem()), /学期/);
   const loggedOut = session(Campus.WEIHAI);
   loggedOut.webCookies.clear();
   await assert.rejects(provider.getExamResult(loggedOut, term()), /会话/);
-  for (const campus of [Campus.BENBU, Campus.WEIHAI]) {
-    const graduate = session(campus);
-    graduate.setStudentType('2');
-    await assert.rejects(provider.getExamTerms(graduate), /研究生考试接口暂未接入/);
-    await assert.rejects(provider.getExamResult(graduate, term()), /研究生考试接口暂未接入/);
-  }
+  loggedOut.setStudentType('2');
+  await assert.rejects(provider.getExamTerms(loggedOut), /会话/);
+  await assert.rejects(provider.getExamResult(loggedOut, term()), /会话/);
+  const benbuGraduate = session(Campus.BENBU);
+  benbuGraduate.setStudentType('2');
+  await assert.rejects(provider.getExamTerms(benbuGraduate), /研究生院或所在学院通知/);
+  await assert.rejects(provider.getExamResult(benbuGraduate, term()), /研究生院或所在学院通知/);
 });
 
 test('the existing client uses the correct VPN host and sends saved cookies for both campuses', async () => {

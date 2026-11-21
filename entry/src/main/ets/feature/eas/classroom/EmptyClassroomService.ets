@@ -2,6 +2,9 @@ import { EasApiClient, EasApiClientOptions, EasApiResponse, EasHttpMethod } from
 import { EasCampus, EasSession } from '../EasSession';
 import { EasTermItem } from '../model/EasModels';
 import { DemoAccount } from '../demo/DemoAccount';
+import { isBenbuGraduate } from '../data/BenbuGraduateData';
+import { isWeihaiGraduate } from '../data/WeihaiGraduateTimetable';
+import { WeihaiGraduateRecords } from '../data/WeihaiGraduateRecords';
 import { DemoClassroomData } from '../demo/DemoClassroomData';
 import { easWebLoginConfigFor, EasCampusUrls } from '../webLogin/EasWebLoginConfig';
 import {
@@ -23,17 +26,15 @@ export class EmptyClassroomService {
         (!session.hasShenzhenWebSession() || session.webBaseUrl.length === 0))) {
       throw new ClassroomQueryError('AUTH', '请先登录所选校区的教务系统');
     }
-    if (session.campus === EasCampus.BENBU && session.getStudentType() === '2') {
-      throw new ClassroomQueryError('UNSUPPORTED', '本部研究生教务接口暂未接入，请到学校教务网站查询');
-    }
-    if (session.campus === EasCampus.WEIHAI && session.getStudentType() === '2') {
-      throw new ClassroomQueryError('UNSUPPORTED', '威海研究生空教室查询暂未接入，请到学校教务网站查询');
+    if (isBenbuGraduate(session)) {
+      throw new ClassroomQueryError('UNSUPPORTED', '本部研究生请在学校研究生系统的“场地课表”查询教室');
     }
   }
 
   async getBuildings(session: EasSession): Promise<ClassroomBuilding[]> {
     EmptyClassroomService.assertSession(session);
     if (DemoAccount.isSession(session)) { return DemoClassroomData.buildings(); }
+    if (isWeihaiGraduate(session)) return new WeihaiGraduateRecords(this.api).buildings(session);
     if (session.campus === EasCampus.SHENZHEN) {
       // These requests initialize the classroom page context in the Shenzhen EAS.
       const paths: string[] = ['/pksd/queryxiaoquList', '/pksd/querycdlbList', '/kbfbsz/querydqxnxq'];
@@ -70,6 +71,7 @@ export class EmptyClassroomService {
       throw new ClassroomQueryError('INPUT', '请选择学期、教学楼和有效的教学周');
     }
     if (DemoAccount.isSession(session)) { return DemoClassroomData.query(term, building, week); }
+    if (isWeihaiGraduate(session)) return new WeihaiGraduateRecords(this.api).classrooms(session, term, building, week);
     if (session.campus === EasCampus.SHENZHEN) {
       return this.queryShenzhen(session, term, building, week);
     }

@@ -1,9 +1,8 @@
 import { DAY_MILLIS, EasTimePeriodInDay, EasTimetable } from '../../../common/model/timetable/TimetableModels';
-import { EasApiClient, EasApiClientOptions, EasApiResponse, EasHttpMethod } from '../EasApiClient';
+import { EasApiClient, EasHttpMethod } from '../EasApiClient';
+import { WeihaiGraduateClient } from './WeihaiGraduateClient';
 import { EasCampus, EasSession } from '../EasSession';
-import { isExpiredEasResponse } from '../EasSessionStatus';
 import { EasCourseItem, EasTermItem } from '../model/EasModels';
-import { easWebLoginConfigFor, EasUserAgent } from '../webLogin/EasWebLoginConfig';
 import { parseShenzhenWebSelectedSubjects, parseShenzhenWebTerms,
   parseShenzhenWebTimetable } from './ShenzhenWebTimetableParser';
 
@@ -12,17 +11,17 @@ export function isWeihaiGraduate(session: EasSession): boolean {
 }
 
 export class WeihaiGraduateTimetable {
-  private readonly api: EasApiClient;
+  private readonly client: WeihaiGraduateClient;
 
   constructor(api: EasApiClient) {
-    this.api = api;
+    this.client = new WeihaiGraduateClient(api);
   }
 
   async terms(session: EasSession): Promise<EasTermItem[]> {
-    const currentBody: string = await this.request(session, '/component/querydangqianxnxq');
+    const currentBody: string = await this.client.request(session, '/component/querydangqianxnxq');
     const current: EasTermItem | undefined = parseShenzhenWebTerms('[' + currentBody + ']')[0];
     if (current === undefined) throw new Error('未获取到威海研究生当前学期');
-    const listBody: string = await this.request(session, '/component/queryxnxqdata');
+    const listBody: string = await this.client.request(session, '/component/queryxnxqdata');
     const raw = JSON.parse(listBody) as Object;
     if (!Array.isArray(raw)) throw new Error('威海研究生学期列表格式异常');
     const terms: EasTermItem[] = parseShenzhenWebTerms(listBody);
@@ -33,7 +32,7 @@ export class WeihaiGraduateTimetable {
   }
 
   async startDate(session: EasSession, term: EasTermItem): Promise<number | undefined> {
-    const body: string = await this.request(session, '/Xiaoli/queryMonthList', WeihaiGraduateTimetable.termBody(term));
+    const body: string = await this.client.request(session, '/Xiaoli/queryMonthList', WeihaiGraduateTimetable.termBody(term));
     try {
       const root = JSON.parse(body) as Record<string, Object>;
       if (!Array.isArray(root['xlList'])) return undefined;
@@ -60,12 +59,12 @@ export class WeihaiGraduateTimetable {
   async courses(session: EasSession, term: EasTermItem): Promise<EasCourseItem[]> {
     const fields: string = WeihaiGraduateTimetable.termBody(term);
     const page: string = '/xszykb/queryxszykb';
-    const published: string = (await this.request(session, '/xszykb/querykbsffb', fields, page)).trim();
+    const published: string = (await this.client.request(session, '/xszykb/querykbsffb', fields, page)).trim();
     if (published === '0') throw new Error('该学期课表尚未发布');
     if (published === '2') throw new Error('请先在威海研究生教务完成课程评价');
     if (published !== '1') throw new Error('未能确认威海研究生课表发布状态');
 
-    const body: string = await this.request(session, '/xszykb/queryxszykbzong', fields, page);
+    const body: string = await this.client.request(session, '/xszykb/queryxszykbzong', fields, page);
     const payload = JSON.parse(body) as Object;
     if (!Array.isArray(payload)) throw new Error('威海研究生课表格式异常');
     const rows = (payload as Array<Record<string, Object>>).filter((row: Record<string, Object>): boolean =>
@@ -149,7 +148,7 @@ export class WeihaiGraduateTimetable {
 
   private async selected(session: EasSession, term: EasTermItem): Promise<Record<string, Object>> {
     const page: string = '/Xsxk/query/2';
-    const html: string = await this.request(session, page, '', page, EasHttpMethod.GET);
+    const html: string = await this.client.request(session, page, '', page, EasHttpMethod.GET);
     const fields: Map<string, string> = new Map<string, string>();
     const runtime: string[] = ['p_pylx', 'p_sfgldjr', 'p_sfredis', 'p_sfsyxkgwc'];
     for (const name of runtime) {
@@ -161,8 +160,8 @@ export class WeihaiGraduateTimetable {
     }
     if (fields.get('p_pylx') !== '2') throw new Error('当前会话未进入威海研究生教务');
     fields.set('mxpylx', '2');
-    const moduleBody: string = await this.request(session, '/Xsxk/queryXkdqXnxq',
-      WeihaiGraduateTimetable.form(fields), page);
+    const moduleBody: string = await this.client.request(session, '/Xsxk/queryXkdqXnxq',
+      WeihaiGraduateClient.form(fields), page);
     const moduleTerm = JSON.parse(moduleBody) as Record<string, Object>;
     const year: string = String(moduleTerm['p_dqxn'] ?? '');
     const semester: string = String(moduleTerm['p_dqxq'] ?? '');
@@ -180,41 +179,13 @@ export class WeihaiGraduateTimetable {
     fields.set('p_sfhlctkc', '0');
     fields.set('p_sfhllrlkc', '0');
     fields.set('p_gjz', '');
-    const body: string = await this.request(session, '/Xsxk/queryYxkc', WeihaiGraduateTimetable.form(fields), page);
+    const body: string = await this.client.request(session, '/Xsxk/queryYxkc', WeihaiGraduateClient.form(fields), page);
     const selection = JSON.parse(body) as Record<string, Object>;
     if (!Array.isArray(selection['yxkcList'])) throw new Error('未获取到威海研究生课程信息');
     return selection;
   }
 
-  private async request(session: EasSession, path: string, body: string = '',
-    referer: string = '/authentication/main', method: EasHttpMethod = EasHttpMethod.POST): Promise<string> {
-    const options: EasApiClientOptions = new EasApiClientOptions();
-    options.method = method;
-    options.body = body;
-    options.useCache = false;
-    options.followRedirects = false;
-    options.weihaiRefererPath = referer;
-    options.extraHeaders.set('RoleCode', '02');
-    options.extraHeaders.set('User-Agent', EasUserAgent.SHENZHEN_DESKTOP);
-    options.extraHeaders.set('X-Requested-With', 'XMLHttpRequest');
-    if (method === EasHttpMethod.POST) {
-      options.extraHeaders.set('Content-Type', 'application/x-www-form-urlencoded; charset=UTF-8');
-    }
-    const response: EasApiResponse = await this.api.request(session,
-      easWebLoginConfigFor(session.campus, session.getStudentType()), path, options);
-    if (isExpiredEasResponse(response)) throw new Error('威海研究生教务会话已失效，请重新登录');
-    if (response.statusCode === 0) throw new Error('无法连接威海研究生教务，请检查网络后重试');
-    if (response.statusCode < 200 || response.statusCode >= 300) throw new Error('威海研究生教务暂时无法提供查询');
-    return response.body;
-  }
-
   private static termBody(term: EasTermItem): string {
     return 'xn=' + encodeURIComponent(term.yearCode) + '&xq=' + encodeURIComponent(term.termCode);
-  }
-
-  private static form(fields: Map<string, string>): string {
-    const pairs: string[] = [];
-    fields.forEach((value: string, key: string) => pairs.push(key + '=' + encodeURIComponent(value)));
-    return pairs.join('&');
   }
 }
