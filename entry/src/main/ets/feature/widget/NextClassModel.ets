@@ -14,6 +14,9 @@ export class WidgetCourse {
 
 export class NextClassSnapshot {
   scheduleJson: string = '[]';
+  // An empty string means this section could not be read; [] is a successful empty result.
+  examJson: string = '';
+  taskJson: string = '';
   hasTimetable: boolean = false;
   dataState: string = 'loading';
 }
@@ -24,6 +27,8 @@ export class NextClassView {
   courseKey: string = '';
   title: string = '还没有课表';
   countdown: string = '—';
+  hours: string = '';
+  minutes: string = '';
   countdownUnit: string = '打开应用添加课表';
   startLabel: string = '下一节课';
   timeLabel: string = '';
@@ -96,7 +101,7 @@ export class NextClassModel {
       const duration = current.to - current.from;
       view.countdownTarget = current.to;
       view.countdownMs = Math.max(0, current.to - now);
-      view.countdown = NextClassModel.formatCountdown(view.countdownMs);
+      NextClassModel.setCountdown(view);
       view.countdownUnit = '后下课';
       view.progressPercent = Math.max(0, Math.min(100,
         (now - current.from) / duration * 100));
@@ -112,7 +117,7 @@ export class NextClassModel {
     view.isOngoing = false;
     view.countdownTarget = next.from;
     view.countdownMs = Math.max(0, next.from - now);
-    view.countdown = NextClassModel.formatCountdown(view.countdownMs);
+    NextClassModel.setCountdown(view);
     view.countdownUnit = '后上课';
     return view;
   }
@@ -128,13 +133,13 @@ export class NextClassModel {
     view.timeLabel = NextClassModel.timeLabel(course.from, course.to, now);
   }
 
-  private static label(value: string, fallback: string): string {
+  static label(value: string, fallback: string): string {
     if (typeof value !== 'string') return fallback;
     const text = value.trim();
     return text.length === 0 || text.toUpperCase() === 'NULL' ? fallback : text.slice(0, 100);
   }
 
-  private static startLabel(from: number, now: number): string {
+  static startLabel(from: number, now: number): string {
     const start = new Date(from);
     const date = NextClassModel.dateLabel(from, now);
     const hour = start.getHours().toString().padStart(2, '0');
@@ -142,7 +147,7 @@ export class NextClassModel {
     return date + ' ' + hour + ':' + minute;
   }
 
-  private static timeLabel(from: number, to: number, now: number): string {
+  static timeLabel(from: number, to: number, now: number): string {
     const start = new Date(from);
     const end = new Date(to);
     const sameDate: boolean = start.getFullYear() === end.getFullYear() &&
@@ -153,7 +158,7 @@ export class NextClassModel {
       (sameDate ? '' : NextClassModel.dateLabel(to, now) + ' ') + endHour + ':' + endMinute;
   }
 
-  private static dateLabel(timestamp: number, now: number): string {
+  static dateLabel(timestamp: number, now: number): string {
     const start = new Date(timestamp);
     const today = new Date(now);
     const tomorrow = new Date(now);
@@ -164,16 +169,15 @@ export class NextClassModel {
     return date;
   }
 
-  private static formatCountdown(milliseconds: number): string {
+  private static setCountdown(view: NextClassView): void {
     // The service card intentionally presents the countdown at minute
     // precision. The cached timestamp remains millisecond precise so the
     // progress ring can still advance on every timer tick.
-    const totalMinutes: number = Math.max(0, Math.ceil(milliseconds / 60000));
+    const totalMinutes: number = Math.max(0, Math.ceil(view.countdownMs / 60000));
     const hours: number = Math.floor(totalMinutes / 60);
     const minutes: number = totalMinutes % 60;
-    if (hours > 0) {
-      return hours.toString() + '小时' + minutes.toString() + '分钟';
-    }
-    return totalMinutes.toString() + '分钟';
+    view.hours = hours > 0 ? hours.toString() : '';
+    view.minutes = hours === 0 || minutes > 0 ? minutes.toString() : '';
+    view.countdown = (view.hours ? view.hours + 'h' : '') + (view.minutes ? view.minutes + 'min' : '');
   }
 }

@@ -941,8 +941,10 @@ export struct ExamPage {
           onCancel: () => { this.examColorEditing = false; }
         })
       } else {
-        this.examDetailRow($r('sys.symbol.person_crop_circle_fill'), event.examSource.length > 0 ? '类型' : '老师',
-          event.teacher.trim().length > 0 ? event.teacher : '未填写')
+        if (event.examSource.length > 0) {
+          this.examDetailRow($r('sys.symbol.doc_plaintext'), '类型',
+            event.teacher.trim().length > 0 ? event.teacher : '未填写')
+        }
         this.examDetailRow($r('sys.symbol.pin'), '考场',
           event.place.trim().length > 0 ? event.place : '待定')
         this.examDetailRow($r('sys.symbol.clock'), '时间',

@@ -70,11 +70,11 @@ function harness() {
   }) };
   const reminders = { sync: async (_ctx, events) => state.syncs.push(events.map(event => event.id)) };
   const page = new Function('course', 'nextWeek', 'exam', 'context', 'state', 'RdbHelper',
-    'EasEventType', 'ClassReminderScheduler', '$r', 'TAB_TIMETABLE', 'TIMETABLE_GRID_TOP_PADDING',
+    'EasEventType', 'ClassReminderScheduler', '$r', 'TAB_TIMETABLE', 'TAB_TODAY', 'TIMETABLE_GRID_TOP_PADDING',
     'TIMETABLE_SLIDE_MS', 'NextClassWidgetService',
     compile(code) + '; return new Home();')(
     course, nextWeek, exam, context, state, rdb, { CLASS: 'CLASS', EXAM: 'EXAM' },
-    reminders, value => value, 1, 24, 220, { scheduleRefresh() {} });
+    reminders, value => value, 1, 0, 24, 220, { scheduleRefresh() {} });
   page.courseDeleteEffects = { play: async ids => {
     assert.equal(page.courseSheetOpen, false, 'particles must wait for actual sheet dismissal');
     assert.equal(state.writes.length, 1, 'persist before animating');
@@ -142,7 +142,7 @@ test('a failed write keeps the sheet, card and lesson and allows retry', async (
 test('exams, other tabs and stale details cannot invoke skipping', async () => {
   for (const change of [
     ({ page, exam }) => { page.selectedCourse = exam; },
-    ({ page }) => { page.currentTab = 0; },
+    ({ page }) => { page.currentTab = 2; },
     ({ page }) => { page.courseSheetOpen = false; },
     ({ page }) => { page.activeSheetVisible = false; },
     ({ page }) => { page.pageVisible = false; }
@@ -153,6 +153,24 @@ test('exams, other tabs and stale details cannot invoke skipping', async () => {
     assert.deepEqual(h.state.dialogs, []);
     assert.deepEqual(h.state.writes, []);
   }
+});
+
+test('Today opens the selected course or exam even if a different week is rendered in the timetable', async () => {
+  const { page, course, exam, state } = harness();
+  page.currentTab = 0;
+  page.timetableCardSurfaces = [];
+  for (const event of [exam, course]) {
+    page.activeSheetVisible = false;
+    page.openEventDetail(event.id);
+    assert.equal(page.selectedCourse, event);
+    assert.equal(page.activeSheetVisible, true);
+  }
+  const skip = page.confirmSkipCourse(course);
+  await flush();
+  assert.deepEqual(state.writes, [[[course.id], 'table']]);
+  page.disappear();
+  await skip;
+  assert.deepEqual(state.effects, []);
 });
 
 test('duplicate taps produce one dialog, and a late confirmation after leaving does not delete', async () => {

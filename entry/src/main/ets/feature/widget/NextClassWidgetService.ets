@@ -8,6 +8,7 @@ import { ScheduleChangeSignal } from '../../common/util/ScheduleChangeSignal';
 import { TimetableSelectionStore } from '../timetable/data/TimetableSelectionStore';
 import { TimetableResolver } from '../timetable/data/TimetableResolver';
 import { NextClassModel, NextClassSnapshot } from './NextClassModel';
+import { WidgetAgenda } from './WidgetAgenda';
 import { WidgetBackgroundFiles, WidgetBackgroundStore } from './WidgetBackgroundStore';
 
 /** Card storage: schedule fields plus the baked background for each card size. */
@@ -46,9 +47,16 @@ export class NextClassWidgetService {
 
   /** fromCardProcess: the form extension must bypass its stale per-process preferences cache. */
   static async load(context: common.Context, fromCardProcess: boolean = false): Promise<NextClassSnapshot> {
+    let snapshot = new NextClassSnapshot();
+    const rdb = RdbHelper.getInstance();
     try {
-      const rdb = RdbHelper.getInstance();
       await rdb.init(context);
+    } catch (_) {
+      snapshot.dataState = 'error';
+      return snapshot;
+    }
+    const now = Date.now();
+    try {
       let selectedId: string;
       if (fromCardProcess) {
         selectedId = await TimetableSelectionStore.loadLatest(context);
@@ -58,17 +66,23 @@ export class NextClassWidgetService {
         selectedId = await selection.load();
       }
       let timetable: EasTimetable | undefined = selectedId.length > 0 ?
-        await rdb.getTimetableById(selectedId) : undefined;
-      if (timetable === undefined) timetable = await TimetableResolver.getForDisplay(rdb);
-      const events: EasEventItem[] = timetable === undefined ? [] : await rdb.getEventsOfTimetable(timetable.id);
-      return NextClassModel.snapshot(events, timetable !== undefined, Date.now(),
+        await rdb.getTimetableById(selectedId, true) : undefined;
+      if (timetable === undefined) timetable = await TimetableResolver.getForDisplay(rdb, true);
+      const events: EasEventItem[] = timetable === undefined ? [] : await rdb.getEventsOfTimetable(timetable.id, true);
+      snapshot = NextClassModel.snapshot(events, timetable !== undefined, now,
         timetable === undefined ? '' : timetable.id);
     } catch (error) {
       hilog.warn(0x0000, 'NextClassWidget', 'load failed: %{public}s', String(error));
-      const snapshot = new NextClassSnapshot();
       snapshot.dataState = 'error';
-      return snapshot;
     }
+    // The exam and task pages span timetables. A failed section must not blank the other two.
+    try {
+      snapshot.examJson = WidgetAgenda.exams(await rdb.getUpcomingExams(now), now);
+    } catch (_) { hilog.warn(0x0000, 'NextClassWidget', 'exam list unavailable'); }
+    try {
+      snapshot.taskJson = WidgetAgenda.tasks(await rdb.getLearningTasks());
+    } catch (_) { hilog.warn(0x0000, 'NextClassWidget', 'task list unavailable'); }
+    return snapshot;
   }
 
   /** Called only by NextClassFormAbility, which runs in the card's own process. */
@@ -116,6 +130,8 @@ export class NextClassWidgetService {
   private static async publish(context: common.Context, formId: string, snapshot: NextClassSnapshot): Promise<void> {
     const payload = new NextClassPayload();
     payload.scheduleJson = snapshot.scheduleJson;
+    payload.examJson = snapshot.examJson;
+    payload.taskJson = snapshot.taskJson;
     payload.hasTimetable = snapshot.hasTimetable;
     payload.dataState = snapshot.dataState;
     const opened: fileIo.File[] = [];

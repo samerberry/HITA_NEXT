@@ -2,11 +2,11 @@
   "string": [
     {
       "name": "next_class_widget_name",
-      "value": "下一节课"
+      "value": "学习日程"
     },
     {
       "name": "next_class_widget_description",
-      "value": "跟随当前课表，显示下一节课的开始倒计时、授课地点和教师"
+      "value": "在桌面切换课程、考试和待办，查看上下课倒计时、考场与截止时间"
     },
     {
       "name": "module_desc",

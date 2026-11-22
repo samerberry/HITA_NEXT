@@ -93,8 +93,10 @@ export struct CourseDetailContent {
           onCancel: () => { this.courseColorEditing = false; }
         })
       } else {
-      this.courseDetailRow($r('sys.symbol.person_crop_circle_fill'), '老师',
-        this.event.teacher.trim().length > 0 ? this.event.teacher : '无');
+      if (this.event.type !== EasEventType.EXAM) {
+        this.courseDetailRow($r('sys.symbol.person_crop_circle_fill'), '老师',
+          this.event.teacher.trim().length > 0 ? this.event.teacher : '无');
+      }
       this.courseDetailRow($r('sys.symbol.pin'), this.event.type === EasEventType.EXAM ? '考场' : '教室',
         this.event.place.trim().length > 0 ? this.event.place : '无');
       this.courseDetailRow($r('sys.symbol.clock'), '时间',
@@ -104,7 +106,8 @@ export struct CourseDetailContent {
       }
       this.courseDetailRow($r('sys.symbol.calendar'), '日期', this.dateText);
       if (this.event.type === EasEventType.EXAM) {
-        this.courseDetailRow($r('sys.symbol.checkmark'), '类型', '考试');
+        this.courseDetailRow($r('sys.symbol.checkmark'), '类型',
+          this.event.examSource.length > 0 && this.event.teacher.trim().length > 0 ? this.event.teacher : '考试');
       } else {
         this.courseDetailRow($r('sys.symbol.repeat_1'), '课程进度', this.progressText);
       }

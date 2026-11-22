@@ -191,8 +191,9 @@ test('landscape tri-fold rails move the evening / return buttons into the side g
 
 test('evening / return buttons sit beside a rail on their edge and fully clear it when hidden', () => {
   const ui = read('feature/timetable/views/TimetableFloatingActions.ets');
-  assert.ok(ui.includes('left: this.edgeMargin + this.leftInset, bottom: this.bottomInset + 20'));
-  assert.ok(ui.includes('right: this.edgeMargin + this.rightInset, bottom: this.bottomInset + 20'));
+  assert.ok(ui.includes('TIMETABLE_ACTION_BOTTOM_GAP: number = 20'));
+  assert.ok(ui.includes('left: this.edgeMargin + this.leftInset, bottom: this.bottomInset + TIMETABLE_ACTION_BOTTOM_GAP'));
+  assert.ok(ui.includes('right: this.edgeMargin + this.rightInset, bottom: this.bottomInset + TIMETABLE_ACTION_BOTTOM_GAP'));
   assert.ok(ui.includes('return x * (FLOATING_ACTION_EXIT + inset) / FLOATING_ACTION_EXIT;'));
   assert.ok(ui.includes('.translate({ x: this.travel(this.frame.eveningX), y: 0 })'));
   assert.ok(ui.includes('.translate({ x: this.travel(this.frame.returnX), y: -this.frame.returnLift })'));

@@ -4,7 +4,7 @@
 
 # HITA NEXT
 
-当前版本：**1.0.0**。
+当前版本：**1.0.1**。
 
 HITA NEXT 是基于开源项目 [HITA Android](https://github.com/HIT-A/HITA_Android) 开发的 HarmonyOS NEXT 客户端，采用 ArkTS 与 ArkUI 原生实现，为哈尔滨工业大学一校三区学生提供课表查看、教务登录和本地学习信息管理功能。
 
@@ -50,7 +50,7 @@ HITA NEXT 是基于开源项目 [HITA Android](https://github.com/HIT-A/HITA_And
 - 按校区管理会话并退出登录。
 - 管理课表、手动添加课程，以及导入和导出 ICS 课表。
 - 一键将当前课表导出至手机系统日历，重复导出更新已有日程。
-- 添加桌面服务卡片，显示下一节课的开始倒计时、地点和教师（见 [桌面服务卡片说明](docs/desktop-service-widget.md)）。
+- 添加「学习日程」桌面服务卡片，切换查看课程倒计时、近期考试和未完成待办（见 [桌面服务卡片说明](docs/desktop-service-widget.md)）。
 - 查看版本更新、服务与故障公告。
 - “关于”页列出制作者与鸣谢，并提供隐私政策；文案集中在 `feature/about/AboutContent.ets`。隐私政策正文与[华为协议托管服务上的版本](https://agreement-drcn.hispace.dbankcloud.cn/index.html?lang=zh&agreementId=2056866492535841728)一致，修改托管版本后需同步更新该文件。
 

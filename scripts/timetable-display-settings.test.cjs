@@ -187,19 +187,30 @@ test('evening hints respect the preference without changing course/exam detectio
   let maxOffset = 0;
   const page = new Function('eventsOfWeek', 'hasEveningCourse', 'eveningHintVisible', 'DOCK_ACTION_SIZE', 'HitaDesign',
     code + '; return new Page();')(() => ['exam'], () => { detects++; return true; },
-    (_hasCourse, _offset, end) => { maxOffset = end; return true; }, 56, { spaceMd: 16, spaceSm: 12 });
+    (_hasCourse, _offset, end) => { maxOffset = end; return true; }, 56, { spaceSm: 12 });
   Object.assign(page, { timetableDisplay: new Options(), currentTimetable: {}, timetableAreaH: 700,
-    navBarInset: 24, railMode: () => false,
+    navBarInset: 24, railMode: () => false, showReturnToCurrentWeek: () => false,
     timetableChromeH: 160, timetableCanvasHeight: 1000, timetableScroller: { currentOffset: () => ({ yOffset: 0 }) } });
   page.updateEveningCourseHint(); assert.equal(page.showEveningCourseHint, true);
-  assert.equal(maxOffset, 160 + 1000 - 700 + 56 + 12 + 24 + 16);
+  assert.equal(maxOffset, 160 + 1000 - 700 + 56 + 12 + 24);
   page.timetableDisplay.eveningHint = false; page.updateEveningCourseHint();
   assert.equal(page.showEveningCourseHint, false); assert.equal(detects, 1);
   page.timetableDisplay.eveningHint = true; page.updateEveningCourseHint();
   assert.equal(page.showEveningCourseHint, true);
   page.railMode = () => true;
   page.updateEveningCourseHint();
-  assert.equal(maxOffset, 160 + 1000 - 700 + 24 + 16);
+  assert.equal(maxOffset, 160 + 1000 - 700 + 24);
+  for (const rail of [false, true]) {
+    page.railMode = () => rail;
+    for (const away of [false, true]) {
+      page.showReturnToCurrentWeek = () => away;
+      const endInset = 24 + (rail ? 0 : 56 + 12);
+      assert.equal(page.timetableScrollEndInset(), endInset, 'the return control must not shrink other weeks');
+      page.updateEveningCourseHint();
+      assert.equal(maxOffset, 160 + 1000 - 700 + endInset);
+    }
+  }
+  assert.match(home, /const viewportHeight: number = this\.timetableAreaH - this\.timetableChromeH - this\.timetableScrollEndInset\(\)/);
   assert.match(home, /Scroll\(this\.timetableScroller\)[\s\S]*?Blank\(\)\.height\(this\.timetableScrollEndInset\(\)\)/);
   assert.match(home, /returnVisible: this\.showReturnToCurrentWeek\(\)/);
 });

@@ -6,6 +6,8 @@ import { CourseControlHost } from './CourseControlHost';
 import { FLOATING_ACTION_EXIT, FLOATING_ACTION_EXIT_DURATION, FLOATING_ACTION_GAP, floatingActionExitProgress,
   FloatingActionsFrame, FloatingActionsMotion } from './FloatingActionsMotion';
 
+export const TIMETABLE_ACTION_BOTTOM_GAP: number = 20;
+
 class FloatingActionFrameCallback extends FrameCallback {
   private callback: () => void;
   constructor(callback: () => void) {
@@ -90,8 +92,8 @@ export struct TimetableFloatingActions {
   }
 
   private edgePosition(): Edges {
-    return this.frame.side < 0 ? { left: this.edgeMargin + this.leftInset, bottom: this.bottomInset + 20 } :
-      { right: this.edgeMargin + this.rightInset, bottom: this.bottomInset + 20 };
+    return this.frame.side < 0 ? { left: this.edgeMargin + this.leftInset, bottom: this.bottomInset + TIMETABLE_ACTION_BOTTOM_GAP } :
+      { right: this.edgeMargin + this.rightInset, bottom: this.bottomInset + TIMETABLE_ACTION_BOTTOM_GAP };
   }
 
   /** Stretch the exit travel so a hidden control also clears a rail on its edge. */

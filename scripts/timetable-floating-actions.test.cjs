@@ -357,8 +357,9 @@ test('UI wiring retains hidden controls, bounds both hit targets, and observes o
   assert.match(ui, /onFinish: finish/);
   assert.match(ui, /postFrameCallback/);
   assert.ok(ui.includes('height(48 + FLOATING_ACTION_GAP)'));
-  assert.ok(ui.includes('left: this.edgeMargin + this.leftInset, bottom: this.bottomInset + 20'));
-  assert.ok(ui.includes('right: this.edgeMargin + this.rightInset, bottom: this.bottomInset + 20'));
+  assert.ok(ui.includes('TIMETABLE_ACTION_BOTTOM_GAP: number = 20'));
+  assert.ok(ui.includes('left: this.edgeMargin + this.leftInset, bottom: this.bottomInset + TIMETABLE_ACTION_BOTTOM_GAP'));
+  assert.ok(ui.includes('right: this.edgeMargin + this.rightInset, bottom: this.bottomInset + TIMETABLE_ACTION_BOTTOM_GAP'));
   assert.ok(ui.includes('this.active && (this.eveningVisible || this.returnVisible)'));
   assert.ok(ui.includes('eveningMounted ? Visibility.Visible : Visibility.Hidden'));
   assert.ok(ui.includes('returnMounted ? Visibility.Visible : Visibility.Hidden'));

@@ -17,6 +17,8 @@ export struct HitaListRow {
   symbol: Resource = $r('sys.symbol.chevron_right');
   @Prop title: string = '';
   @Prop subtitle: string = '';
+  @Prop detail: string = '';
+  @Prop value: string = '';
   @Prop divider: boolean = false;
   @Prop expanded: boolean = false;
   accessory: HitaRowAccessory = HitaRowAccessory.CHEVRON;
@@ -55,10 +57,24 @@ export struct HitaListRow {
               .maxLines(1)
               .textOverflow({ overflow: TextOverflow.Ellipsis });
           }
+          if (this.detail.length > 0) {
+            Text(this.detail)
+              .fontSize(HitaDesign.label)
+              .fontColor(HitaColors.onSurfaceVariant)
+              .maxLines(1)
+              .textOverflow({ overflow: TextOverflow.Ellipsis });
+          }
         }
         .layoutWeight(1)
         .alignItems(HorizontalAlign.Start)
         .margin({ left: HitaDesign.spaceSm });
+        if (this.value.length > 0) {
+          Text(this.value)
+            .fontSize(HitaDesign.caption)
+            .fontColor(HitaColors.onSurfaceVariant)
+            .flexShrink(0)
+            .margin({ left: HitaDesign.spaceXs, right: HitaDesign.space2xs });
+        }
         SymbolGlyph($r('sys.symbol.chevron_right'))
           .fontSize(HitaDesign.iconXs)
           .fontColor([HitaColors.onSurfaceVariant])
@@ -70,7 +86,8 @@ export struct HitaListRow {
       }
       .width('100%')
       .constraintSize({ minHeight: HitaDesign.rowMinHeight })
-      .padding({ left: HitaDesign.inset, right: HitaDesign.inset })
+      .padding({ left: HitaDesign.inset, right: HitaDesign.inset,
+        top: this.detail ? HitaDesign.spaceXs : undefined, bottom: this.detail ? HitaDesign.spaceXs : undefined })
       .alignItems(VerticalAlign.Center)
       .accessibilityDescription(this.accessory === HitaRowAccessory.DISCLOSURE ?
         (this.expanded ? '已展开' : '已收起') : '')

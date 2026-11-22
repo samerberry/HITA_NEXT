@@ -12,7 +12,7 @@ import { CourseDetailContent } from '../feature/timetable/views/CourseDetailCont
 import { common } from '@kit.AbilityKit';
 import { formProvider } from '@kit.FormKit';
 import { deviceInfo } from '@kit.BasicServicesKit';
-import { curves, FrameCallback, FrameNode, KeyboardAvoidMode, SymbolGlyphModifier } from '@kit.ArkUI';
+import { AnimatorResult, curves, FrameCallback, FrameNode, KeyboardAvoidMode, SymbolGlyphModifier } from '@kit.ArkUI';
 import { HeaderBackButton } from '../common/components/HeaderBackButton';
 import { ImmersiveHeader } from '../common/components/ImmersiveHeader';
 import { ImmersiveEventCard } from '../common/components/ImmersiveEventCard';
@@ -79,6 +79,7 @@ import { ImportTimetablePanel } from '../feature/timetable/views/ImportTimetable
 import { ExamPage } from './ExamPage';
 import { BackupPanel } from '../feature/backup/BackupPanel';
 import { LearningTasksPanel } from '../feature/learning/LearningTasksPanel';
+import { taskFlipOpacity, taskFlipProjection, taskFlipRelease } from '../feature/learning/TodayTaskFlip';
 import { ScorePage } from './ScorePage';
 import { CreditPage } from './CreditPage';
 import { EmptyClassroomPage } from './EmptyClassroomPage';
@@ -86,15 +87,14 @@ import { TimetableWallpaperSampler } from '../feature/timetable/data/TimetableWa
 import { TimetableDisplayOptions } from '../feature/timetable/data/TimetableDisplayOptions';
 import { TimetableDisplayStore } from '../feature/timetable/data/TimetableDisplayStore';
 import { TimetableDisplaySettings } from '../feature/timetable/views/TimetableDisplaySettings';
+import { usesPhoneTimetable, observeTimetableFoldMode } from '../feature/timetable/views/TimetableScreenLayout';
 import { ClassReminderStore } from '../feature/timetable/data/ClassReminderStore';
 import { ClassReminderScheduler, ClassReminderSyncResult } from '../feature/timetable/data/ClassReminderScheduler';
 import { CalendarExportResult } from '../feature/timetable/data/TimetableCalendarExporter';
 import {
-  AXIS_START_HOUR,
   TIMETABLE_GRID_TOP_PADDING,
   TIMETABLE_GUTTER_WIDTH,
   TIMETABLE_HEADER_HEIGHT,
-  TIMETABLE_HOUR_HEIGHT,
   TimetableAxis,
   TimetableCardLayer,
   TimetableCardSurface,
@@ -120,7 +120,6 @@ const COLOR_CLASS: ResourceColor = $r('app.color.hita_primary');
 const COLOR_EXAM: ResourceColor = $r('app.color.hita_error_8a2e42');
 const COLOR_OTHER: ResourceColor = $r('app.color.hita_link');
 const COLOR_TAG: ResourceColor = $r('app.color.hita_success_0f6e56');
-const TIMETABLE_HOUR_FIT_ALLOWANCE: number = 56;
 const TAB_TODAY: number = 0;
 const TAB_TIMETABLE: number = 1;
 const NAV_TAB_COUNT: number = 3;
@@ -140,6 +139,17 @@ const TIMETABLE_FLING_VELOCITY: number = 400;
 const TIMETABLE_FLING_MIN_OFFSET: number = 12;
 const TAB_SWIPE_MS: number = 300;
 const TIMETABLE_SLIDE_MS: number = 220;
+
+interface TodayTimeRailOptions {
+  color: ResourceColor;
+  primary: string;
+  secondary: string;
+}
+
+interface TodaySectionLabels {
+  title: string;
+  countText: string;
+}
 
 interface MoreShortcutOptions {
   symbol: Resource;
@@ -234,14 +244,24 @@ struct Home {
   @State academicPanelOpen: boolean = false;
   @State academicPanelKind: number = 0;
   @State learningBusy: boolean = false;
-  @State learningTaskId: string = '';
+  @State private linkedTaskSheetVisible: boolean = false;
+  private linkedTaskSheetExiting: boolean = false;
   @State widgetBackgroundDirty: boolean = false;
   @State widgetBackgroundBusy: boolean = false;
   private widgetBackgroundConfirmDismiss: ((dismiss: () => void, springBack: () => void) => void) | undefined =
     undefined;
   private widgetBackgroundSpringBack: (() => void) | undefined = undefined;
   @State todayItems: EasEventItem[] = [];
-  @State todayLearningTasks: LearningTask[] = [];
+  @State todayLearningTaskCount: number = 0;
+  @State todayTaskDeck: LearningTask[] = [];
+  @State todayTaskIndex: number = 0;
+  @State private todayDeckDrag: number = 0;
+  @State private todayDeckMoving: boolean = false;
+  @State private todayDeckHeight: number = HitaDesign.rowMinHeight;
+  @State private todayDeckWidth: number = 0;
+  private todayDeckDragOrigin: number = 0;
+  private todayDeckAnimator: AnimatorResult | undefined = undefined;
+  private todayDeckMotionId: number = 0;
   private todayLearningGeneration: number = 0;
   private todayLearningSignalKey: string = 'today-learning-' + newId();
   @State timelineText: string = '暂无今日日程';
@@ -386,9 +406,11 @@ struct Home {
   private dockHandObserver: HoldingHandObserver = new HoldingHandObserver();
   private moreScroller: Scroller = new Scroller();
   private timetableScroller: Scroller = new Scroller();
+  private stopObservingTimetableFold?: () => void;
 
   async aboutToAppear(): Promise<void> {
     this.pageVisible = true;
+    this.stopObservingTimetableFold = observeTimetableFoldMode(() => this.drawTimetableNow());
     ScheduleChangeSignal.subscribe(this.todayLearningSignalKey, () => {
       if (this.pageVisible) void this.refreshTodayLearningTasks();
     });
@@ -482,6 +504,7 @@ struct Home {
 
   onPageHide(): void {
     this.pageVisible = false;
+    this.resetTodayDeckMotion();
     this.dockHandObserver.stop();
     this.stopClock();
     this.resetDockInteraction();
@@ -611,6 +634,8 @@ struct Home {
 
   aboutToDisappear(): void {
     this.pageVisible = false;
+    this.stopObservingTimetableFold?.();
+    this.stopObservingTimetableFold = undefined;
     this.todayLearningGeneration++;
     ScheduleChangeSignal.unsubscribe(this.todayLearningSignalKey);
     this.dockHandObserver.stop();
@@ -752,7 +777,6 @@ struct Home {
     this.timetableCount = allTimetables.length;
     this.recentTimetable = recent;
     this.hasTimetable = display !== undefined;
-    if (this.currentTimetable?.id !== display?.id) this.todayLearningTasks = [];
     this.currentTimetable = display;
     void this.refreshTodayLearningTasks();
     this.timetableEvents = allEvents;
@@ -953,11 +977,9 @@ struct Home {
     if (!axis.same(this.timetableAxis)) {
       this.timetableAxis = axis;
     }
-    const hourHeight: number = this.timetableHourHeight();
-    const bodyViewportHeight: number = Math.max(1,
-      this.timetableAreaH - this.timetableChromeH);
-    const contentHeight: number = TIMETABLE_GRID_TOP_PADDING + axis.hours() * hourHeight + 8;
-    const canvasHeight: number = Math.max(bodyViewportHeight, contentHeight);
+    const viewportHeight: number = this.timetableAreaH - this.timetableChromeH - this.timetableScrollEndInset();
+    const canvasHeight: number = axis.canvasHeight(viewportHeight, usesPhoneTimetable());
+    const hourHeight: number = axis.hourHeight(canvasHeight);
     if (this.timetableCanvasHeight !== canvasHeight) {
       this.timetableCanvasHeight = canvasHeight;
     }
@@ -1023,18 +1045,6 @@ struct Home {
     return Math.max(1, this.timetableAreaW);
   }
 
-  private timetableHourHeight(): number {
-    if (this.timetableAreaH <= this.timetableChromeH) {
-      return TIMETABLE_HOUR_HEIGHT;
-    }
-    // Keep 08:00–19:00 visible in the initial viewport, while preserving
-    // the iOS compact layout's 56vp/hour as the upper bound.
-    const visibleHours: number = 19 - AXIS_START_HOUR;
-    const availableGridHeight: number = this.timetableAreaH - this.timetableChromeH -
-      TIMETABLE_GRID_TOP_PADDING - 8 + TIMETABLE_HOUR_FIT_ALLOWANCE;
-    return Math.max(42, Math.min(TIMETABLE_HOUR_HEIGHT, availableGridHeight / visibleHours));
-  }
-
   private openCourseAt(x: number, y: number): void {
     if (!this.canOpenSheet() || this.currentTimetable === undefined ||
       x <= 0 || y < TIMETABLE_GRID_TOP_PADDING) {
@@ -1059,8 +1069,13 @@ struct Home {
     if (card === undefined) {
       return;
     }
-    const event: EasEventItem | undefined = this.timetableEvents.find((item: EasEventItem): boolean =>
-      item.id === card.eventIds[0] && item.timetableId === this.currentTimetable?.id);
+    this.openEventDetail(card.eventIds[0]);
+  }
+
+  private openEventDetail(id: string | undefined): void {
+    if (!id || !this.canOpenSheet() || this.currentTimetable === undefined) return;
+    const event = this.timetableEvents.find((item: EasEventItem): boolean =>
+      item.id === id && item.timetableId === this.currentTimetable?.id);
     if (event !== undefined && (event.type === EasEventType.CLASS || event.type === EasEventType.EXAM)) {
       this.courseColorEditing = false;
       this.selectedCourse = event;
@@ -1070,21 +1085,22 @@ struct Home {
   }
 
   private async confirmSkipCourse(event: EasEventItem): Promise<void> {
-    if (this.skippingCourse || !this.pageVisible || this.currentTab !== TAB_TIMETABLE ||
+    const tab: number = this.currentTab;
+    if (this.skippingCourse || !this.pageVisible || (tab !== TAB_TIMETABLE && tab !== TAB_TODAY) ||
       !this.activeSheetVisible || !this.courseSheetOpen || this.selectedCourse?.id !== event.id ||
-      event.type !== EasEventType.CLASS) {
+      event.type !== EasEventType.CLASS || this.currentTimetable?.id !== event.timetableId) {
       return;
     }
-    const card: TimetableCardSurface | undefined = this.timetableCardSurfaces.find(
-      (item: TimetableCardSurface): boolean => item.eventIds.indexOf(event.id) >= 0);
-    if (card === undefined) {
+    const card: TimetableCardSurface | undefined = tab === TAB_TIMETABLE ? this.timetableCardSurfaces.find(
+      (item: TimetableCardSurface): boolean => item.eventIds.indexOf(event.id) >= 0) : undefined;
+    if (tab === TAB_TIMETABLE && card === undefined) {
       return;
     }
     this.skippingCourse = true;
     this.summaryRequestGeneration++;
     const sheetGeneration: number = this.sheetRequestGeneration;
     const week: number = this.timetableWeek;
-    const ids: string[] = card.eventIds.slice();
+    const ids: string[] = card === undefined ? [event.id] : card.eventIds.slice();
     let confirmed: boolean = false;
     let deleted: boolean = false;
     try {
@@ -1096,8 +1112,8 @@ struct Home {
         ]
       });
       if (result.index !== 1 || sheetGeneration !== this.sheetRequestGeneration ||
-        !this.pageVisible || this.currentTab !== TAB_TIMETABLE || !this.activeSheetVisible ||
-        this.currentTimetable?.id !== event.timetableId || this.timetableWeek !== week) {
+        !this.pageVisible || this.currentTab !== tab || !this.activeSheetVisible ||
+        this.currentTimetable?.id !== event.timetableId || (tab === TAB_TIMETABLE && this.timetableWeek !== week)) {
         return;
       }
       confirmed = true;
@@ -1111,7 +1127,7 @@ struct Home {
       this.timelineText = this.todayItems.length === 0 ? '今日暂无安排' :
         '今日 ' + this.todayItems.length.toString() + ' 项安排';
       await this.closeCourseSheetBeforeSkip();
-      if (this.pageVisible && this.currentTab === TAB_TIMETABLE && this.timetableWeek === week &&
+      if (card !== undefined && this.pageVisible && this.currentTab === TAB_TIMETABLE && this.timetableWeek === week &&
         this.currentTimetable?.id === event.timetableId) {
         await this.courseDeleteEffects.play([card.key]);
       }
@@ -1198,7 +1214,7 @@ struct Home {
       return event.to;
     }
     if (this.currentTimetable !== undefined) {
-      const span = timetableEventSpan(this.currentTimetable, event, this.timetableWeek);
+      const span = timetableEventSpan(this.currentTimetable, event, this.currentTimetable.getWeekNumber(event.from));
       if (span !== undefined && span.to > span.from) {
         return span.to;
       }
@@ -1341,6 +1357,7 @@ struct Home {
     this.selectedNav = index;
     // Also resume after a cancelled swipe, where onChange may not fire.
     this.startTimetableMarquee();
+    if (this.pendingLearningTask) this.openPendingLearningTask();
   }
 
   private dockPageInset(): number {
@@ -1348,8 +1365,8 @@ struct Home {
   }
 
   private timetableScrollEndInset(): number {
-    return this.navBarInset + HitaDesign.spaceMd +
-      (this.railMode() ? 0 : DOCK_ACTION_SIZE + HitaDesign.spaceSm);
+    // Floating week controls overlay the grid; only the dock and system inset take up space.
+    return this.navBarInset + (this.railMode() ? 0 : DOCK_ACTION_SIZE + HitaDesign.spaceSm);
   }
 
   private railMode(): boolean {
@@ -1488,7 +1505,7 @@ struct Home {
    */
   private timetableTodayMaskVisibleHeight(): number {
     const gridBottom: number = Math.min(this.timetableCanvasHeight - 4,
-      TIMETABLE_GRID_TOP_PADDING + this.timetableAxis.hours() * this.timetableHourHeight());
+      TIMETABLE_GRID_TOP_PADDING + this.timetableAxis.hours() * this.timetableAxis.hourHeight(this.timetableCanvasHeight));
     return Math.max(0, gridBottom - this.timetableScrollY);
   }
 
@@ -1503,11 +1520,6 @@ struct Home {
   private onTimetableArea(w: number, h: number): void {
     this.timetableAreaW = w;
     this.timetableAreaH = h;
-    const hourHeight: number = this.timetableHourHeight();
-    const bodyViewportHeight: number = Math.max(1,
-      h - this.timetableChromeH);
-    const contentHeight: number = TIMETABLE_GRID_TOP_PADDING + this.timetableAxis.hours() * hourHeight + 8;
-    this.timetableCanvasHeight = Math.max(bodyViewportHeight, contentHeight);
     this.drawTimetableNow();
   }
 
@@ -1662,16 +1674,16 @@ struct Home {
 
   private onPendingLearningTaskChanged(): void { this.openPendingLearningTask(); }
 
-  private openLearningTask(taskId: string): void {
-    if (!this.canOpenSheet()) return;
-    this.learningTaskId = taskId;
-    this.openAcademicPanel(5);
-  }
-
   private openPendingLearningTask(): void {
-    if (!this.remindersReady || this.pendingLearningTask.length === 0 || !this.canOpenSheet()) return;
-    this.openLearningTask(this.pendingLearningTask);
-    if (this.activeSheetVisible && this.academicPanelKind === 5) AppStorage.setOrCreate('hita_learning_open_task', '');
+    if (!this.remindersReady || !this.pageVisible || !this.pendingLearningTask) return;
+    // An already-mounted task panel observes the request itself, including warm launches.
+    if (this.canOpenSheet()) {
+      this.openAcademicPanel(5);
+    } else if (this.activeSheetVisible && !(this.academicPanelOpen && this.academicPanelKind === 5) &&
+      !this.linkedTaskSheetExiting) {
+      // Keep an unrelated sheet (and its inputs) underneath the desktop request.
+      this.linkedTaskSheetVisible = true;
+    }
   }
 
   private springBackWidgetBackgroundSheet(): void {
@@ -2003,25 +2015,43 @@ struct Home {
     return this.activeClass !== undefined ? ' 后下课' : ' 后上课';
   }
 
+  private tomorrowClasses(): EasEventItem[] {
+    const start: number = new Date(new Date(this.nowTick).setHours(0, 0, 0, 0)).getTime() + DAY_MS;
+    return this.timetableEvents.filter((event: EasEventItem): boolean =>
+      event.type === EasEventType.CLASS && event.from >= start && event.from < start + DAY_MS)
+      .sort((a: EasEventItem, b: EasEventItem): number => a.from - b.from);
+  }
+
   /** Summary of tomorrow's first class, shown once today is done. */
   private tomorrowText(): string {
     if (!this.hasTimetable) return '登录教务或手动创建课表';
-    const start: number = new Date(new Date(this.nowTick).setHours(0, 0, 0, 0)).getTime() + DAY_MS;
-    const classes: EasEventItem[] = this.timetableEvents.filter((event: EasEventItem): boolean =>
-      event.type === EasEventType.CLASS && event.from >= start && event.from < start + DAY_MS);
+    const classes = this.tomorrowClasses();
     if (classes.length === 0) return '明天也没有课';
-    classes.sort((a: EasEventItem, b: EasEventItem): number => a.from - b.from);
     return '明天 ' + classes.length.toString() + ' 节课，' + EasTimeTools.printTime(classes[0].from) +
       ' 开始 · ' + classes[0].name;
   }
 
-  /** The nearest exam within the next 14 days in the displayed timetable. */
-  /** The nearest exam as a keyed list, so another or an edited exam rebuilds the card instead of keeping the old one. */
-  private upcomingExams(): EasEventItem[] {
-    const exam: EasEventItem | undefined = this.upcomingExam();
-    return exam === undefined ? [] : [exam];
+  private heroDetailAction(): (() => void) | undefined {
+    const event: EasEventItem | undefined = this.heroEvent() ?? this.tomorrowClasses()[0];
+    return event === undefined ? undefined : () => this.openEventDetail(event.id);
   }
 
+  private todayScheduleItems(): EasEventItem[] {
+    return this.todayItems.filter((event: EasEventItem): boolean => event.type !== EasEventType.EXAM);
+  }
+
+  private todayExamItems(): EasEventItem[] {
+    const exams: EasEventItem[] = this.todayItems.filter((event: EasEventItem): boolean =>
+      event.type === EasEventType.EXAM);
+    const next: EasEventItem | undefined = this.upcomingExam();
+    if (next !== undefined && !exams.some((event: EasEventItem): boolean => event.id === next.id)) {
+      exams.push(next);
+      exams.sort((a: EasEventItem, b: EasEventItem): number => a.from - b.from);
+    }
+    return exams;
+  }
+
+  /** Keep the existing reminder for the nearest unfinished exam within 14 days. */
   private upcomingExam(): EasEventItem | undefined {
     let found: EasEventItem | undefined = undefined;
     const limit: number = this.nowTick + 14 * DAY_MS;
@@ -2043,6 +2073,7 @@ struct Home {
   }
 
   private static examDistanceText(exam: EasEventItem, now: number): string {
+    if (exam.to <= now) return '已结束';
     if (exam.from <= now) return '进行中';
     const today0: number = new Date(new Date(now).setHours(0, 0, 0, 0)).getTime();
     const days: number = Math.floor((exam.from - today0) / DAY_MS);
@@ -2053,28 +2084,106 @@ struct Home {
 
   private async refreshTodayLearningTasks(): Promise<void> {
     const generation: number = ++this.todayLearningGeneration;
-    const timetable: EasTimetable | undefined = this.currentTimetable;
-    if (timetable === undefined) return;
     try {
-      const tasks: LearningTask[] = await RdbHelper.getInstance().getTodayLearningTasks(timetable.id);
+      const tasks: LearningTask[] = await RdbHelper.getInstance().getPendingLearningTasks();
       if (generation === this.todayLearningGeneration && this.pageVisible) {
-        this.todayLearningTasks = LearningTaskRules.sort(tasks, Date.now());
+        this.todayLearningTaskCount = tasks.length;
+        const ordered: LearningTask[] = tasks.filter((task: LearningTask): boolean => task.showInToday)
+          .sort(LearningTaskRules.compareDeadlines);
+        if (ordered.length !== this.todayTaskDeck.length ||
+          ordered.some((task: LearningTask, index: number): boolean => task.id !== this.todayTaskDeck[index].id)) {
+          this.resetTodayDeckMotion();
+          this.todayTaskIndex = 0;
+        }
+        this.todayTaskDeck = ordered;
       }
     } catch (_) {
-      // Keep the last successful list for this timetable while a read is temporarily unavailable.
+      // Keep the last successful preview if a read is temporarily unavailable.
     }
   }
 
-  private static learningTaskWhenText(task: LearningTask, now: number): string {
-    const related: string = task.kind === LearningTaskKind.REVIEW ? task.examName : task.courseName;
-    let text: string = '无截止时间';
-    if (task.dueAt > 0) {
-      const date: Date = new Date(task.dueAt);
-      const status: string = LearningTaskRules.deadline(task) < now ? '已逾期 ' : '截止 ';
-      text = status + (date.getMonth() + 1).toString() + '月' + date.getDate().toString() + '日';
-      if (!task.allDay) text += ' ' + EasTimeTools.printTime(task.dueAt);
+  private static todayTaskTime(task: LearningTask | undefined): string {
+    if (task === undefined) return '';
+    if (!task.dueAt) return '未设';
+    return task.allDay ? '全天' : EasTimeTools.printTime(task.dueAt);
+  }
+
+  private static todayTaskSubtitle(task: LearningTask | undefined): string {
+    if (task === undefined) return '查看学习待办';
+    const review: boolean = task.kind === LearningTaskKind.REVIEW;
+    const linkedName: string = review ? task.examName : task.courseName;
+    const date: string = task.dueAt > 0 ? EasTimeTools.printDate(task.dueAt) + ' · ' : '';
+    return date + (review ? '复习' : '作业') + (linkedName ? ' · ' + linkedName : '');
+  }
+
+  private todayDeckIndexAt(slot: number): number {
+    const count: number = this.todayTaskDeck.length;
+    return count === 0 ? 0 : (this.todayTaskIndex + slot + count) % count;
+  }
+
+  private todayDeckTaskAt(slot: number): LearningTask | undefined {
+    return this.todayTaskDeck[this.todayDeckIndexAt(slot)];
+  }
+
+  private stopTodayDeckAnimator(): void {
+    this.todayDeckMotionId++;
+    this.todayDeckAnimator?.cancel();
+    this.todayDeckAnimator = undefined;
+  }
+
+  private resetTodayDeckMotion(): void {
+    this.stopTodayDeckAnimator();
+    this.todayDeckDragOrigin = 0;
+    this.todayDeckMoving = false;
+    this.todayDeckDrag = 0;
+  }
+
+  private beginTodayDeckDrag(): void {
+    this.stopTodayDeckAnimator();
+    this.todayDeckDragOrigin = this.todayDeckDrag;
+  }
+
+  private dragTodayDeck(offset: number): void {
+    if (this.todayTaskDeck.length < 2) return;
+    this.todayDeckMoving = true;
+    this.todayDeckDrag = Math.max(-1, Math.min(1, this.todayDeckDragOrigin + offset / this.todayDeckHeight));
+  }
+
+  private settleTodayDeck(target: number, velocity: number = 0): void {
+    if (this.todayDeckAnimator !== undefined || !this.todayDeckMoving) return;
+    const start: number = this.todayDeckDrag;
+    const remaining: number = target - start;
+    if (Math.abs(remaining) < 0.001) {
+      this.todayTaskIndex = this.todayDeckIndexAt(target);
+      this.resetTodayDeckMotion();
+      return;
     }
-    return related.length > 0 && related !== task.title ? text + ' · ' + related : text;
+    const motionId: number = ++this.todayDeckMotionId;
+    const duration: number = Math.round((target === 0 ? 125 : 185) + 140 * Math.abs(remaining));
+    const slope: number = Math.max(0, Math.min(2.4, velocity * duration / (1000 * this.todayDeckHeight * remaining)));
+    const animator: AnimatorResult = this.getUIContext().createAnimator({
+      duration: duration, easing: 'linear', delay: 0, fill: 'none', direction: 'normal',
+      iterations: 1, begin: 0, end: 1
+    });
+    this.todayDeckAnimator = animator;
+    animator.onFrame = (time: number) => {
+      if (motionId === this.todayDeckMotionId) this.todayDeckDrag = start + remaining * taskFlipRelease(time, slope);
+    };
+    animator.onFinish = () => {
+      if (motionId !== this.todayDeckMotionId) return;
+      this.todayDeckAnimator = undefined;
+      this.todayTaskIndex = this.todayDeckIndexAt(target);
+      this.resetTodayDeckMotion();
+    };
+    animator.play();
+  }
+
+  private finishTodayDeckDrag(event: GestureEvent): void {
+    this.dragTodayDeck(event.offsetY);
+    const direction: number = this.todayDeckDrag < 0 ? -1 : 1;
+    const turn: boolean = Math.abs(this.todayDeckDrag) >= 0.32 ||
+      (Math.abs(event.offsetY) >= HitaDesign.spaceXs && direction * event.velocityY > 420);
+    this.settleTodayDeck(turn ? direction : 0, event.velocityY);
   }
 
   private static placeTeacher(event: EasEventItem): string {
@@ -2707,7 +2816,6 @@ struct Home {
         this.academicPanelOpen = false;
         this.academicPanelKind = 0;
         this.learningBusy = false;
-        this.learningTaskId = '';
         this.widgetBackgroundDirty = false;
         this.widgetBackgroundBusy = false;
         this.widgetBackgroundConfirmDismiss = undefined;
@@ -2971,12 +3079,7 @@ struct Home {
         EmptyClassroomPage({ presentedAsSheet: true, onClose: () => this.closeActiveSheet() })
           .width('100%').height('100%');
       } else if (this.academicPanelOpen && this.academicPanelKind === 5) {
-        LearningTasksPanel({
-          initialTaskId: this.learningTaskId,
-          onClose: () => this.closeActiveSheet(),
-          onBusyChanged: (busy: boolean) => { this.learningBusy = busy; }
-        }).width('100%').height('100%')
-          .attributeModifier(new CompatibleLightModifier(24, CompatibleSheetMaterial.isEnabled(), true));
+        this.learningPanel(false);
       } else if (this.timetableDisplayOpen) {
         TimetableDisplaySettings({
           options: this.timetableDisplay,
@@ -3000,7 +3103,49 @@ struct Home {
       } else if (this.sessionSheetOpen) {
         this.sessionSheet();
       }
+      this.linkedTaskAnchor();
     }
+
+  }
+
+  @Builder
+  private linkedTaskAnchor() {
+    Row().height(0).width(0).accessibilityLevel('no')
+    .bindSheet($$this.linkedTaskSheetVisible, this.linkedTaskSheet(), CompatibleSheetMaterial.options({
+      height: SheetSize.LARGE, dragBar: true, showClose: false, preferType: SheetType.BOTTOM,
+      backgroundColor: COLOR_SURFACE, maskColor: $r('app.color.hita_sheet_mask'),
+      shouldDismiss: (dismiss: SheetDismiss) => { if (!this.learningBusy) dismiss.dismiss(); },
+      onWillDisappear: () => { this.linkedTaskSheetExiting = true; this.linkedTaskSheetVisible = false; },
+      onDisappear: () => {
+        this.linkedTaskSheetVisible = false;
+        this.linkedTaskSheetExiting = false;
+        this.learningBusy = false;
+        this.openPendingLearningTask();
+      }
+    }))
+  }
+
+  @Builder
+  private linkedTaskSheet() {
+    SheetContent({ fillHeight: true }) {
+      this.learningPanel(true);
+    }
+  }
+
+  @Builder
+  private learningPanel(linked: boolean) {
+    LearningTasksPanel({
+      initialTaskId: this.pendingLearningTask,
+      onRequestHandled: (id: string) => {
+        if (AppStorage.get<string>('hita_learning_open_task') === id) AppStorage.setOrCreate('hita_learning_open_task', '');
+      },
+      onClose: () => {
+        if (linked) this.linkedTaskSheetVisible = false;
+        else this.closeActiveSheet();
+      },
+      onBusyChanged: (busy: boolean) => { this.learningBusy = busy; }
+    }).width('100%').height('100%')
+      .attributeModifier(new CompatibleLightModifier(24, CompatibleSheetMaterial.isEnabled(), true));
   }
 
   @Builder
@@ -3073,7 +3218,11 @@ struct Home {
         ListItem() {
           Column() {
             ImmersiveHeader({ barHeight: this.todayHeroHeight() }) {
-              this.todayHeroCard();
+              if (CompatibleSheetMaterial.isEnabled()) {
+                ImmersiveEventCard({ hero: true, content: () => { this.todayHeroCard(); } })
+              } else {
+                this.todayHeroCard();
+              }
             }
           }
           .width('100%')
@@ -3081,28 +3230,15 @@ struct Home {
           .clip(true)
         }
 
-        ForEach(this.upcomingExams(), (exam: EasEventItem) => {
-          ListItem() {
-            this.todayExamCard(exam);
-          }
-        }, (exam: EasEventItem) => exam.id + '|' + exam.from.toString() + '|' + exam.to.toString() + '|' + exam.name +
-          '|' + exam.place)
-
-        ForEach(this.todayLearningTasks, (task: LearningTask) => {
-          ListItem() {
-            this.todayLearningTaskCard(task);
-          }
-        }, (task: LearningTask) => task.id + '|' + task.updatedAt.toString())
-
         if (!this.hasTimetable) {
           ListItem() {
             this.emptyToday();
           }
-        } else if (this.todayItems.length > 0) {
+        } else if (this.todayScheduleItems().length > 0) {
           ListItem() {
-            this.todaySectionHeader();
+            this.todaySectionHeader({ title: '今日安排', countText: this.todayScheduleItems().length + ' 项' });
           }
-          ForEach(this.todayItems, (event: EasEventItem) => {
+          ForEach(this.todayScheduleItems(), (event: EasEventItem) => {
             ListItem() {
               if (CompatibleSheetMaterial.isEnabled()) {
                 ImmersiveEventCard({ content: () => { this.eventRow(event, true); } })
@@ -3112,6 +3248,24 @@ struct Home {
               }
             }
           }, (event: EasEventItem) => Home.todayItemKey(event));
+        }
+
+        if (this.todayExamItems().length > 0) {
+          ListItem() {
+            this.todaySectionHeader({ title: '考试', countText: this.todayExamItems().length + ' 项' });
+          }
+          ForEach(this.todayExamItems(), (exam: EasEventItem) => {
+            ListItem() {
+              this.todayExamCard(exam);
+            }
+          }, (exam: EasEventItem) => Home.todayItemKey(exam));
+        }
+
+        ListItem() {
+          this.todaySectionHeader({ title: '待办', countText: '共 ' + this.todayLearningTaskCount + ' 项未处理' });
+        }
+        ListItem() {
+          this.todayLearningTaskEntry();
         }
       }
       .width('100%')
@@ -3260,41 +3414,141 @@ struct Home {
     .padding(20)
     .backgroundColor($r('app.color.hita_primary_fill'))
     .borderRadius(HitaDesign.heroRadius)
-    .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_primary_fill'), true));
+    .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_primary_fill'), true))
+    .onClick(this.heroDetailAction());
   }
 
   @Builder
   todayExamCard(exam: EasEventItem) {
-    this.todayReminderCard(exam.name, (_now: number) => Home.examWhenText(exam),
-      (now: number) => Home.examDistanceText(exam, now), HitaTagTone.EXAM, COLOR_EXAM,
-      () => { this.getUIContext().getRouter().pushUrl({ url: 'pages/ExamPage' }); });
+    if (CompatibleSheetMaterial.isEnabled()) {
+      ImmersiveEventCard({ content: () => { this.todayExamRow(exam, true); } })
+    } else {
+      this.todayExamRow(exam);
+    }
   }
 
   @Builder
-  private todayLearningTaskCard(task: LearningTask) {
-    this.todayReminderCard(task.title, (now: number) => Home.learningTaskWhenText(task, now),
-      (_now: number) => task.kind === LearningTaskKind.REVIEW ? '复习' : '作业',
-      task.kind === LearningTaskKind.REVIEW ? HitaTagTone.EXAM : HitaTagTone.BRAND,
-      task.kind === LearningTaskKind.REVIEW ? COLOR_EXAM : COLOR_CLASS, () => this.openLearningTask(task.id));
+  private todayLearningTaskEntry() {
+    if (this.todayTaskDeck.length > 1) {
+      Stack({ alignContent: Alignment.Top }) {
+        if (this.todayDeckDrag > 0) {
+          this.todayTaskLayer(2);
+        }
+        this.todayTaskLayer(1);
+        this.todayTaskLayer(0);
+        if (this.todayDeckDrag < 0) {
+          this.todayTaskLayer(-1);
+        }
+      }
+      .width('100%')
+      .padding({ top: HitaDesign.space2xs, bottom: HitaDesign.spaceXs })
+      .accessibilityDescription('上下滑动切换待办，当前第 ' + (this.todayTaskIndex + 1).toString() + ' 项')
+      .priorityGesture(PanGesture({ direction: PanDirection.Vertical, distance: HitaDesign.spaceXs })
+        .onActionStart(() => { this.beginTodayDeckDrag(); })
+        .onActionUpdate((event: GestureEvent) => { this.dragTodayDeck(event.offsetY); })
+        .onActionEnd((event: GestureEvent) => { this.finishTodayDeckDrag(event); })
+        .onActionCancel(() => { this.settleTodayDeck(0); }))
+      .onDisAppear(() => { this.resetTodayDeckMotion(); });
+    } else {
+      this.todayLearningTaskFace(0);
+    }
   }
 
   @Builder
-  private todayReminderCard(name: string, detail: (now: number) => string, tag: (now: number) => string, tone: HitaTagTone,
-    railColor: ResourceColor, onOpen: () => void) {
+  private todayTaskLayer(slot: number) {
+    Stack() {
+      this.todayLearningTaskFace(slot);
+      if (slot - this.todayDeckDrag > 0) {
+        Row()
+          .width('100%').height(this.todayDeckHeight)
+          .position({ x: 0, y: 0 })
+          .backgroundColor(COLOR_TEXT_SECONDARY)
+          .opacity(0.30 * Math.min(1, slot - this.todayDeckDrag))
+          .accessibilityLevel('no')
+          .hitTestBehavior(HitTestMode.None);
+      }
+    }
+    .width('100%')
+    .backgroundColor(COLOR_CARD)
+    .borderRadius(HitaDesign.cardRadius)
+    .clip(true)
+    .onSizeChange((_old: SizeOptions, size: SizeOptions) => {
+      const width: number = Number(size.width);
+      const height: number = Number(size.height);
+      if (slot === 0 && Number.isFinite(height) && height > 0 && Number.isFinite(width) && width > 0) {
+        this.todayDeckWidth = width;
+        this.todayDeckHeight = height;
+      }
+    })
+    // The quadrilateral is expressed in local pixels from the top-left corner.
+    .scale({ x: 1, y: 1, centerX: '0%', centerY: '0%' })
+    .transform3D(taskFlipProjection(slot - this.todayDeckDrag, this.getUIContext().vp2px(this.todayDeckWidth),
+      this.getUIContext().vp2px(this.todayDeckHeight)))
+    .opacity(taskFlipOpacity(slot - this.todayDeckDrag))
+    .hitTestBehavior(slot === 0 && !this.todayDeckMoving ? HitTestMode.Default : HitTestMode.None)
+    .accessibilityLevel(slot === 0 ? 'auto' : 'no-hide-descendants');
+  }
+
+  @Builder
+  private todayLearningTaskFace(slot: number) {
+    if (CompatibleSheetMaterial.isEnabled()) {
+      ImmersiveEventCard({ content: () => { this.todayLearningTaskRow(slot, true); } })
+    } else {
+      this.todayLearningTaskRow(slot);
+    }
+  }
+
+  @Builder
+  private todayLearningTaskRow(slot: number, immersive: boolean = false) {
+    // The material keeps its content builder. Resolve the task inside the row so its text observes page changes.
     Row() {
-      Row()
-        .width(EVENT_RAIL_WIDTH)
-        .height(EVENT_RAIL_HEIGHT)
-        .borderRadius(EVENT_RAIL_WIDTH / 2)
-        .backgroundColor(railColor);
+      this.todayTimeRail({ color: this.todayDeckTaskAt(slot) === undefined ? COLOR_TEXT_HINT : COLOR_PRIMARY,
+        primary: Home.todayTaskTime(this.todayDeckTaskAt(slot)), secondary: '截止' });
       Column() {
-        Text(name)
+        Text(this.todayDeckTaskAt(slot)?.title ?? (this.todayLearningTaskCount === 0 ? '暂无未处理待办' : '没有设为今日显示的待办'))
           .fontSize(HitaDesign.body)
           .fontWeight(FontWeight.Medium)
           .fontColor(COLOR_TEXT_PRIMARY)
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis });
-        Text(detail(this.nowTick))
+        Text(Home.todayTaskSubtitle(this.todayDeckTaskAt(slot)))
+          .fontSize(HitaDesign.caption)
+          .fontColor(COLOR_TEXT_SECONDARY)
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .margin({ top: HitaDesign.space2xs });
+      }
+      .layoutWeight(1)
+      .alignItems(HorizontalAlign.Start)
+      .margin({ left: HitaDesign.spaceSm });
+    }
+    .width('100%')
+    .padding(HitaDesign.inset)
+    .alignItems(VerticalAlign.Center)
+    .backgroundColor(immersive ? Color.Transparent : COLOR_CARD)
+    .borderRadius(HitaDesign.cardRadius)
+    .border({ width: 1, color: $r('app.color.hita_divider_edf1f7') })
+    .clip(true)
+    .hitTestBehavior(immersive ? HitTestMode.Transparent : HitTestMode.Default)
+    .onClick(() => this.openAcademicPanel(5));
+  }
+
+  @Builder
+  private todayExamRow(exam: EasEventItem, immersive: boolean = false) {
+    Row() {
+      Row()
+        .width(EVENT_RAIL_WIDTH)
+        .height(EVENT_RAIL_HEIGHT)
+        .borderRadius(EVENT_RAIL_WIDTH / 2)
+        .backgroundColor(COLOR_EXAM);
+      Column() {
+        Text(exam.name)
+          .fontSize(HitaDesign.body)
+          .fontWeight(FontWeight.Medium)
+          .fontColor(COLOR_TEXT_PRIMARY)
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis });
+        Text(Home.examWhenText(exam))
           .fontSize(HitaDesign.caption)
           .fontColor(COLOR_TEXT_SECONDARY)
           .maxLines(1)
@@ -3304,25 +3558,25 @@ struct Home {
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start)
       .margin({ left: HitaDesign.spaceSm, right: HitaDesign.spaceSm });
-      HitaTag({ text: tag(this.nowTick), tone: tone });
+      HitaTag({ text: Home.examDistanceText(exam, this.nowTick), tone: HitaTagTone.EXAM });
     }
     .width('100%')
     .padding(HitaDesign.inset)
-    .backgroundColor(COLOR_CARD)
+    .backgroundColor(immersive ? Color.Transparent : COLOR_CARD)
     .borderRadius(HitaDesign.cardRadius)
     .alignItems(VerticalAlign.Center)
-    .onClick(onOpen);
+    .onClick(() => this.openEventDetail(exam.id));
   }
 
   @Builder
-  todaySectionHeader() {
+  todaySectionHeader($$: TodaySectionLabels) {
     Row() {
-      Text('今日安排')
+      Text($$.title)
         .fontSize(HitaDesign.section)
         .fontWeight(FontWeight.Medium)
         .fontColor(COLOR_TEXT_PRIMARY);
       Blank();
-      Text(this.todayItems.length.toString() + ' 项')
+      Text($$.countText)
         .fontSize(HitaDesign.caption)
         .fontColor(COLOR_TEXT_HINT);
     }
@@ -3350,28 +3604,38 @@ struct Home {
   }
 
   @Builder
-  eventRow(event: EasEventItem, immersive: boolean = false) {
+  private todayTimeRail($$: TodayTimeRailOptions) {
     Row() {
       Row()
         .width(EVENT_RAIL_WIDTH)
         .height(EVENT_RAIL_HEIGHT)
         .borderRadius(EVENT_RAIL_WIDTH / 2)
-        .backgroundColor(event.type === EasEventType.CLASS ?
-          Home.canvasColorCss(timetableBlockColor(event.color)) : Home.eventColor(event.type));
-
-      Column() {
-        Text(EasTimeTools.printTime(event.from))
-          .fontSize(HitaDesign.body)
-          .fontWeight(FontWeight.Medium)
-          .fontColor(COLOR_TEXT_PRIMARY);
-        Text(EasTimeTools.printTime(event.to))
-          .fontSize(HitaDesign.caption)
-          .fontColor(COLOR_TEXT_HINT)
-          .margin({ top: HitaDesign.space2xs });
+        .backgroundColor($$.color);
+      if ($$.primary.length > 0) {
+        Column() {
+          Text($$.primary)
+            .fontSize(HitaDesign.body)
+            .fontWeight(FontWeight.Medium)
+            .fontColor(COLOR_TEXT_PRIMARY);
+          Text($$.secondary)
+            .fontSize(HitaDesign.caption)
+            .fontColor(COLOR_TEXT_HINT)
+            .margin({ top: HitaDesign.space2xs });
+        }
+        .width(52)
+        .alignItems(HorizontalAlign.Start)
+        .margin({ left: HitaDesign.spaceSm });
       }
-      .width(52)
-      .alignItems(HorizontalAlign.Start)
-      .margin({ left: HitaDesign.spaceSm });
+    }
+    .alignItems(VerticalAlign.Center);
+  }
+
+  @Builder
+  eventRow(event: EasEventItem, immersive: boolean = false) {
+    Row() {
+      this.todayTimeRail({ color: event.type === EasEventType.CLASS ?
+        Home.canvasColorCss(timetableBlockColor(event.color)) : Home.eventColor(event.type),
+        primary: EasTimeTools.printTime(event.from), secondary: EasTimeTools.printTime(event.to) });
 
       Column() {
         Row() {
@@ -3419,7 +3683,9 @@ struct Home {
       color: event.containsTimestamp(this.nowTick) ? $r('app.color.hita_focus') : $r('app.color.hita_divider_edf1f7') })
     .clip(true)
     .opacity(1)
-    .hitTestBehavior(immersive ? HitTestMode.Transparent : HitTestMode.Default);
+    .hitTestBehavior(immersive ? HitTestMode.Transparent : HitTestMode.Default)
+    .onClick(event.type === EasEventType.CLASS || event.type === EasEventType.EXAM ?
+      () => this.openEventDetail(event.id) : undefined);
   }
 
   @Builder
@@ -3571,7 +3837,10 @@ struct Home {
               .onDisAppear(() => {
                 this.stopTimetableMarquee();
               })
-              Blank().height(this.timetableScrollEndInset());
+              Blank().height(this.timetableScrollEndInset())
+                .onSizeChange((oldSize: SizeOptions, newSize: SizeOptions) => {
+                  if (oldSize.height !== newSize.height) this.drawTimetableNow();
+                });
             }
             .width('100%')
           }
@@ -3641,7 +3910,7 @@ struct Home {
       }
 
       Column() {
-        ImmersiveHeader({ barHeight: 110 }) {
+        ImmersiveHeader({ barHeight: HitaDesign.headerHeight }) {
           Row() {
             Column() {
               Text(this.currentTimetable === undefined ? '时间表' :
@@ -3712,8 +3981,8 @@ struct Home {
             })
           }
           .width('100%')
-          .padding({ left: HitaDesign.inset, right: HitaDesign.inset, top: HitaDesign.spaceMd,
-            bottom: HitaDesign.spaceSm })
+          .height(HitaDesign.headerHeight)
+          .padding({ left: HitaDesign.inset, right: HitaDesign.inset })
           .alignItems(VerticalAlign.Center)
           .backgroundColor(Color.Transparent)
         }
@@ -3938,7 +4207,7 @@ struct Home {
   @Builder
   desktopWidgetSettings() {
     Column() {
-      HitaListRow({ symbol: $r('sys.symbol.clock'), title: '桌面服务卡片', subtitle: '下一节课倒计时',
+      HitaListRow({ symbol: $r('sys.symbol.clock'), title: '桌面服务卡片', subtitle: '课程倒计时、考试与学习待办',
         accessory: HitaRowAccessory.DISCLOSURE, expanded: this.widgetMenuExpanded, onTap: () => {
           this.getUIContext().animateTo({ duration: 300, curve: Curve.EaseInOut }, () => {
             this.widgetMenuExpanded = !this.widgetMenuExpanded;

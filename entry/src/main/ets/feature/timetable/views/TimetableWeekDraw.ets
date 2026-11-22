@@ -24,13 +24,15 @@ import { TimetableBackdropColors, timetableLineInk } from '../../../common/theme
 export const DOW_NAMES: string[] = ['一', '二', '三', '四', '五', '六', '日'];
 /** 轴起点 08:00（对应源 startTime=800）。 */
 export const AXIS_START_HOUR: number = 8;
-/** 轴终点 23:00；更晚的课程通过纵向滚动继续查看。 */
+/** 默认轴终点 23:00；按当前周的早晚课程扩展。 */
 export const AXIS_END_HOUR: number = 23;
-/** 固定周标题高度；56vp 是 iOS 紧凑课表使用的每小时高度上限。 */
-export const TIMETABLE_HEADER_HEIGHT: number = 64;
-export const TIMETABLE_HOUR_HEIGHT: number = 50;
-/** 安卓端在固定日期栏和首个整点之间保留 24dp。 */
-export const TIMETABLE_GRID_TOP_PADDING: number = 24;
+/** 两行日期共用的栏高。 */
+export const TIMETABLE_HEADER_HEIGHT: number = 44;
+/** 首个整点标签以网格线为基线，顶部要容纳 10 vp 的字形。 */
+export const TIMETABLE_GRID_TOP_PADDING: number = 12;
+const TIMETABLE_GRID_BOTTOM_PADDING: number = 8;
+/** Original scrolling scale: a 105-minute phone course occupies 87.5 vp. */
+const TIMETABLE_PHONE_HOUR_HEIGHT: number = 50;
 /** 日期栏月份格和 Canvas 时间轴共用的左侧栏宽度。 */
 export const TIMETABLE_GUTTER_WIDTH: number = 48;
 
@@ -162,6 +164,17 @@ export class TimetableAxis {
 
   hours(): number {
     return this.endHour - this.startHour;
+  }
+
+  canvasHeight(viewportHeight: number, phoneLayout: boolean): number {
+    const minHeight = phoneLayout ? TIMETABLE_GRID_TOP_PADDING +
+      this.hours() * TIMETABLE_PHONE_HOUR_HEIGHT + TIMETABLE_GRID_BOTTOM_PADDING : 1;
+    return Math.max(minHeight, viewportHeight);
+  }
+
+  hourHeight(canvasHeight: number): number {
+    const gridHeight = canvasHeight - TIMETABLE_GRID_TOP_PADDING - TIMETABLE_GRID_BOTTOM_PADDING;
+    return Math.max(1, gridHeight / this.hours());
   }
 
   same(other: TimetableAxis): boolean {
@@ -697,7 +710,7 @@ export function drawTimetableWeek(ctx: CanvasRenderingContext2D, w: number, h: n
     const titleScreen: number = Math.max(minTitleSize,
       Math.min(maxTitleFromSpace, 13 * textScale * lengthScale));
     const titleFont: number = Math.max(1, Math.round(titleScreen));
-    const titleLineHeight: number = Math.max(1, Math.round(titleScreen * 1.15));
+    const titleLineHeight: number = Math.max(1, Math.floor(titleScreen * 1.15));
     // Chinese glyphs are close to one em wide.  A small allowance lets a
     // three-line card retain the full subject name instead of truncating at
     // only two characters on narrow day columns.
@@ -715,7 +728,7 @@ export function drawTimetableWeek(ctx: CanvasRenderingContext2D, w: number, h: n
     }
     if (titleLines.length > 0) {
       const titleAreaBottom: number = canShowPlace ?
-        y + bh - placeHeight - 2 : y + bh - 8;
+        y + bh - placeHeight - 2 : y + bh - titlePaddingScreen;
       const titleAreaTop: number = y + Math.round(titlePaddingScreen);
       const titleHeight: number = titleLines.length * titleLineHeight;
       let titleY: number = titleAreaTop +

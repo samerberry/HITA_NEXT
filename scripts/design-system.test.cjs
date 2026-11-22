@@ -116,7 +116,7 @@ test('white icons outside a material host sit on solid fills', () => {
 test('pages brought onto the scale keep 4 vp spacing and token sizes', () => {
   const home = read('pages/Home.ets');
   const pilot = ['tabToday', 'todayHeader', 'todayHeroCard', 'todayExamCard', 'todaySectionHeader', 'emptyToday',
-    'todayLearningTaskCard', 'todayReminderCard',
+    'todayLearningTaskEntry', 'todayLearningTaskRow', 'todayTimeRail', 'todayExamRow',
     'eventRow', 'tabMine', 'desktopWidgetSettings', 'appearanceSettings', 'appearanceOption', 'userCard',
     'sessionSheet', 'sessionAccountPanel', 'sessionCampusSelector', 'moreShortcut', 'moreSectionTitle', 'classReminderSettings'];
   for (const name of pilot) {
@@ -131,9 +131,12 @@ test('pages brought onto the scale keep 4 vp spacing and token sizes', () => {
   assert.ok((more.match(/HitaListRow\(\{/g) || []).length >= 12);
   assert.doesNotMatch(home, /moreNavigationRow/);
   assert.match(builder(home, 'eventRow'), /HitaTag\(\{ text: Home\.todayChipText/);
-  assert.match(builder(home, 'todayExamCard'), /this\.todayReminderCard\([\s\S]*Home\.examDistanceText\(exam, now\), HitaTagTone\.EXAM/);
-  assert.match(builder(home, 'todayLearningTaskCard'), /this\.todayReminderCard\([\s\S]*Home\.learningTaskWhenText\(task, now\)/);
-  assert.match(builder(home, 'todayReminderCard'), /HitaTag\(\{ text: tag\(this\.nowTick\), tone: tone \}\)/);
+  assert.match(builder(home, 'todayExamCard'), /ImmersiveEventCard\([\s\S]*this\.todayExamRow\(exam, true\)/);
+  for (const name of ['eventRow', 'todayLearningTaskRow']) {
+    assert.match(builder(home, name), /this\.todayTimeRail\(/);
+    assert.match(builder(home, name), /\.padding\(HitaDesign\.inset\)/);
+  }
+  assert.match(builder(home, 'todayExamRow'), /HitaTag\(\{ text: Home\.examDistanceText\(exam, this\.nowTick\), tone: HitaTagTone\.EXAM/);
   assert.match(builder(home, 'sessionAccountPanel'), /HitaTag\(\{ text: .*this\.sessionSheetStatus/);
   // List group headings are quieter than the 22 fp page title.
   assert.match(builder(home, 'moreSectionTitle'),

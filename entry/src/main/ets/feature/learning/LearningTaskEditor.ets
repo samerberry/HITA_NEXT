@@ -4,11 +4,11 @@ import { LearningContext, LearningTask, LearningTaskKind, LearningTaskRules } fr
 import { EasEventItem, EasEventType, EasTermSubject } from '../../common/model/timetable/TimetableModels';
 import { EasTimeTools } from '../../common/util/EasTimeTools';
 import { HitaDesign } from '../../common/theme/HitaDesign';
-import { CompatibleMaterialModifier } from '../../common/theme/CompatibleMaterialModifier';
 import { CompatiblePickerMaterial } from '../../common/theme/CompatiblePickerMaterial';
 import { CompatibleSheetMaterial } from '../../common/theme/CompatibleSheetMaterial';
 import { ImmersiveHeader } from '../../common/components/ImmersiveHeader';
 import { HeaderBackButton } from '../../common/components/HeaderBackButton';
+import { HeaderActionButton } from '../../common/components/HeaderActionButton';
 import { HitaButton, HitaButtonVariant } from '../../common/components/HitaButton';
 import { SelectionSheetList, SelectionSheetOption } from '../../common/components/SelectionSheetList';
 import { SheetContent } from '../../common/components/SheetContent';
@@ -24,6 +24,7 @@ export struct LearningTaskEditor {
   onSaved: () => void = () => {};
   onDelete: () => void = () => {};
   onBusyChanged: (busy: boolean) => void = () => {};
+  onDraftChanged: (dirty: boolean) => void = () => {};
   @State draft: LearningTask = new LearningTask();
   @State title: string = '';
   @State note: string = '';
@@ -44,10 +45,16 @@ export struct LearningTaskEditor {
 
   aboutToDisappear(): void { this.active = false; }
 
+  private reportDraftChange(): void {
+    this.onDraftChanged(this.title !== this.initialTask.title || this.note !== this.initialTask.note ||
+      JSON.stringify(this.draft) !== JSON.stringify(this.initialTask));
+  }
+
   private update(task: LearningTask): void {
     if (!this.active || this.saving) return;
     this.draft = task;
     this.error = '';
+    this.reportDraftChange();
   }
 
   private subjectText(): string {
@@ -220,18 +227,18 @@ export struct LearningTaskEditor {
         Row({ space: 12 }) {
           HeaderBackButton({ onBack: () => { if (!this.saving) this.onCancel(); } }).enabled(!this.saving)
           Text(this.isNew ? (this.draft.kind === LearningTaskKind.REVIEW ? '添加复习任务' : '添加作业') : '编辑待办')
-            .fontSize(HitaDesign.section).fontWeight(FontWeight.Medium).fontColor($r('app.color.hita_text')).layoutWeight(1)
-          Button(this.saving ? '保存中' : '保存', { type: ButtonType.Capsule }).height(36).fontSize(HitaDesign.caption)
-            .backgroundColor($r('app.color.hita_primary_fill')).fontColor($r('app.color.hita_on_primary'))
-            .attributeModifier(new CompatibleMaterialModifier($r('app.color.hita_primary_fill'), true))
-            .enabled(!this.saving).onClick(() => { void this.save(); })
+            .fontSize(HitaDesign.title).fontWeight(FontWeight.Medium).fontColor($r('app.color.hita_text')).layoutWeight(1)
+          HeaderActionButton({ label: this.saving ? '保存中' : '保存', disabled: this.saving,
+            materialEnabled: CompatibleSheetMaterial.isEnabled(), onTap: () => { void this.save(); } })
         }.width('100%').height(60).padding({ left: 16, right: 16 })
       }
       Scroll() {
         Column({ space: 16 }) {
           Column() {
             TextInput({ text: this.title, placeholder: '待办名称' }).fontSize(HitaDesign.body).height(56)
-              .backgroundColor(Color.Transparent).maxLength(120).onChange(value => { this.title = value; this.error = ''; })
+              .backgroundColor(Color.Transparent).maxLength(120).onChange(value => {
+                this.title = value; this.error = ''; this.reportDraftChange();
+              })
               .enabled(!this.saving)
             if (this.draft.kind === LearningTaskKind.HOMEWORK) {
               this.field('关联课程', () => this.subjectText(), () => this.chooseAssociation())
@@ -289,7 +296,9 @@ export struct LearningTaskEditor {
           }.width('100%').borderRadius(HitaDesign.cardRadius).backgroundColor(CompatibleSheetMaterial.cardColor($r('app.color.hita_surface')))
           TextArea({ text: this.note, placeholder: '备注（选填）' }).fontSize(HitaDesign.body).constraintSize({ minHeight: 112 })
             .maxLength(4000).backgroundColor(CompatibleSheetMaterial.cardColor($r('app.color.hita_surface')))
-            .borderRadius(HitaDesign.cardRadius).onChange(value => { this.note = value; }).enabled(!this.saving)
+            .borderRadius(HitaDesign.cardRadius).onChange(value => {
+              this.note = value; this.error = ''; this.reportDraftChange();
+            }).enabled(!this.saving)
           if (this.error.length > 0) {
             Text(this.error).fontSize(HitaDesign.caption).fontColor($r('app.color.hita_error')).width('100%')
           }

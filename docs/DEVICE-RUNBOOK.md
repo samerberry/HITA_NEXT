@@ -21,6 +21,8 @@ $env:DEVECO_SDK_HOME = 'C:\Program Files\Huawei\DevEco Studio\sdk'
 entry/build/default/outputs/default/entry-default-signed.hap
 ```
 
+只生成 `entry-default-unsigned.hap` 时，先看 `build-profile.json5` 里 `products[]` 是否仍写着 `"signingConfig": "default"`。DevEco 重新生成签名或重命名工程目录后会丢掉这个绑定，构建不报错但静默跳过签名。
+
 发布构建使用 `store` 产品及发布签名，与本地调试签名分开：
 
 ```powershell

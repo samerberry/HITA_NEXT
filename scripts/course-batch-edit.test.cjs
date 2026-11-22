@@ -175,7 +175,7 @@ test('both entry points share the detail component and the color strip has no ac
   assert.match(detail,/deleteLabel: '删除'/);assert.doesNotMatch(detail,/cycleColor|SUBJECT_PALETTE/);
 });
 
-function editor(choices = [1,0], writeFailure = false) {
+function editor(choices = [1,1], writeFailure = false) {
   const original=event('a',1), writes=[],changes=[];
   const db={replaceCourseOccurrences:async(before,after)=>{
     if(writeFailure)throw Error('disk full');
@@ -190,7 +190,11 @@ function editor(choices = [1,0], writeFailure = false) {
     name:original.name,place:'new room',teacher:original.teacher,hour:8,minute:0,endHour:9,endMinute:0,
     loading:false,editorActive:true,sheetMode:true,onSaved:(_ev,items)=>{saved=items;},
     onChanged:async()=>changes.push('changed')});
-  form.getUIContext=()=>({getPromptAction:()=>({showDialog:async()=>{
+  form.getUIContext=()=>({getPromptAction:()=>({showDialog:async(options)=>{
+    if (options.title.startsWith('已')) assert.deepEqual(options.buttons, [
+      {text:'撤销',color:$r('app.color.hita_text_secondary_72809a')},
+      {text:'完成',color:$r('app.color.hita_primary_3390ec')}
+    ]);
     const next=choices.shift();if(next instanceof Error)throw next;return {index:next};
   },showToast:message=>toasts.push(message)})});
   return {form,writes,changes,toasts,get saved(){return saved;}};
@@ -296,7 +300,7 @@ test('invalid edit period ranges cannot write and period reschedules can be undo
     assert.equal(h.form.canSave(), false);
     await h.form.save(); assert.equal(h.writes.length, 0);
   }
-  const h = editor([1, 1]); Object.assign(h.form, { timeMode: 1, fromPeriod: 3, toPeriod: 4 });
+  const h = editor([1, 0]); Object.assign(h.form, { timeMode: 1, fromPeriod: 3, toPeriod: 4 });
   await h.form.save();
   assert.equal(h.writes.length, 2);
   assert.deepEqual(h.writes[1].after, h.writes[0].before);
@@ -304,7 +308,7 @@ test('invalid edit period ranges cannot write and period reschedules can be undo
 });
 test('editor confirms the affected scope and applies or undoes both reschedule and stop',async()=>{
   for(const stopping of [false,true])for(const undo of [false,true]) {
-    const harness=editor([1,undo?1:0]);harness.form.stoppingCourse=stopping;
+    const harness=editor([1,undo?0:1]);harness.form.stoppingCourse=stopping;
     await harness.form.save();
     assert.equal(harness.writes.length,undo?2:1);
     assert.equal(harness.writes[0].before.length,2);

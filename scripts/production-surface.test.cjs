@@ -79,7 +79,7 @@ test('today empty state has no login or timetable management actions', () => {
   assert.match(today, /还没有可展示的课表/);
   assert.doesNotMatch(today, /emptyTimetableActions|Button\(|openSessionSheet|pushUrl/);
   // The hero card and the exam card are also on the Today tab; neither offers account or import actions.
-  const hero = home.slice(home.indexOf('  todayHeroCard()'), home.indexOf('  todaySectionHeader()'));
+  const hero = home.slice(home.indexOf('  todayHeroCard()'), home.indexOf('  todaySectionHeader(title:'));
   assert.doesNotMatch(hero, /emptyTimetableActions|openSessionSheet|ImportTimetablePage|TimetableManagerPage/);
 });
 

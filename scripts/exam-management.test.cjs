@@ -359,7 +359,7 @@ test('editor restores exam fields and updates in place without changing its iden
   editor.onSaved = () => { saved++; };
   editor.name = 'Updated exam';
   editor.place = 'M-202';
-  editor.teacher = 'Updated teacher';
+  editor.teacher = 'Unused form value';
   editor.dayOffset++;
   editor.hour = 10;
   editor.endHour = 12;
@@ -370,7 +370,7 @@ test('editor restores exam fields and updates in place without changing its iden
   }
   assert.equal(updated.name, 'Updated exam');
   assert.equal(updated.place, 'M-202');
-  assert.equal(updated.teacher, 'Updated teacher');
+  assert.equal(updated.teacher, original.teacher);
   assert.equal(updated.from, original.from + 25 * 3600000);
   assert.equal(updated.to, original.to + 25 * 3600000);
   assert.deepEqual(calls.updates, ['a']);

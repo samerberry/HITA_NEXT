@@ -87,6 +87,8 @@ export struct EventEditorForm {
   @State minute: number = 0;
   @State endHour: number = 15;
   @State endMinute: number = 0;
+  @State startTimeChosen: boolean = false;
+  @State endTimeChosen: boolean = false;
   @State hint: string = '';
   @State saved: boolean = false;
   @State loading: boolean = true;
@@ -297,11 +299,17 @@ export struct EventEditorForm {
 
   private usesPeriods(): boolean { return this.typeIdx === 1 && this.timeMode === 1; }
 
+  private clockMinutes(start: boolean): number {
+    if (this.typeIdx === 1 && this.editId.length === 0 &&
+      !(start ? this.startTimeChosen : this.endTimeChosen)) return -1;
+    return start ? this.hour * 60 + this.minute : this.endHour * 60 + this.endMinute;
+  }
+
   /** Match exact boundaries only; opening an editor must never round a custom course time. */
   private matchClockPeriods(): void {
     const periods = this.courseTimetable?.scheduleStructure;
-    const start: number = this.hour * 60 + this.minute;
-    const end: number = this.endHour * 60 + this.endMinute;
+    const start: number = this.clockMinutes(true);
+    const end: number = this.clockMinutes(false);
     const fromIndex: number = periods?.findIndex((period): boolean =>
       period.from.hour * 60 + period.from.minute === start) ?? -1;
     const toIndex: number = periods?.findIndex((period): boolean =>
@@ -320,6 +328,8 @@ export struct EventEditorForm {
         this.minute = time[0] % 60;
         this.endHour = Math.floor(time[1] / 60);
         this.endMinute = time[1] % 60;
+        this.startTimeChosen = true;
+        this.endTimeChosen = true;
       }
     } else {
       this.matchClockPeriods();
@@ -329,7 +339,7 @@ export struct EventEditorForm {
   }
 
   private selectedTime(): number[] {
-    if (!this.usesPeriods()) return [this.hour * 60 + this.minute, this.endHour * 60 + this.endMinute];
+    if (!this.usesPeriods()) return [this.clockMinutes(true), this.clockMinutes(false)];
     const periods = this.courseTimetable?.scheduleStructure;
     if (periods === undefined || this.fromPeriod < 1 || this.toPeriod < this.fromPeriod ||
       this.toPeriod > periods.length) return [-1, -1];
@@ -482,7 +492,10 @@ export struct EventEditorForm {
       }
     }
     const time = this.selectedTime();
-    if (time[0] < 0 || time[1] < 0) return '请选择上课节次';
+    if (time[0] < 0 || time[1] < 0) {
+      if (this.usesPeriods()) return '请选择上课节次';
+      return time[0] < 0 ? '请选择开始时间' : '请选择结束时间';
+    }
     if (checkTimeOrder && time[1] <= time[0]) return '结束时间必须晚于开始时间';
     return '';
   }
@@ -517,7 +530,9 @@ export struct EventEditorForm {
     const lastDate: number = this.dateMode === 0 ? this.todayBase + this.dayOffset * DAY_MS :
       EasTimetable.mondayMsOf(timetable.startTime) +
       (Math.max(1, ...this.selectedWeeks) - 1) * 7 * DAY_MS + (Math.max(1, ...this.selectedWeekdays) - 1) * DAY_MS;
-    const end: number = lastDate + this.selectedTime()[1] * 60000;
+    const endMinute = this.selectedTime()[1];
+    if (endMinute < 0) return '';
+    const end: number = lastDate + endMinute * 60000;
     if (end <= timetable.endTime) return '';
     const date: Date = new Date(CourseDateSelection.weekEnd(end));
     return '保存后课表将延长至 ' + date.getFullYear().toString() + '-' +
@@ -529,9 +544,11 @@ export struct EventEditorForm {
     if (start) {
       this.hour = hour;
       this.minute = minute;
+      this.startTimeChosen = true;
     } else {
       this.endHour = hour;
       this.endMinute = minute;
+      this.endTimeChosen = true;
     }
     this.hint = '';
     return true;
@@ -547,13 +564,18 @@ export struct EventEditorForm {
       return;
     }
     this.timePicker?.close();
+    // The wheel needs a cursor even when the field is empty; only 确定 commits it.
+    const selected = this.clockMinutes(start);
+    const other = this.clockMinutes(!start);
+    const now = new Date();
+    const cursor = selected >= 0 ? selected : (other >= 0 ? other : now.getHours() * 60 + now.getMinutes());
     const material: SystemUiMaterial | undefined = CompatiblePickerMaterial.dialogMaterial(true);
     // ArkUI only lowers the custom dialog builder inside a direct options literal.
     this.timePicker = new CustomDialogController({
       builder: CourseTimePickerDialog({
         title: start ? '开始时间' : '结束时间',
-        initialHour: start ? this.hour : this.endHour,
-        initialMinute: start ? this.minute : this.endMinute,
+        initialHour: Math.floor(cursor / 60),
+        initialMinute: cursor % 60,
         immersive: true,
         onAccept: (hour: number, minute: number): boolean => this.acceptTime(start, hour, minute)
       }),
@@ -658,9 +680,12 @@ export struct EventEditorForm {
         try {
           const result = await this.getUIContext().getPromptAction().showDialog({
             title: '已' + operation + ' ' + before.length.toString() + ' 个课次',
-            buttons: [{ text: '完成', color: $r('app.color.hita_text_secondary_72809a') }, { text: '撤销', color: $r('app.color.hita_primary_3390ec') }]
+            buttons: [
+              { text: '撤销', color: $r('app.color.hita_text_secondary_72809a') },
+              { text: '完成', color: $r('app.color.hita_primary_3390ec') }
+            ]
           });
-          if (result.index === 1) {
+          if (result.index === 0) {
             try {
               await rdb.replaceCourseOccurrences(after, before, original.timetableId);
               undone = true; finished = true;
@@ -696,7 +721,8 @@ export struct EventEditorForm {
     ev.type = EventEditorForm.typeOf(this.typeIdx);
     ev.name = this.name.trim();
     ev.place = this.place.trim();
-    ev.teacher = this.teacher.trim();
+    // Imported exams store their exam type here; the exam form does not edit it.
+    if (ev.type !== EasEventType.EXAM) ev.teacher = this.teacher.trim();
     ev.subjectId = ev.type === EasEventType.EXAM ? this.examSubjectId : this.subjectId;
     // Prefer the explicit target, then the user's current timetable.
     ev.timetableId = this.timetableId;
@@ -1201,17 +1227,18 @@ export struct EventEditorForm {
           .backgroundColor($r('app.color.hita_surface_soft'))
           .onChange((value: string) => { this.place = value; })
       }.width('100%')
-      Row({ space: HitaDesign.gap }) {
-        Text(this.typeIdx === 2 ? '教师' : '联系人')
-          .fontSize(HitaDesign.body).fontColor($r('app.color.hita_text_secondary'))
-          .width(56).flexShrink(0)
-        TextInput({ text: this.teacher })
-          .accessibilityText(this.typeIdx === 2 ? '教师，选填' : '联系人，选填')
-          .fontSize(HitaDesign.body).height(HitaDesign.buttonHeight).layoutWeight(1)
-          .padding({ left: 12, right: 12 }).borderRadius(HitaDesign.fieldRadius)
-          .backgroundColor($r('app.color.hita_surface_soft'))
-          .onChange((value: string) => { this.teacher = value; })
-      }.width('100%')
+      if (this.typeIdx !== 2) {
+        Row({ space: HitaDesign.gap }) {
+          Text('联系人').fontSize(HitaDesign.body).fontColor($r('app.color.hita_text_secondary'))
+            .width(56).flexShrink(0)
+          TextInput({ text: this.teacher })
+            .accessibilityText('联系人，选填')
+            .fontSize(HitaDesign.body).height(HitaDesign.buttonHeight).layoutWeight(1)
+            .padding({ left: 12, right: 12 }).borderRadius(HitaDesign.fieldRadius)
+            .backgroundColor($r('app.color.hita_surface_soft'))
+            .onChange((value: string) => { this.teacher = value; })
+        }.width('100%')
+      }
     }
     .width('100%').padding(HitaDesign.inset).borderRadius(HitaDesign.cardRadius)
     .backgroundColor($r('app.color.hita_surface'))

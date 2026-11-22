@@ -52,6 +52,21 @@ export class LearningTaskRules {
     return new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1).getTime() - 1;
   }
 
+  static compareDeadlines(a: LearningTask, b: LearningTask): number {
+    return (LearningTaskRules.deadline(a) || Number.MAX_SAFE_INTEGER) -
+      (LearningTaskRules.deadline(b) || Number.MAX_SAFE_INTEGER) || a.createdAt - b.createdAt;
+  }
+
+  static firstForToday(pending: LearningTask[]): LearningTask | undefined {
+    let first: LearningTask | undefined = undefined;
+    for (const task of pending) {
+      if (task.showInToday && (first === undefined || LearningTaskRules.compareDeadlines(task, first) < 0)) {
+        first = task;
+      }
+    }
+    return first;
+  }
+
   /** 0 overdue, 1 today, 2 later, 3 undated, 4 completed. */
   static group(task: LearningTask, now: number): number {
     if (task.completedAt > 0) return 4;

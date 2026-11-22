@@ -556,11 +556,19 @@ export struct WidgetBackgroundPage {
           .width(16 * this.mockScale())
           .height(16 * this.mockScale())
           .borderRadius(5 * this.mockScale())
-        Text('HITA NEXT')
-          .fontSize(10 * this.mockScale())
-          .fontWeight(FontWeight.Medium)
-          .fontColor('#515A67')
+        ForEach(['课程', '考试', '待办'], (label: string) => {
+          Text(label)
+            .fontSize(HitaDesign.dockLabel * this.mockScale())
+            .fontWeight(label === '课程' ? FontWeight.Bold : FontWeight.Medium)
+            .fontColor(label === '课程' ? $r('app.color.widget_accent') : $r('app.color.widget_muted'))
+            .backgroundColor(label === '课程' ? $r('app.color.widget_selected') : Color.Transparent)
+            .borderRadius(HitaDesign.radiusSm * this.mockScale())
+            .height(HitaDesign.spaceLg * this.mockScale())
+            .textAlign(TextAlign.Center)
+            .layoutWeight(1)
+        }, (label: string): string => label)
       }
+      .width('100%')
       if (this.activeSize === SIZE_WIDE) {
         Row({ space: 14 * this.mockScale() }) {
           Column() {
@@ -596,11 +604,16 @@ export struct WidgetBackgroundPage {
 
   @Builder
   mockCountdown() {
-    Text('15')
-      .fontSize(24 * this.mockScale())
+    Text() {
+      Span('1')
+      Span('h').fontSize(HitaDesign.label * this.mockScale())
+      Span('15')
+      Span('min').fontSize(HitaDesign.label * this.mockScale())
+    }
+      .fontSize((this.activeSize === SIZE_WIDE ? 40 : 32) * this.mockScale())
       .fontWeight(FontWeight.Bold)
       .fontColor('#182230')
-    Text('分钟后上课')
+    Text('后上课')
       .fontSize(10 * this.mockScale())
       .fontColor('#515A67')
   }

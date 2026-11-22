@@ -46,7 +46,7 @@ const { EasTimetable, EasTimePeriodInDay, EasTermSubject, EasEventItem, EasEvent
 const { EasTimetableImporter } = load('feature/eas/EasTimetableImporter.ets');
 const { EasSession, EasCampus } = load('feature/eas/EasSession.ets');
 const { EasCourseItem, EasTermItem } = load('feature/eas/model/EasModels.ets');
-const { LearningTask } = load('common/model/learning/LearningTask.ets');
+const { LearningTask, LearningTaskRules } = load('common/model/learning/LearningTask.ets');
 const day = 86400000;
 const start = new Date(2026, 7, 31).getTime();
 const legacyBenbuTimes = [
@@ -723,16 +723,20 @@ test('upgraded learning tasks default to Today and support hiding independently 
     await f.db.saveLearningTask(learningTask({ id: 'hidden', showInToday: false }), true);
     await f.db.saveLearningTask(learningTask({ id: 'other', timetableId: 'b', subjectId: 'other-subject' }), true);
     await f.db.saveLearningTask(learningTask({ id: 'review', kind: 'REVIEW', examId: 'exam', examName: 'Math' }), true);
-    const tasks = await f.db.getTodayLearningTasks('a');
-    assert.deepEqual(tasks.map(task => task.id).sort(), ['legacy', 'review']);
+    const tasks = await f.db.getPendingLearningTasks();
+    assert.deepEqual(tasks.map(task => task.id), ['legacy', 'hidden', 'other', 'review']);
+    assert.equal(LearningTaskRules.firstForToday(tasks).id, 'legacy');
     const legacy = tasks.find(task => task.id === 'legacy');
     assert.equal(legacy.showInToday, true);
     legacy.showInToday = false;
     await f.db.saveLearningTask(legacy, false);
     const review = tasks.find(task => task.id === 'review');
     await f.db.setLearningTaskCompleted(review.id, true);
-    assert.deepEqual(await f.db.getTodayLearningTasks('a'), []);
-    assert.deepEqual((await f.db.getTodayLearningTasks('b')).map(task => task.id), ['other']);
+    const pending = await f.db.getPendingLearningTasks();
+    assert.deepEqual(pending.map(task => task.id), ['legacy', 'hidden', 'other']);
+    assert.equal(LearningTaskRules.firstForToday(pending).id, 'other');
+    await f.db.setLearningTaskCompleted('other', true);
+    assert.equal(LearningTaskRules.firstForToday(await f.db.getPendingLearningTasks()), undefined);
     assert.equal((await f.db.getLearningTasks()).find(task => task.id === 'legacy').remindAt, remindAt);
   } finally { f.sql.close(); }
 });

@@ -21,6 +21,7 @@ function load(file, overrides = {}, cache = new Map()) {
   return module.exports;
 }
 const { NextClassModel } = load('feature/widget/NextClassModel.ets');
+const { WidgetAgenda, WidgetTab } = load('feature/widget/WidgetAgenda.ets');
 const now = new Date(2026, 9, 16, 8, 0).getTime();
 const minute = 60000;
 const course = (id, offset, overrides = {}) => ({
@@ -38,7 +39,7 @@ test('prefers an ongoing class over the next class and excludes exams and invali
     course('next', 15, { name: '大学物理', teacher: '陈老师', place: '格物楼 202' })]);
   assert.equal(result.title, '当前课程');
   assert.equal(result.isOngoing, true);
-  assert.equal(result.countdown, '35分钟');
+  assert.equal(result.countdown, '35min');
   assert.equal(result.countdownUnit, '后下课');
   assert.ok(Math.abs(result.progressPercent - (10 / 45 * 100)) < 0.001);
   assert.equal(result.place, '博学楼 101');
@@ -51,7 +52,7 @@ test('cached payload shows ongoing course progress and advances when the class e
   const current = view(events);
   assert.equal(current.title, '高等数学');
   assert.equal(current.isOngoing, true);
-  assert.equal(current.countdown, '15分钟');
+  assert.equal(current.countdown, '15min');
   assert.equal(current.countdownUnit, '后下课');
   assert.ok(Math.abs(current.progressPercent - (30 / 45 * 100)) < 0.001);
   assert.equal(current.place, '正心楼 101');
@@ -59,14 +60,14 @@ test('cached payload shows ongoing course progress and advances when the class e
   const next = view(events, now + 15 * minute);
   assert.equal(next.title, '英语');
   assert.equal(next.isOngoing, false);
-  assert.equal(next.countdown, '15分钟');
+  assert.equal(next.countdown, '15min');
   assert.equal(next.countdownUnit, '后上课');
   assert.equal(next.place, '格物楼 202');
   assert.equal(next.teacher, '陈老师');
   const started = view(events, now + 30 * minute);
   assert.equal(started.title, '英语');
   assert.equal(started.isOngoing, true);
-  assert.equal(started.countdown, '45分钟');
+  assert.equal(started.countdown, '45min');
   assert.equal(started.countdownUnit, '后下课');
   assert.equal(started.progressPercent, 0);
   assert.equal(started.place, '格物楼 202');
@@ -77,11 +78,13 @@ test('cached payload shows ongoing course progress and advances when the class e
   assert.equal(lastMoment.teacher, '王老师');
   const liveTick = view(events, now + 30 * minute + 1000);
   assert.ok(liveTick.progressPercent > started.progressPercent);
-  assert.equal(liveTick.countdown, '45分钟');
+  assert.equal(liveTick.countdown, '45min');
 });
 test('rounds up partial minutes and displays hours, days and cross-day start times', () => {
-  assert.equal(view([course('one', 0.1)]).countdown, '1分钟');
-  assert.equal(view([course('hour', 61)]).countdown, '1小时1分钟');
+  assert.equal(view([course('one', 0.1)]).countdown, '1min');
+  assert.equal(view([course('hour', 61)]).countdown, '1h1min');
+  assert.equal(view([course('whole', 120)]).countdown, '2h');
+  assert.equal(view([course('long', -10, { to: now + 119 * minute })]).countdown, '1h59min');
   assert.equal(view([course('tomorrow', 1440)]).title, '暂无待上课程');
   assert.equal(view([course('later', 2880 + 60)]).title, '暂无待上课程');
 });
@@ -89,7 +92,7 @@ test('rounds up partial minutes and displays hours, days and cross-day start tim
 test('only displays the earliest upcoming class from the current calendar day', () => {
   const result = view([course('tomorrow', 1440), course('today', 90)]);
   assert.equal(result.title, '高等数学');
-  assert.equal(result.countdown, '1小时30分钟');
+  assert.equal(result.countdown, '1h30min');
 });
 test('uses the same latest-starting ongoing class when course times overlap', () => {
   const result = view([
@@ -144,6 +147,8 @@ test('reads the chosen timetable, falls back when deleted, and never requests ac
     '../../common/db/RdbHelper': { RdbHelper: { getInstance: () => ({
       init: async () => {},
       getTimetableById: async id => exists ? { id } : undefined,
+      getUpcomingExams: async time => [course('exam', 1, { type: 'EXAM', from: time, to: time + minute })],
+      getLearningTasks: async () => [{ id: 'work', completedAt: 0, dueAt: 0, title: '复习电路' }],
       getEventsOfTimetable: async id => {
         readIds.push(id);
         const liveNow = Date.now();
@@ -167,6 +172,8 @@ test('reads the chosen timetable, falls back when deleted, and never requests ac
   });
   const chosenSnapshot = await service.load({}, true);
   assert.equal(chosenSnapshot.dataState, 'ready');
+  assert.equal(JSON.parse(chosenSnapshot.examJson)[0].id, 'exam');
+  assert.equal(JSON.parse(chosenSnapshot.taskJson)[0].id, 'work');
   const chosenView = NextClassModel.view(chosenSnapshot.scheduleJson, true, 'ready', Date.now());
   assert.equal(chosenView.place, '当前课表地点');
   assert.equal(chosenView.teacher, '当前课表教师');
@@ -177,6 +184,50 @@ test('reads the chosen timetable, falls back when deleted, and never requests ac
   assert.deepEqual(readIds, ['chosen', 'switched', 'fallback']);
   const source = fs.readFileSync(path.join(root, 'ets/feature/widget/NextClassWidgetService.ets'), 'utf8');
   assert.doesNotMatch(source, /EasApiClient|EasSessionStore|fetch/);
+});
+
+test('exam tab advances at the exact exam boundaries and retains future days', () => {
+  const exam = (id, offset) => course(id, offset, { type: 'EXAM', examSource: 'private', name: id });
+  const data = WidgetAgenda.exams([exam('tomorrow', 1440), course('class', 0), exam('past', -50),
+    exam('first', -10), exam('second', 30)], now);
+  assert.ok(!data.includes('private'));
+  const read = at => WidgetAgenda.view(WidgetTab.EXAM, data, false, at);
+  const first = read(now);
+  assert.deepEqual(first.rows.map(row => [row.title, row.status]), [['first', '正在考试'], ['second', '即将考试']]);
+  assert.equal(first.nextChange, now + 30 * minute);
+  const after = read(now + 35 * minute);
+  assert.deepEqual(after.rows.map(row => row.id), ['second', 'tomorrow']);
+  assert.equal(after.rows[1].when, '明天 08:00–08:45');
+  assert.equal(read(now + 1500 * minute).message, '暂无近期考试');
+});
+
+test('task tab orders actual deadlines, excludes completed work and projects only display fields', () => {
+  const task = (id, dueAt, extra = {}) => ({ id, dueAt, title: id, completedAt: 0, createdAt: now,
+    note: 'private', kind: 'HOMEWORK', courseName: '微积分', ...extra });
+  const day = new Date(2026, 9, 16).getTime();
+  const timed = task('timed', now + minute);
+  const allDay = task('review', day, { allDay: true, kind: 'REVIEW', examName: '期中' });
+  const undated = task('undated', 0);
+  const tasks = WidgetAgenda.tasks([undated, allDay, timed, task('done', now - minute, { completedAt: now })]);
+  assert.ok(!tasks.includes('private'));
+  const read = (data, at) => WidgetAgenda.view(WidgetTab.TASK, data, false, at).rows;
+  assert.deepEqual(read(tasks, now).map(row => [row.title, row.detail, row.status]), [
+    ['timed', '作业 · 微积分', '今天截止'], ['review', '复习 · 期中', '今天截止'], ['undated', '作业 · 微积分', '待安排']]);
+  assert.equal(read(tasks, now + minute + 1)[0].status, '已逾期');
+  const nextDay = new Date(2026, 9, 17).getTime();
+  assert.equal(read(tasks, nextDay - 1)[1].status, '今天截止');
+  assert.equal(read(tasks, nextDay)[1].status, '已逾期');
+  assert.equal(read(WidgetAgenda.tasks([undated]), now)[0].when, '未设截止时间');
+  assert.equal(WidgetAgenda.view(WidgetTab.TASK, '[]', false, now).message, '没有未完成待办');
+  assert.equal(WidgetAgenda.view(WidgetTab.TASK, '', false, now).message, '待办暂不可用');
+});
+
+test('scrollable task list includes every open item and breaks deadline ties by creation time', () => {
+  const items = Array.from({ length: 18 }, (_, i) => ({ id: String(99-i), title: '任务 ' + i,
+    dueAt: i % 3 === 0 ? 0 : now + (i % 2) * minute, createdAt: now + i, completedAt: 0 }));
+  const rows = WidgetAgenda.view(WidgetTab.TASK, WidgetAgenda.tasks(items.slice().reverse()), false, now).rows;
+  const order = [2,4,8,10,14,16,1,5,7,11,13,17,0,3,6,9,12,15];
+  assert.deepEqual(rows.map(row => row.title), order.map(i => '任务 ' + i));
 });
 test('card-process refreshes bypass the stale per-process selection cache', async () => {
   const { NextClassWidgetService: service } = load('feature/widget/NextClassWidgetService.ets', {
@@ -326,7 +377,7 @@ test('registers both sizes, second-level timer updates and periodic provider ref
   assert.match(ui, /this\.ticker\.start\(\)/);
   assert.match(ui, /\.format\('ss'\)/);
   assert.match(ui, /\.onTimer\(\(_utc: number, elapsedTime: number\): void => this\.onTick\(elapsedTime\)\)/);
-  assert.match(ui, /private onTick\(elapsedTime: number\): void \{\s*this\.refreshDisplay\(\)/);
+  assert.match(ui, /private onTick\(elapsedTime: number\): void \{[\s\S]*?this\.refreshDisplay\(\)/);
   assert.doesNotMatch(ui, /\.width\(1\)\s*\.height\(1\)/);
   assert.match(ui, /\.fontColor\('#01000001'\)/);
   assert.doesNotMatch(ui, /\.opacity\(0\)/);
@@ -341,9 +392,13 @@ test('registers both sizes, second-level timer updates and periodic provider ref
   assert.match(ui, /Text\(Math\.floor\(this\.progressPercent\)\.toString\(\) \+ '%'\)/);
   assert.match(ui, /Marquee\(\{ src: this\.timeLabel, start: true,/);
   assert.match(ui, /Marquee\(\{ src: this\.title, start: true,/);
-  assert.match(ui, /Marquee\(\{ src: this\.countdown, start: true,/);
-  assert.match(ui, /Marquee\(\{ src: this\.countdownUnit, start: true,/);
-  assert.doesNotMatch(ui, /TextOverflow\.Ellipsis/);
+  const hero = ui.slice(ui.indexOf('countdownHero(compact'), ui.indexOf('  progressRing(compact'));
+  assert.match(hero, /Span\(this\.view\.hours\)/);
+  assert.match(hero, /Span\(this\.view\.minutes\)/);
+  assert.match(hero, /\.maxLines\(1\)/);
+  assert.match(ui, /Text\(this\.countdownUnit\)/);
+  assert.doesNotMatch(ui, /Marquee\(\{ src: this\.countdown/);
+  assert.doesNotMatch(hero, /TextOverflow\.Ellipsis/);
   assert.match(ui, /this\.title = nextView\.title;\s*this\.timeLabel = nextView\.timeLabel;\s*this\.place = nextView\.place;\s*this\.teacher = nextView\.teacher;/);
   // Builder string parameters are by value; the metadata rows must read state directly.
   assert.match(ui, /metadataRow\(icon: Resource, isTeacher: boolean, compact: boolean\)/);

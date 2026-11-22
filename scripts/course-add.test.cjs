@@ -161,10 +161,32 @@ function formSetup(overrides = {}) {
   const form = new EventEditorForm();
   form.getUIContext = () => ({ getHostContext: () => ({}), getPromptAction: () => ({ showToast() {} }) });
   Object.assign(form, { courseTimetable: tt, weekChoices: dates.numbers(20), typeIdx: 1, timetableId: tt.id, name: '数学', hour: 8, minute: 15, endHour: 9,
-    endMinute: 5, selectedWeeks: [1, 3], selectedWeekdays: [1, 3], dateMode: 1, sheetMode: true,
+    endMinute: 5, startTimeChosen: true, endTimeChosen: true,
+    selectedWeeks: [1, 3], selectedWeekdays: [1, 3], dateMode: 1, sheetMode: true,
     loading: false, editorActive: true, onSaved: (event, events) => saved.push(events) });
   return { form, tt, db, commits, saved };
 }
+
+test('new course clock fields start unset, stay unset on mode switches, and require two explicit choices', async () => {
+  const { db, tt, commits } = formSetup();
+  const { EventEditorForm } = load('pages/AddEventPage.ets', { db });
+  const form = new EventEditorForm();
+  Object.assign(form, { initialType: 'CLASS', sheetMode: true, targetTimetableId: tt.id, name: '数学' });
+  form.getUIContext = () => ({ getHostContext: () => ({}), getRouter: () => ({ getParams: () => ({}) }) });
+  await form.aboutToAppear();
+  form.selectTimeMode(0);
+  assert.deepEqual(form.selectedTime(), [-1, -1]);
+  assert.equal(form.startLabel(), '未选择');
+  form.selectTimeMode(1); form.selectTimeMode(0);
+  assert.equal(form.endLabel(), '未选择');
+  assert.equal(form.canSave(), false);
+  form.acceptTime(false, 1, 0);
+  assert.deepEqual(form.selectedTime(), [-1, 60]);
+  await form.save(); assert.equal(commits.length, 0);
+  form.acceptTime(true, 0, 0);
+  assert.equal(form.startLabel(), '00:00');
+  assert.equal(form.canSave(), true);
+});
 
 test('shared form saves all combinations into the explicit timetable and reports all events', async () => {
   const { form, commits, saved } = formSetup();
@@ -342,9 +364,9 @@ test('editing a period-created course by clock clears stale period numbers but d
     let stored;
     form.originalCourse = event; form.relatedCourses = [event];
     db.replaceCourseOccurrences = async (_before, after) => { stored = after[0]; };
-    let dialog = 0;
     form.getUIContext = () => ({ getPromptAction: () => ({
-      showDialog: async () => ({ index: dialog++ === 0 ? 1 : 0 }), showToast() {}
+      showDialog: async options => ({ index: options.buttons.findIndex(button =>
+        button.text === '确认修改' || button.text === '完成') }), showToast() {}
     }) });
     await form.save();
     assert.equal(stored.fromNumber, changed ? 0 : 1);

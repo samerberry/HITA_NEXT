@@ -25,7 +25,7 @@ const { placeMarqueeFrame, PLACE_MARQUEE_PAUSE_MS, PLACE_MARQUEE_SPEED } =
   load('feature/timetable/views/PlaceMarquee.ets');
 const { drawTimetableWeek, drawTimetablePlaces, eventsOfWeek, TimetablePlaceLabel, timetableEventSpan, TimetableAxis,
   timetableBlockColor, argbToCss, TimetableDrawStyle, TimetableCardLayer, drawTimetableCardText,
-  drawTimetableCardSnapshot } =
+  drawTimetableCardSnapshot, TIMETABLE_GRID_TOP_PADDING } =
   load('feature/timetable/views/TimetableWeekDraw.ets');
 const { TimetableCardPainter } = load('feature/timetable/views/TimetableCardPainter.ets');
 const { EasEventItem, EasTimetable } = load('common/model/timetable/TimetableModels.ets');
@@ -423,7 +423,7 @@ test('native card surfaces match legacy bounds and preserve all title and classr
           close(card.left + card.width, bounds[index][2][1]);
           close(card.top + card.height, bounds[index][4][2]);
           assert.ok(card.left >= 48 && card.left + card.width <= width);
-          assert.ok(card.top >= 24 && card.top + card.height <= 774);
+          assert.ok(card.top >= TIMETABLE_GRID_TOP_PADDING && card.top + card.height <= TIMETABLE_GRID_TOP_PADDING + 15 * 50);
           assert.equal(argbToCss(card.color, 1), legacy.paints.filter(p => p.method === 'fill')[index].color);
           assert.equal(card.tint() & 0xFFFFFF, card.color & 0xFFFFFF);
           assert.ok(card.tint() >>> 24 > 0 && card.tint() >>> 24 < 255);
@@ -671,8 +671,8 @@ test('only the viewed week widens the axis, and normal or empty weeks restore th
   drawTimetableWeek(ctx, 380, 2000, timetable, events.concat([early]), 1, false, 50, 0, false, false, '', false, layer,
     undefined, undefined, false, true, axis);
   const card = layer.surfaces.find(item => item.eventIds[0] === 'early');
-  close(card.top, 24);
-  close(layer.surfaces.find(item => item.eventIds[0] === events[0].id).top, 24 + 50);
+  close(card.top, TIMETABLE_GRID_TOP_PADDING);
+  close(layer.surfaces.find(item => item.eventIds[0] === events[0].id).top, TIMETABLE_GRID_TOP_PADDING + 50);
   const labels = ctx.paints.filter(p => p.method === 'fillText').map(p => p.args[0]);
   assert.equal(labels[0], '7:00');
   assert.ok(labels.includes('22:00'));
@@ -680,10 +680,58 @@ test('only the viewed week widens the axis, and normal or empty weeks restore th
   const lateWeek = new TimetableCardLayer();
   drawTimetableWeek(canvas(), 380, 2000, timetable, [late], 2, false, 50, 0, false, false, '', false, lateWeek,
     undefined, undefined, false, true, axisForWeek(2));
-  close(lateWeek.surfaces[0].top, 24 + (23.25 - 8) * 50);
+  close(lateWeek.surfaces[0].top, TIMETABLE_GRID_TOP_PADDING + (23.25 - 8) * 50);
 
   // Home must use the same week selection for both axis calculation and drawing.
   const home = fs.readFileSync(path.join(root, 'pages/Home.ets'), 'utf8');
   assert.match(home, /const weekEvents: EasEventItem\[\] = eventsOfWeek\(this\.currentTimetable,\s*this\.timetableEvents, this\.timetableWeek\)/);
   assert.match(home, /TimetableAxis\.forEvents\(this\.currentTimetable, weekEvents\)/);
+});
+
+test('first and last courses fit at their actual times on compact and tall canvases', () => {
+  const { timetable } = fixture();
+  timetable.endTime = timetable.startTime + 7 * 86400000;
+  for (const [firstHour, lastHour] of [[8, 23], [6, 24]]) {
+    const course = (id, start, end) => Object.assign(new EasEventItem(), {
+      id, name: id, from: timetable.startTime + start * 3600000, to: timetable.startTime + end * 3600000
+    });
+    const events = [course('早课', firstHour, firstHour + 1), course('晚课', lastHour - 1, lastHour)];
+    const axis = TimetableAxis.forEvents(timetable, events);
+    for (const height of [320, 520, 970, 1280]) {
+      const canvasHeight = axis.canvasHeight(height, false);
+      const layer = new TimetableCardLayer(), hour = axis.hourHeight(canvasHeight);
+      drawTimetableWeek(canvas(), 390, canvasHeight, timetable, events, 1, false, hour, 0,
+        false, false, '', false, layer, undefined, undefined, false, true, axis);
+      const [first, last] = layer.surfaces;
+      close(first.top, TIMETABLE_GRID_TOP_PADDING);
+      close(last.top - first.top, (lastHour - firstHour - 1) * hour);
+      close(last.height, hour);
+      assert.ok(last.top + last.height <= height - 4, 'the last course clears the canvas edge');
+      assert.ok(height - (last.top + last.height) <= 12, 'a portrait tablet uses the full grid height');
+      assert.ok(first.titleLines.length && last.titleLines.length, 'both cards retain a visible title');
+    }
+  }
+});
+
+test('the phone scrolls at the original course scale and unfolding fits the same courses again', () => {
+  const axis = new TimetableAxis();
+  axis.startHour = 7;
+  axis.endHour = 24;
+  const viewport = 430;
+  const cover = axis.canvasHeight(viewport, true);
+  const hour = axis.hourHeight(cover);
+  const { timetable, events } = fixture();
+  events[1].to = events[1].from + 45 * 60000;
+  const layer = new TimetableCardLayer();
+  drawTimetableWeek(canvas(), 380, cover, timetable, events, 1, false, hour, 0,
+    false, false, '', false, layer, undefined, undefined, false, false, axis);
+  const [double, single] = layer.surfaces;
+  close(double.height, 87.5);
+  close(single.height, 37.5);
+  assert.ok(single.titleLines.length && single.place?.text === events[1].place,
+    'the 45-minute class still displays its title and classroom');
+  assert.ok(TIMETABLE_GRID_TOP_PADDING + (23 - axis.startHour) * hour > viewport, 'late hours are below the fold');
+  assert.ok(TIMETABLE_GRID_TOP_PADDING + axis.hours() * hour <= cover, 'the final class is reachable');
+  assert.equal(axis.canvasHeight(viewport, false), viewport, 'the inner screen can show all hours again');
+  assert.equal(axis.canvasHeight(1200, true), 1200, 'the readable minimum never shrinks a larger canvas');
 });

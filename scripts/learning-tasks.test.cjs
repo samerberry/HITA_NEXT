@@ -30,13 +30,127 @@ test('a saved all-day reminder stays readable after a time-zone change; only sav
   assert.equal(rules.validation(late), '提醒时间不能晚于截止时间');
 });
 
+test('Today previews one visible pending task by effective deadline, then creation and insertion order', () => {
+  const timed = task({ id: 'early', dueAt: now, createdAt: 1 });
+  const newer = task({ id: 'newer', dueAt: now, createdAt: 2 });
+  const allDay = task({ allDay: true, dueAt: rules.dayStart(now) });
+  const undated = task({ dueAt: 0, createdAt: 0 });
+  const hidden = task({ dueAt: now - 1, showInToday: false });
+  const order = [undated, allDay, newer, hidden, timed];
+  assert.equal(rules.firstForToday(order), timed);
+  assert.equal(rules.firstForToday([timed, { ...timed, id: 'same-ms' }]), timed);
+  assert.equal(rules.firstForToday([undated, allDay]), allDay);
+  assert.equal(rules.firstForToday([hidden, undated]), undated);
+  assert.equal(rules.firstForToday([hidden]), undefined);
+  assert.equal(rules.firstForToday([]), undefined);
+});
+
 test('the task list offers only homework and review tabs and opens on homework', () => {
   const panel = fs.readFileSync(path.join(root, 'feature/learning/LearningTasksPanel.ets'), 'utf8');
-  assert.doesNotMatch(panel, /kindTab\('全部'|embedded/);
-  assert.match(panel, /this\.kindTab\('作业', LearningTaskKind\.HOMEWORK\)\s*this\.kindTab\('复习', LearningTaskKind\.REVIEW\)/);
+  assert.match(panel, /if \(this\.filterKind\.length === 0 && this\.subjectId\.length === 0 && this\.examId\.length === 0\) \{\s*Row\(\) \{\s*CourseModeSegment\(\{\s*labels: \['作业', '复习'\], selectedIndex: this\.selectedKind === LearningTaskKind\.REVIEW \? 1 : 0/);
   assert.match(panel, /@State selectedKind: string = LearningTaskKind\.HOMEWORK;/);
   assert.match(panel, /if \(this\.filterKind\.length > 0\) this\.selectedKind = this\.filterKind;/);
   assert.match(panel, /if \(this\.filterKind\.length === 0\) this\.selectedKind = task\.kind;/);
+});
+
+// Run the panel's real state changes with independently controlled storage and visual feedback.
+function panelHarness(row, write = async () => {}, others = []) {
+  const source = fs.readFileSync(path.join(root, 'feature/learning/LearningTasksPanel.ets'), 'utf8');
+  const methods = source.slice(source.indexOf('  private async load('), source.indexOf('  private remove('));
+  const script = ts.transpileModule('class Panel {\n' + methods + '\n}; return new Panel();', {
+    compilerOptions: { target: ts.ScriptTarget.ES2020 }
+  }).outputText;
+  let finishCheck, writes = 0, cancelled = 0, stored = row;
+  const db = {
+    setLearningTaskCompleted: async (id, done) => {
+      assert.equal(id, row.id);
+      writes++;
+      await write();
+      stored = { ...row, completedAt: done ? now : 0 };
+    },
+    init: async () => {}, getLearningContext: async () => ({}), getLearningTasks: async () => [stored, ...others]
+  };
+  const panel = new Function('RdbHelper', 'LearningTaskReminders', 'setTimeout', 'Curve',
+    'CHECK_DURATION', 'REGROUP_DURATION', 'LearningTaskRules', '$r', script)({ getInstance: () => db },
+    { cancel: async () => { cancelled++; } }, callback => { finishCheck = callback; }, {}, 120, 250, rules, s => s);
+  Object.assign(panel, { tasks: [row, ...others], active: true, generation: 0, previewTaskId: '', initialTaskId: '',
+    requestedTaskId: '', filterKind: '', onRequestHandled() { this.initialTaskId = ''; },
+    onBusyChanged() {}, getUIContext: () => ({ animateTo: (_, change) => change(), getHostContext: () => ({}) }) });
+  return { panel, finish: () => finishCheck(), writes: () => writes, cancelled: () => cancelled };
+}
+
+test('complete and restore preview just the tapped row and regroup once after feedback and persistence', async () => {
+  for (const completedAt of [0, now]) {
+    const row = task({ id: 'target', completedAt });
+    const h = panelHarness(row);
+    const pending = h.panel.toggle(row);
+    assert.equal(h.panel.showsCheck(row), completedAt === 0);
+    assert.equal(h.panel.showsCheck(task({ id: 'other', completedAt })), completedAt > 0);
+    assert.equal(h.panel.tasks[0], row);
+    await h.panel.toggle(row);
+    assert.equal(h.writes(), 1);
+    h.finish();
+    await pending;
+    assert.equal(h.panel.tasks[0].completedAt > 0, completedAt === 0);
+    assert.equal(h.panel.previewTaskId, '');
+    assert.equal(h.panel.busy, false);
+    assert.equal(h.cancelled(), completedAt === 0 ? 1 : 0);
+  }
+});
+
+test('a failed completion or restore undoes its visual preview and leaves the row available to retry', async () => {
+  for (const completedAt of [0, now]) {
+    const row = task({ id: 'target', completedAt });
+    const h = panelHarness(row, async () => { throw Error('write failed'); });
+    await h.panel.toggle(row);
+    assert.equal(h.panel.tasks[0], row);
+    assert.equal(h.panel.showsCheck(row), completedAt > 0);
+    assert.equal(h.panel.previewTaskId, '');
+    assert.equal(h.panel.busy, false);
+    assert.ok(h.panel.error.includes('重试'));
+    assert.equal(h.cancelled(), 0);
+  }
+});
+
+test('desktop taps edit the requested ID on launch, when switching tasks, and after returning to the list', async () => {
+  const first = task({ id: 'a', kind: 'HOMEWORK' }), next = task({ id: 'b', kind: 'REVIEW' });
+  const { panel } = panelHarness(first, undefined, [next]);
+  const request = async target => {
+    panel.initialTaskId = target.id;
+    panel.onTaskRequestChanged();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(panel.initialTaskId, '');
+    assert.equal(panel.draft.id, target.id);
+    assert.equal(panel.selectedKind, target.kind);
+    assert.equal(panel.editing, true);
+    assert.equal(panel.isNew, false);
+  };
+  await request(first);
+  await request(next);
+  const draft = panel.draft;
+  panel.draftDirty = true;
+  await request(next);
+  assert.equal(panel.draft, draft, 'opening the same task preserves the current draft');
+  panel.editing = false;
+  await request(next);
+});
+
+test('a desktop switch keeps unsaved edits until confirmed and honours the latest tap', async () => {
+  const a = task({ id: 'a' }), b = task({ id: 'b' }), c = task({ id: 'c' });
+  const { panel } = panelHarness(a, undefined, [b, c]);
+  Object.assign(panel, { draft: a, editing: true, draftDirty: true, requestedTaskId: b.id });
+  let decide;
+  panel.getUIContext = () => ({ getPromptAction: () => ({ showDialog: () => new Promise(done => { decide = done; }) }) });
+  let decision = panel.openRequestedTask();
+  decide({ index: 0 }); await decision;
+  assert.equal(panel.draft, a);
+  assert.equal(panel.draftDirty, true);
+  panel.requestedTaskId = b.id;
+  decision = panel.openRequestedTask();
+  panel.requestedTaskId = c.id;
+  decide({ index: 1 }); await decision;
+  assert.equal(panel.draft.id, c.id);
+  assert.equal(panel.draftDirty, false);
 });
 
 test('all-day deadlines remain pending until local midnight; timed tasks become overdue, completion wins', () => {

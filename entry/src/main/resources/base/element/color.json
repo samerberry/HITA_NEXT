@@ -1,5 +1,12 @@
 {
   "color": [
+    { "name": "hita_press_glow_edge", "value": "#00FFFFFF" },
+    { "name": "widget_ink", "value": "#182230" },
+    { "name": "widget_muted", "value": "#515A67" },
+    { "name": "widget_accent", "value": "#0068D9" },
+    { "name": "widget_selected", "value": "#E8F3FF" },
+    { "name": "widget_exam", "value": "#994219" },
+    { "name": "widget_task", "value": "#14644F" },
     {
       "name": "hita_widget_accent",
       "value": "#2365B2"

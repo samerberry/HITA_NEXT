@@ -1099,6 +1099,12 @@ export class RdbHelper {
     return RdbHelper.readRows(await this.qry(pred), RdbHelper.eventMapper);
   }
 
+  async getUpcomingExams(now: number): Promise<EasEventItem[]> {
+    const predicate = new relationalStore.RdbPredicates('events').equalTo('type', EasEventType.EXAM)
+      .greaterThan('toTime', now);
+    return RdbHelper.readRows(await this.s().query(predicate), RdbHelper.eventMapper, true);
+  }
+
   /** 某课表全部事件（对应 getEventsOfTimetableSync）。 */
   async getEventsOfTimetable(timetableId: string, strict: boolean = false): Promise<EasEventItem[]> {
     const pred: relationalStore.RdbPredicates = new relationalStore.RdbPredicates('events');
@@ -1199,9 +1205,9 @@ export class RdbHelper {
       RdbHelper.learningTaskMapper, true);
   }
 
-  async getTodayLearningTasks(timetableId: string): Promise<LearningTask[]> {
+  async getPendingLearningTasks(): Promise<LearningTask[]> {
     const predicate: relationalStore.RdbPredicates = new relationalStore.RdbPredicates('learning_task')
-      .equalTo('timetableId', timetableId).equalTo('showInToday', 1).equalTo('completedAt', 0);
+      .equalTo('completedAt', 0).orderByAsc('rowid');
     return RdbHelper.readRows(await this.s().query(predicate), RdbHelper.learningTaskMapper, true);
   }
 
