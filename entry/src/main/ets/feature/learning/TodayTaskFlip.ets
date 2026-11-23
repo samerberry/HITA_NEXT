@@ -12,12 +12,12 @@ export function taskFlipProjection(depth: number, width: number, height: number,
   const fold: number = unit(-depth);
   const back: number = Math.max(0, depth);
   const scale: number = Math.pow(0.95, back);
-  const inset: number = width * (1 - scale) / 2;
-  const shift: number = width * (0.065 * Math.sin(Math.PI * unit(back)) - 0.18 * fold);
-  const left: number = inset + shift;
-  const right: number = width - inset + shift - width * 0.78 * fold;
-  const bottom: number = height + back * spacing;
-  const top: number = bottom - height * scale;
+  // Anchor each resting layer by its right edge. Its exposed strip closes as it becomes the front card.
+  const edge: number = width + back * spacing;
+  const left: number = edge - width * scale - width * 0.18 * fold;
+  const right: number = edge - width * 0.96 * fold;
+  const top: number = height * (1 - scale) / 2;
+  const bottom: number = height - top;
   const nearInset: number = height * 0.025 * fold;
   const farInset: number = height * (0.045 * fold + 0.12 * Math.sin(Math.PI * fold));
   return matrix4.identity().setPolyToPoly({

@@ -3440,7 +3440,7 @@ struct Home {
   @Builder
   private todayLearningTaskEntry() {
     if (this.todayTaskDeck.length > 1) {
-      Stack({ alignContent: Alignment.Top }) {
+      Stack({ alignContent: Alignment.TopStart }) {
         if (this.todayTaskDeck.length > 2 && this.todayDeckDrag > 0) {
           this.todayTaskBackingLayer(3);
         }
@@ -3454,7 +3454,7 @@ struct Home {
         }
       }
       .width('100%')
-      .padding({ bottom: this.todayTaskDeck.length > 2 ? HitaDesign.spaceMd : HitaDesign.spaceXs })
+      .padding({ right: Math.min(2, this.todayTaskDeck.length - 1) * HitaDesign.spaceXs })
       .clip(true)
       .accessibilityDescription('左右滑动切换待办，当前第 ' + (this.todayTaskIndex + 1).toString() + ' 项')
       .gesture(PanGesture({ fingers: 1, direction: PanDirection.Horizontal, distance: HitaDesign.spaceXs })
@@ -4215,13 +4215,29 @@ struct Home {
   }
 
   private openDesktopWidgetManager(): void {
+    this.getUIContext().getPromptAction().showActionMenu({
+      title: '选择服务卡片',
+      buttons: [
+        { text: '学习日程', color: COLOR_PRIMARY },
+        { text: $r('app.string.lesson_countdown_name'), color: COLOR_PRIMARY },
+        { text: '课表', color: COLOR_PRIMARY }
+      ]
+    }).then(result => {
+      const names: string[] = ['NextClassCard', 'LessonCountdownCard', 'WeekTimetableCard'];
+      if (result.index >= 0 && result.index < names.length) {
+        this.openDesktopWidgetFamily(names[result.index], result.index === 2 ? 4 : 2);
+      }
+    }).catch(() => {});
+  }
+
+  private openDesktopWidgetFamily(name: string, dimension: number): void {
     try {
       formProvider.openFormManager({
         bundleName: 'cn.berry.hitanext',
         abilityName: 'NextClassFormAbility',
         parameters: {
-          'ohos.extra.param.key.form_dimension': 2,
-          'ohos.extra.param.key.form_name': 'NextClassCard',
+          'ohos.extra.param.key.form_dimension': dimension,
+          'ohos.extra.param.key.form_name': name,
           'ohos.extra.param.key.module_name': 'entry'
         }
       });

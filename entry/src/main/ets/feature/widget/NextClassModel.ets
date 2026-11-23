@@ -13,6 +13,7 @@ export class WidgetCourse {
 }
 
 export class NextClassSnapshot {
+  weekJson: string = '';
   scheduleJson: string = '[]';
   // An empty string means this section could not be read; [] is a successful empty result.
   examJson: string = '';
@@ -178,6 +179,6 @@ export class NextClassModel {
     const minutes: number = totalMinutes % 60;
     view.hours = hours > 0 ? hours.toString() : '';
     view.minutes = hours === 0 || minutes > 0 ? minutes.toString() : '';
-    view.countdown = (view.hours ? view.hours + 'h' : '') + (view.minutes ? view.minutes + 'min' : '');
+    view.countdown = (view.hours ? view.hours + '时' : '') + (view.minutes ? view.minutes + '分' : '');
   }
 }

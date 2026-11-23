@@ -1,3 +1,4 @@
+import { WidgetBrand } from './WidgetBrand';
 import { HitaDesign } from '../../common/theme/HitaDesign';
 /**
  * WidgetBackgroundPage.ets — 桌面服务卡片自定义背景半模态面板。
@@ -549,13 +550,8 @@ export struct WidgetBackgroundPage {
 
   /** 与 NextClassCard 布局相近的示例内容，仅用于判断可读性，不参与烘焙。 */
   @Builder
-  cardMock() {
-    Column() {
-      Row({ space: 6 * this.mockScale() }) {
-        Image($r('app.media.app_icon'))
-          .width(16 * this.mockScale())
-          .height(16 * this.mockScale())
-          .borderRadius(5 * this.mockScale())
+  mockTabs() {
+      Row({ space: HitaDesign.space2xs * this.mockScale() }) {
         ForEach(['课程', '考试', '待办'], (label: string) => {
           Text(label)
             .fontSize(HitaDesign.dockLabel * this.mockScale())
@@ -569,6 +565,19 @@ export struct WidgetBackgroundPage {
         }, (label: string): string => label)
       }
       .width('100%')
+  }
+
+  @Builder
+  cardMock() {
+    Column() {
+      Row() {
+        WidgetBrand({ scaleFactor: this.mockScale(), showName: this.activeSize === SIZE_WIDE })
+        if (this.activeSize === SIZE_WIDE) {
+          Row() { this.mockTabs() }.layoutWeight(1).margin({ left: HitaDesign.spaceSm * this.mockScale() })
+        } else {
+          Row() { this.mockTabs() }.width('80%').constraintSize({ maxWidth: 112 * this.mockScale() })
+        }
+      }.width('100%').justifyContent(this.activeSize === SIZE_WIDE ? FlexAlign.Start : FlexAlign.SpaceBetween)
       if (this.activeSize === SIZE_WIDE) {
         Row({ space: 14 * this.mockScale() }) {
           Column() {
@@ -606,11 +615,12 @@ export struct WidgetBackgroundPage {
   mockCountdown() {
     Text() {
       Span('1')
-      Span('h').fontSize(HitaDesign.label * this.mockScale())
+      Span('时').fontSize((this.activeSize === SIZE_WIDE ? HitaDesign.caption : HitaDesign.label) * this.mockScale())
       Span('15')
-      Span('min').fontSize(HitaDesign.label * this.mockScale())
+      Span('分').fontSize((this.activeSize === SIZE_WIDE ? HitaDesign.caption : HitaDesign.label) * this.mockScale())
     }
       .fontSize((this.activeSize === SIZE_WIDE ? 40 : 32) * this.mockScale())
+      .maxLines(1)
       .fontWeight(FontWeight.Bold)
       .fontColor('#182230')
     Text('后上课')

@@ -7,12 +7,15 @@ import { EasEventItem, EasTimetable } from '../../common/model/timetable/Timetab
 import { ScheduleChangeSignal } from '../../common/util/ScheduleChangeSignal';
 import { TimetableSelectionStore } from '../timetable/data/TimetableSelectionStore';
 import { TimetableResolver } from '../timetable/data/TimetableResolver';
+import { timetableBlockColor } from '../timetable/views/TimetableWeekDraw';
 import { NextClassModel, NextClassSnapshot } from './NextClassModel';
 import { WidgetAgenda } from './WidgetAgenda';
+import { WidgetWeek } from './WidgetWeek';
 import { WidgetBackgroundFiles, WidgetBackgroundStore } from './WidgetBackgroundStore';
 
 /** Card storage: schedule fields plus the baked background for each card size. */
 class NextClassPayload extends NextClassSnapshot {
+  courseOnly?: boolean;
   // Always sent so removing the background clears previously merged card storage.
   bgCompact: string = '';
   bgWide: string = '';
@@ -46,7 +49,8 @@ export class NextClassWidgetService {
   }
 
   /** fromCardProcess: the form extension must bypass its stale per-process preferences cache. */
-  static async load(context: common.Context, fromCardProcess: boolean = false): Promise<NextClassSnapshot> {
+  static async load(context: common.Context, fromCardProcess: boolean = false,
+    includeWeek: boolean = false, onlyCourse: boolean = false): Promise<NextClassSnapshot> {
     let snapshot = new NextClassSnapshot();
     const rdb = RdbHelper.getInstance();
     try {
@@ -71,10 +75,23 @@ export class NextClassWidgetService {
       const events: EasEventItem[] = timetable === undefined ? [] : await rdb.getEventsOfTimetable(timetable.id, true);
       snapshot = NextClassModel.snapshot(events, timetable !== undefined, now,
         timetable === undefined ? '' : timetable.id);
+      if (includeWeek) {
+        const railColors = new Map<string, number>();
+        if (timetable !== undefined) {
+          try {
+            const subjects = await rdb.getSubjectsOfTimetable(timetable.id);
+            for (const subject of subjects) railColors.set(subject.id, timetableBlockColor(subject.color));
+          } catch (_) {
+            hilog.warn(0x0000, 'NextClassWidget', 'course colors unavailable');
+          }
+        }
+        snapshot.weekJson = WidgetWeek.pack(events, now, railColors);
+      }
     } catch (error) {
       hilog.warn(0x0000, 'NextClassWidget', 'load failed: %{public}s', String(error));
       snapshot.dataState = 'error';
     }
+    if (onlyCourse) return snapshot;
     // The exam and task pages span timetables. A failed section must not blank the other two.
     try {
       snapshot.examJson = WidgetAgenda.exams(await rdb.getUpcomingExams(now), now);
@@ -86,14 +103,18 @@ export class NextClassWidgetService {
   }
 
   /** Called only by NextClassFormAbility, which runs in the card's own process. */
-  static async refreshForm(context: common.Context, formId: string): Promise<void> {
+  static async refreshForm(context: common.Context, formId: string, formName: string = ''): Promise<void> {
+    if (!formName) {
+      try { formName = (await formProvider.getPublishedRunningFormInfoById(formId)).formName; } catch (_) {}
+    }
     let revision: number;
     let snapshot: NextClassSnapshot;
     do {
       revision = NextClassWidgetService.revision;
-      snapshot = await NextClassWidgetService.load(context, true);
+      snapshot = await NextClassWidgetService.load(context, true, !formName || formName === 'WeekTimetableCard',
+        formName === 'LessonCountdownCard');
     } while (revision !== NextClassWidgetService.revision);
-    await NextClassWidgetService.publish(context, formId, snapshot);
+    await NextClassWidgetService.publish(context, formId, snapshot, formName);
   }
 
   static async refreshAll(): Promise<void> {
@@ -105,9 +126,10 @@ export class NextClassWidgetService {
         NextClassWidgetService.pending = false;
         const revision = NextClassWidgetService.revision;
         const forms = (await formProvider.getPublishedRunningFormInfos()).filter((form): boolean =>
-          form.moduleName === 'entry' && form.formName === 'NextClassCard');
+          form.moduleName === 'entry' && ['NextClassCard', 'LessonCountdownCard', 'WeekTimetableCard'].includes(form.formName));
         if (forms.length === 0) continue;
-        const snapshot = await NextClassWidgetService.load(NextClassWidgetService.context);
+        const snapshot = await NextClassWidgetService.load(NextClassWidgetService.context, false,
+          forms.some(form => form.formName === 'WeekTimetableCard'), forms.every(form => form.formName === 'LessonCountdownCard'));
         if (revision !== NextClassWidgetService.revision) {
           NextClassWidgetService.pending = true;
           continue;
@@ -117,7 +139,7 @@ export class NextClassWidgetService {
             NextClassWidgetService.pending = true;
             break;
           }
-          await NextClassWidgetService.publish(NextClassWidgetService.context, form.formId, snapshot);
+          await NextClassWidgetService.publish(NextClassWidgetService.context, form.formId, snapshot, form.formName);
         }
       }
     } catch (error) {
@@ -127,16 +149,18 @@ export class NextClassWidgetService {
     }
   }
 
-  private static async publish(context: common.Context, formId: string, snapshot: NextClassSnapshot): Promise<void> {
+  private static async publish(context: common.Context, formId: string, snapshot: NextClassSnapshot, formName: string): Promise<void> {
     const payload = new NextClassPayload();
-    payload.scheduleJson = snapshot.scheduleJson;
-    payload.examJson = snapshot.examJson;
-    payload.taskJson = snapshot.taskJson;
+    if (formName) payload.courseOnly = formName === 'LessonCountdownCard';
+    if (formName !== 'WeekTimetableCard') payload.scheduleJson = snapshot.scheduleJson;
+    if (!formName || formName === 'NextClassCard') payload.examJson = snapshot.examJson;
+    if (formName !== 'LessonCountdownCard') payload.taskJson = snapshot.taskJson;
+    if (!formName || formName === 'WeekTimetableCard') payload.weekJson = snapshot.weekJson;
     payload.hasTimetable = snapshot.hasTimetable;
     payload.dataState = snapshot.dataState;
     const opened: fileIo.File[] = [];
     try {
-      const files = NextClassWidgetService.backgroundFiles(context);
+      const files = formName === 'WeekTimetableCard' ? undefined : NextClassWidgetService.backgroundFiles(context);
       if (files !== undefined) {
         // Each card gets its own descriptors; the image data is copied while binding.
         const compact = fileIo.openSync(files.compactPath, fileIo.OpenMode.READ_ONLY);

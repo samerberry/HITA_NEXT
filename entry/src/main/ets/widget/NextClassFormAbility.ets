@@ -7,14 +7,17 @@ import { NextClassWidgetService } from '../feature/widget/NextClassWidgetService
 // Only the initial binding includes it; subsequent schedule updates preserve each instance's size.
 class NextClassInitialData extends NextClassSnapshot {
   formDimension: number = 2;
+  courseOnly: boolean = false;
 }
 
 export default class NextClassFormAbility extends FormExtensionAbility {
   onAddForm(want: Want): formBindingData.FormBindingData {
     const initial = new NextClassInitialData();
+    const name = String(want.parameters?.[formInfo.FormParam.NAME_KEY] ?? '');
+    initial.courseOnly = name === 'LessonCountdownCard';
     initial.formDimension = Number(want.parameters?.[formInfo.FormParam.DIMENSION_KEY] ?? 2);
     const formId = String(want.parameters?.[formInfo.FormParam.IDENTITY_KEY] ?? '');
-    if (formId.length > 0) void NextClassWidgetService.refreshForm(this.context, formId);
+    if (formId.length > 0) void NextClassWidgetService.refreshForm(this.context, formId, name);
     return formBindingData.createFormBindingData(initial);
   }
 

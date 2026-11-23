@@ -1,9 +1,12 @@
 import { NextClassModel, NextClassView } from '../../feature/widget/NextClassModel';
+import { WidgetBrand } from '../../feature/widget/WidgetBrand';
 import { AgendaRow, AgendaView, WidgetAgenda, WidgetTab } from '../../feature/widget/WidgetAgenda';
 import { HitaDesign } from '../../common/theme/HitaDesign';
 
 const storage: LocalStorage = new LocalStorage();
 const MARQUEE_STEP: number = 2.5;
+const COMPACT_COUNTDOWN_SIZE: number = 32;
+const COMPACT_RING_DIAMETER: number = 48;
 
 @Entry(storage)
 @Component
@@ -14,10 +17,13 @@ struct NextClassCard {
   @LocalStorageProp('hasTimetable') @Watch('refreshDisplay') hasTimetable: boolean = false;
   @LocalStorageProp('dataState') @Watch('refreshDisplay') dataState: string = 'loading';
   @LocalStorageProp('formDimension') dimension: number = 2;
+  @LocalStorageProp('courseOnly') courseOnly: boolean = false;
   // Images the app baked at each card's aspect ratio; empty keeps the plain white surface.
   @LocalStorageProp('bgCompact') bgCompact: string = '';
   @LocalStorageProp('bgWide') bgWide: string = '';
-  @State view: NextClassView = new NextClassView();
+  @State hasCourse: boolean = false;
+  @State hours: string = '';
+  @State minutes: string = '';
   @State activeTab: WidgetTab = WidgetTab.COURSE;
   @State agenda: AgendaView = new AgendaView();
   @State title: string = '还没有课表';
@@ -63,7 +69,9 @@ struct NextClassCard {
     this.countdownUnit = nextView.countdownUnit;
     this.isOngoing = nextView.isOngoing;
     this.progressPercent = nextView.progressPercent;
-    this.view = nextView;
+    this.hasCourse = nextView.hasCourse;
+    this.hours = nextView.hours;
+    this.minutes = nextView.minutes;
   }
 
   private backgroundSource(): string {
@@ -101,13 +109,8 @@ struct NextClassCard {
   }
 
   @Builder
-  tabHeader(compact: boolean) {
+  tabHeader() {
     Row({ space: HitaDesign.space2xs }) {
-      Image($r('app.media.app_icon'))
-        .width(compact ? 16 : 18)
-        .height(compact ? 16 : 18)
-        .borderRadius(compact ? 5 : 6)
-        .objectFit(ImageFit.Contain)
       this.tab('课程', WidgetTab.COURSE)
       this.tab('考试', WidgetTab.EXAM)
       this.tab('待办', WidgetTab.TASK)
@@ -118,50 +121,72 @@ struct NextClassCard {
   }
 
   @Builder
-  countdownHero(compact: boolean) {
-    Row({ space: compact ? HitaDesign.space2xs : HitaDesign.spaceSm }) {
-      // Keep the countdown on the left and reserve the right side for the fixed-size ring.
-      Column({ space: 2 }) {
-        Text() {
-          if (this.view.hours) {
-            Span(this.view.hours)
-            Span('h').fontSize(compact ? HitaDesign.label : HitaDesign.caption)
-          }
-          if (this.view.minutes) {
-            Span(this.view.minutes)
-            Span('min').fontSize(compact ? HitaDesign.label : HitaDesign.caption)
-          }
-          if (!this.view.hasCourse) {
-            Span(this.countdown)
-          }
+  cardHeader() {
+    Row() {
+      WidgetBrand({ showName: this.courseOnly || this.dimension === 3 })
+      if (!this.courseOnly) {
+        if (this.dimension === 3) {
+          Row() { this.tabHeader() }.layoutWeight(1).margin({ left: HitaDesign.spaceSm })
+        } else {
+          Row() { this.tabHeader() }.width('80%').constraintSize({ maxWidth: 112 })
         }
-          .fontSize(compact ? 32 : 40)
-          .maxFontSize(compact ? 32 : 40)
-          .minFontSize(HitaDesign.label)
-          .maxLines(1)
-          .fontWeight(FontWeight.Bold)
-          .fontColor('#182230')
-          .align(Alignment.Start)
-          .width('100%')
-          .height(compact ? 36 : 48)
-          .accessibilityText(this.countdown)
-        Text(this.countdownUnit)
-          .maxFontSize(HitaDesign.dockLabel)
-          .minFontSize(9)
-          .maxLines(1)
-          .fontWeight(FontWeight.Medium)
-          .fontColor('#515A67')
-          .align(Alignment.Start)
-          .width('100%')
-          .height(14)
-      }
-      .layoutWeight(1)
-      .alignItems(HorizontalAlign.Start)
-      if (compact && this.isOngoing) {
-        this.progressRing(compact)
       }
     }
-    .alignItems(VerticalAlign.Center)
+    .width('100%')
+    .justifyContent(!this.courseOnly && this.dimension !== 3 ? FlexAlign.SpaceBetween : FlexAlign.Start)
+  }
+
+  @Builder
+  countdownHero(compact: boolean) {
+    Column({ space: 2 }) {
+      Row({ space: HitaDesign.space2xs }) {
+        if (compact && this.hours.length > 2) {
+          Marquee({ src: this.countdown, start: true, step: MARQUEE_STEP })
+            .fontSize(COMPACT_COUNTDOWN_SIZE)
+            .fontWeight(FontWeight.Bold)
+            .fontColor($r('app.color.widget_ink'))
+            .align(Alignment.Start)
+            .layoutWeight(1)
+            .height('100%')
+            .accessibilityText(this.countdown)
+        } else {
+          Text() {
+            if (this.hours) {
+              Span(this.hours)
+              Span('时').fontSize(compact ? HitaDesign.label : HitaDesign.caption)
+            }
+            if (this.minutes) {
+              Span(this.minutes)
+              Span('分').fontSize(compact ? HitaDesign.label : HitaDesign.caption)
+            }
+            if (!this.hasCourse) {
+              Span(this.countdown)
+            }
+          }
+            .fontSize(compact ? COMPACT_COUNTDOWN_SIZE : 40)
+            .maxFontSize(compact ? COMPACT_COUNTDOWN_SIZE : 40)
+            .minFontSize(HitaDesign.label)
+            .maxLines(1)
+            .fontWeight(FontWeight.Bold)
+            .fontColor($r('app.color.widget_ink'))
+            .align(Alignment.Start)
+            .layoutWeight(1)
+            .height('100%')
+            .accessibilityText(this.countdown)
+        }
+      }
+      .width('100%').height(compact ? 36 : 48).alignItems(VerticalAlign.Center)
+      Text(this.countdownUnit)
+        .maxFontSize(HitaDesign.dockLabel)
+        .minFontSize(9)
+        .maxLines(1)
+        .fontWeight(FontWeight.Medium)
+        .fontColor($r('app.color.widget_muted'))
+        .align(Alignment.Start)
+        .width('100%')
+        .height(14)
+    }
+    .alignItems(HorizontalAlign.Start)
     .width('100%')
   }
 
@@ -169,19 +194,18 @@ struct NextClassCard {
   progressRing(compact: boolean) {
     Stack({ alignContent: Alignment.Center }) {
       Progress({ value: this.progressPercent, total: 100, type: ProgressType.Ring })
-        .width(compact ? 44 : 52)
-        .height(compact ? 44 : 52)
+        .width('100%').height('100%')
         .color('#2365B2')
       Text(Math.floor(this.progressPercent).toString() + '%')
-        .fontSize(compact ? 10 : 12)
+        .fontSize(HitaDesign.label)
         .fontWeight(FontWeight.Bold)
         .fontColor('#182230')
         .maxLines(1)
         .textAlign(TextAlign.Center)
-        .width(compact ? 44 : 52)
+        .width('100%')
     }
-    .width(compact ? 44 : 52)
-    .height(compact ? 44 : 52)
+    .width(compact ? COMPACT_RING_DIAMETER : 52)
+    .height(compact ? COMPACT_RING_DIAMETER : 52)
     .flexShrink(0)
   }
 
@@ -228,7 +252,7 @@ struct NextClassCard {
       .width('100%')
       .height(compact ? 18 : 20)
       .alignItems(VerticalAlign.Center)
-      if (this.view.hasCourse) {
+      if (this.hasCourse) {
         if (compact) {
           Row({ space: 6 }) {
             Column() {
@@ -274,7 +298,7 @@ struct NextClassCard {
     Column() {
       if (this.dimension === 3) {
         Row({ space: HitaDesign.spaceXs }) {
-          Column() { this.countdownHero(false) }.layoutWeight(1)
+          Column() { this.countdownHero(false) }.layoutWeight(this.hours && this.minutes ? 1.65 : 1)
           if (this.isOngoing) {
             this.progressRing(false)
           }
@@ -282,7 +306,12 @@ struct NextClassCard {
         }
         .width('100%')
       } else {
-        this.countdownHero(true)
+        Row({ space: HitaDesign.space2xs }) {
+          Column() { this.countdownHero(true) }.layoutWeight(1)
+          if (this.isOngoing) { this.progressRing(true) }
+        }
+        .width('100%')
+        .alignItems(VerticalAlign.Bottom)
         this.courseInfo(true)
       }
     }
@@ -384,7 +413,7 @@ struct NextClassCard {
   build() {
     Stack({ alignContent: Alignment.TopStart }) {
       Column({ space: HitaDesign.space2xs }) {
-        this.tabHeader(this.dimension !== 3)
+        this.cardHeader()
         if (this.activeTab === WidgetTab.COURSE) {
           this.coursePage()
         } else if (this.activeTab === WidgetTab.TASK && this.agenda.rows.length > 0) {

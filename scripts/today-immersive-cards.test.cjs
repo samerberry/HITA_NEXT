@@ -137,7 +137,12 @@ test('task cards use a horizontal gesture and a continuous sideways transition',
   assert.ok(halfFold[0].x < 0 && halfFold[1].x < 220, 'the outgoing card folds to the left');
   assert.ok(halfFold[1].y > halfFold[0].y, 'the far edge narrows in perspective');
   assert.ok((incoming[0].x + incoming[1].x) / 2 > 180, 'the card behind moves in from the right');
-  assert.equal(taskFlipProjection(1, 360, 80, 8)[3].y, 88);
+  for (const depth of [0.5, 1, 2]) {
+    const layer = taskFlipProjection(depth, 360, 80, 8);
+    assert.equal(layer[1].x, 360 + 8 * depth, 'each layer exposes a strip on the right');
+    assert.ok(layer[0].y >= 0 && layer[2].y <= 80);
+    assert.equal((layer[0].y + layer[2].y) / 2, 40, 'resting layers share the same vertical center');
+  }
   assert.equal(taskFlipOpacity(-1, 2), 0);
   assert.equal(taskFlipOpacity(2, 2), 1);
   assert.equal(taskFlipOpacity(3, 2), 0);

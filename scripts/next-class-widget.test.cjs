@@ -39,7 +39,7 @@ test('prefers an ongoing class over the next class and excludes exams and invali
     course('next', 15, { name: '大学物理', teacher: '陈老师', place: '格物楼 202' })]);
   assert.equal(result.title, '当前课程');
   assert.equal(result.isOngoing, true);
-  assert.equal(result.countdown, '35min');
+  assert.equal(result.countdown, '35分');
   assert.equal(result.countdownUnit, '后下课');
   assert.ok(Math.abs(result.progressPercent - (10 / 45 * 100)) < 0.001);
   assert.equal(result.place, '博学楼 101');
@@ -52,7 +52,7 @@ test('cached payload shows ongoing course progress and advances when the class e
   const current = view(events);
   assert.equal(current.title, '高等数学');
   assert.equal(current.isOngoing, true);
-  assert.equal(current.countdown, '15min');
+  assert.equal(current.countdown, '15分');
   assert.equal(current.countdownUnit, '后下课');
   assert.ok(Math.abs(current.progressPercent - (30 / 45 * 100)) < 0.001);
   assert.equal(current.place, '正心楼 101');
@@ -60,14 +60,14 @@ test('cached payload shows ongoing course progress and advances when the class e
   const next = view(events, now + 15 * minute);
   assert.equal(next.title, '英语');
   assert.equal(next.isOngoing, false);
-  assert.equal(next.countdown, '15min');
+  assert.equal(next.countdown, '15分');
   assert.equal(next.countdownUnit, '后上课');
   assert.equal(next.place, '格物楼 202');
   assert.equal(next.teacher, '陈老师');
   const started = view(events, now + 30 * minute);
   assert.equal(started.title, '英语');
   assert.equal(started.isOngoing, true);
-  assert.equal(started.countdown, '45min');
+  assert.equal(started.countdown, '45分');
   assert.equal(started.countdownUnit, '后下课');
   assert.equal(started.progressPercent, 0);
   assert.equal(started.place, '格物楼 202');
@@ -78,13 +78,13 @@ test('cached payload shows ongoing course progress and advances when the class e
   assert.equal(lastMoment.teacher, '王老师');
   const liveTick = view(events, now + 30 * minute + 1000);
   assert.ok(liveTick.progressPercent > started.progressPercent);
-  assert.equal(liveTick.countdown, '45min');
+  assert.equal(liveTick.countdown, '45分');
 });
 test('rounds up partial minutes and displays hours, days and cross-day start times', () => {
-  assert.equal(view([course('one', 0.1)]).countdown, '1min');
-  assert.equal(view([course('hour', 61)]).countdown, '1h1min');
-  assert.equal(view([course('whole', 120)]).countdown, '2h');
-  assert.equal(view([course('long', -10, { to: now + 119 * minute })]).countdown, '1h59min');
+  assert.equal(view([course('one', 0.1)]).countdown, '1分');
+  assert.equal(view([course('hour', 61)]).countdown, '1时1分');
+  assert.equal(view([course('whole', 120)]).countdown, '2时');
+  assert.equal(view([course('long', -10, { to: now + 119 * minute })]).countdown, '1时59分');
   assert.equal(view([course('tomorrow', 1440)]).title, '暂无待上课程');
   assert.equal(view([course('later', 2880 + 60)]).title, '暂无待上课程');
 });
@@ -92,7 +92,7 @@ test('rounds up partial minutes and displays hours, days and cross-day start tim
 test('only displays the earliest upcoming class from the current calendar day', () => {
   const result = view([course('tomorrow', 1440), course('today', 90)]);
   assert.equal(result.title, '高等数学');
-  assert.equal(result.countdown, '1h30min');
+  assert.equal(result.countdown, '1时30分');
 });
 test('uses the same latest-starting ongoing class when course times overlap', () => {
   const result = view([
@@ -393,11 +393,12 @@ test('registers both sizes, second-level timer updates and periodic provider ref
   assert.match(ui, /Marquee\(\{ src: this\.timeLabel, start: true,/);
   assert.match(ui, /Marquee\(\{ src: this\.title, start: true,/);
   const hero = ui.slice(ui.indexOf('countdownHero(compact'), ui.indexOf('  progressRing(compact'));
-  assert.match(hero, /Span\(this\.view\.hours\)/);
-  assert.match(hero, /Span\(this\.view\.minutes\)/);
+  assert.match(hero, /Span\(this\.hours\)/);
+  assert.match(hero, /Span\(this\.minutes\)/);
   assert.match(hero, /\.maxLines\(1\)/);
   assert.match(ui, /Text\(this\.countdownUnit\)/);
-  assert.doesNotMatch(ui, /Marquee\(\{ src: this\.countdown/);
+  assert.match(hero, /if \(compact && this\.hours\.length > 2\) \{\s*Marquee\(\{ src: this\.countdown,/);
+  assert.doesNotMatch(ui, /TextOverflow\.MARQUEE/);
   assert.doesNotMatch(hero, /TextOverflow\.Ellipsis/);
   assert.match(ui, /this\.title = nextView\.title;\s*this\.timeLabel = nextView\.timeLabel;\s*this\.place = nextView\.place;\s*this\.teacher = nextView\.teacher;/);
   // Builder string parameters are by value; the metadata rows must read state directly.
@@ -406,8 +407,8 @@ test('registers both sizes, second-level timer updates and periodic provider ref
   assert.doesNotMatch(ui, /metadataRow\([^)]*this\.(place|teacher)/);
   assert.doesNotMatch(ui, /this\.view\.(title|timeLabel)/);
   assert.match(ui, /Progress\(\{ value: this\.progressPercent, total: 100, type: ProgressType\.Ring \}\)/);
-  assert.match(ui, /\.width\(compact \? 44 : 52\)/);
-  assert.match(ui, /\.height\(compact \? 44 : 52\)/);
+  assert.match(ui, /\.width\(compact \? COMPACT_RING_DIAMETER : 52\)/);
+  assert.match(ui, /\.height\(compact \? COMPACT_RING_DIAMETER : 52\)/);
   assert.match(ui, /\.color\('#2365B2'\)/);
   assert.match(ui, /Stack\(\{ alignContent: Alignment\.Center \}\)/);
   assert.doesNotMatch(ui, /this\.view\.(place|teacher)/);
