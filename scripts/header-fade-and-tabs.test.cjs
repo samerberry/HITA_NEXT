@@ -162,6 +162,10 @@ test('latched grid drags reject native horizontal page gestures but retain verti
   assert.equal(judge.judgePagePan({ isBuiltIn: () => true, getType: () => 3 }), 'reject');
   judge.dockGestureActive = false;
   assert.equal(judge.judgePagePan(pan(3), true), 'reject', 'bar recognizer also handles pointer/trackpad swipes');
+  for (const direction of [1, 2, 3, 15]) assert.equal(judge.judgePagePan(pan(direction), false, true), 'reject');
+  assert.equal(judge.judgePagePan(pan(12), false, true), 'continue', 'the Today list keeps its vertical pan');
+  assert.equal(judge.judgePagePan(pan(3, false), false, true), 'continue', 'the deck owns its horizontal pan');
+  assert.match(home, /others\.some\(\(recognizer: GestureRecognizer\) => recognizer\.getTag\(\) === TODAY_TASK_DECK_PAN\)/);
   assert.equal(judge.judgePagePan(pan(3)), 'continue', 'a new content drag still pages normally');
   assert.match(home, /this\.dockNavigation\.begin\(event, false\)/);
   assert.match(home, /event\.type === TouchType\.Down[\s\S]*event\.touches\[0\]\.windowY >= this\.timetableDateBottom/);

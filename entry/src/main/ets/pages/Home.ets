@@ -79,7 +79,7 @@ import { ImportTimetablePanel } from '../feature/timetable/views/ImportTimetable
 import { ExamPage } from './ExamPage';
 import { BackupPanel } from '../feature/backup/BackupPanel';
 import { LearningTasksPanel } from '../feature/learning/LearningTasksPanel';
-import { taskFlipOpacity, taskFlipProjection, taskFlipRelease } from '../feature/learning/TodayTaskFlip';
+import { taskFlipOpacity, taskFlipProjection, taskFlipRelease, taskFlipTarget } from '../feature/learning/TodayTaskFlip';
 import { ScorePage } from './ScorePage';
 import { CreditPage } from './CreditPage';
 import { EmptyClassroomPage } from './EmptyClassroomPage';
@@ -122,6 +122,7 @@ const COLOR_OTHER: ResourceColor = $r('app.color.hita_link');
 const COLOR_TAG: ResourceColor = $r('app.color.hita_success_0f6e56');
 const TAB_TODAY: number = 0;
 const TAB_TIMETABLE: number = 1;
+const TODAY_TASK_DECK_PAN: string = 'today-task-deck';
 const NAV_TAB_COUNT: number = 3;
 const MORE_HEADER_HEIGHT: number = 56;
 const EVENT_RAIL_WIDTH: number = 4;
@@ -504,8 +505,8 @@ struct Home {
 
   onPageHide(): void {
     this.pageVisible = false;
-    this.resetTodayDeckMotion();
     this.dockHandObserver.stop();
+    this.resetTodayDeckMotion();
     this.stopClock();
     this.resetDockInteraction();
     // Going to the background hides the page too; keep the sheet so a login can go on after reading an SMS code.
@@ -2138,15 +2139,20 @@ struct Home {
     this.todayDeckDrag = 0;
   }
 
-  private beginTodayDeckDrag(): void {
+  private beginTodayDeckDrag(event: GestureEvent): void {
     this.stopTodayDeckAnimator();
     this.todayDeckDragOrigin = this.todayDeckDrag;
+    this.dragTodayDeck(event.offsetX);
+  }
+
+  private todayDeckTravel(): number {
+    return Math.max(this.todayDeckHeight, this.todayDeckWidth * 0.45);
   }
 
   private dragTodayDeck(offset: number): void {
-    if (this.todayTaskDeck.length < 2) return;
+    if (this.todayTaskDeck.length < 2 || this.todayDeckWidth <= 0) return;
     this.todayDeckMoving = true;
-    this.todayDeckDrag = Math.max(-1, Math.min(1, this.todayDeckDragOrigin + offset / this.todayDeckHeight));
+    this.todayDeckDrag = Math.max(-1, Math.min(1, this.todayDeckDragOrigin - offset / this.todayDeckTravel()));
   }
 
   private settleTodayDeck(target: number, velocity: number = 0): void {
@@ -2160,7 +2166,7 @@ struct Home {
     }
     const motionId: number = ++this.todayDeckMotionId;
     const duration: number = Math.round((target === 0 ? 125 : 185) + 140 * Math.abs(remaining));
-    const slope: number = Math.max(0, Math.min(2.4, velocity * duration / (1000 * this.todayDeckHeight * remaining)));
+    const slope: number = Math.max(0, Math.min(2.4, velocity * duration / (1000 * this.todayDeckTravel() * remaining)));
     const animator: AnimatorResult = this.getUIContext().createAnimator({
       duration: duration, easing: 'linear', delay: 0, fill: 'none', direction: 'normal',
       iterations: 1, begin: 0, end: 1
@@ -2179,11 +2185,11 @@ struct Home {
   }
 
   private finishTodayDeckDrag(event: GestureEvent): void {
-    this.dragTodayDeck(event.offsetY);
-    const direction: number = this.todayDeckDrag < 0 ? -1 : 1;
-    const turn: boolean = Math.abs(this.todayDeckDrag) >= 0.32 ||
-      (Math.abs(event.offsetY) >= HitaDesign.spaceXs && direction * event.velocityY > 420);
-    this.settleTodayDeck(turn ? direction : 0, event.velocityY);
+    this.dragTodayDeck(event.offsetX);
+    const velocity: number = -event.velocityX;
+    const target: number = taskFlipTarget(this.todayDeckDrag * this.todayDeckTravel(), this.todayDeckWidth,
+      velocity, HitaDesign.spaceMd);
+    this.settleTodayDeck(target, velocity);
   }
 
   private static placeTeacher(event: EasEventItem): string {
@@ -2392,15 +2398,17 @@ struct Home {
     return this.weekGestureActive && !this.skippingCourse ? GestureJudgeResult.CONTINUE : GestureJudgeResult.REJECT;
   }
 
-  private judgePagePan(current: GestureRecognizer, fromDock: boolean = false): GestureJudgeResult {
+  private judgePagePan(current: GestureRecognizer, fromDock: boolean = false,
+    fromTodayDeck: boolean = false): GestureJudgeResult {
     const dock: boolean = fromDock || this.dockNavigation.isDock();
     if (!current.isBuiltIn()) {
       return GestureJudgeResult.CONTINUE;
     }
-    if (dock && current.getType() === GestureControl.GestureType.SWIPE_GESTURE) {
+    const type: GestureControl.GestureType = current.getType();
+    if ((dock || fromTodayDeck) && type === GestureControl.GestureType.SWIPE_GESTURE) {
       return GestureJudgeResult.REJECT;
     }
-    if ((this.weekGestureActive || dock) && current.getType() === GestureControl.GestureType.PAN_GESTURE) {
+    if ((this.weekGestureActive || dock || fromTodayDeck) && type === GestureControl.GestureType.PAN_GESTURE) {
       const direction: PanDirection = (current as PanRecognizer).getPanGestureOptions().getDirection();
       if (direction === PanDirection.Horizontal || direction === PanDirection.Left ||
         direction === PanDirection.Right || direction === PanDirection.All) {
@@ -2718,8 +2726,7 @@ struct Home {
     .barHeight(0)
     .barBackgroundColor(Color.Transparent)
     .divider(null)
-    // Native paging tracks the finger on every system, including over the
-    // timetable header. Only the grid owns a separate week-paging gesture.
+    // Native paging remains available outside the timetable grid and the Today task deck.
     .scrollable(true)
     .onTouchIntercept((event: TouchEvent) => {
       if (event.type === TouchType.Down && event.touches.length > 0) {
@@ -2734,8 +2741,11 @@ struct Home {
     .onTouch((event: TouchEvent) => {
       this.observeDockTouch(event);
     })
-    .onGestureRecognizerJudgeBegin((event: BaseGestureEvent, current: GestureRecognizer) => {
-      return this.judgePagePan(current);
+    .onGestureRecognizerJudgeBegin((_event: BaseGestureEvent, current: GestureRecognizer,
+      others: GestureRecognizer[]) => {
+      const fromTodayDeck: boolean = this.currentTab === TAB_TODAY &&
+        others.some((recognizer: GestureRecognizer) => recognizer.getTag() === TODAY_TASK_DECK_PAN);
+      return this.judgePagePan(current, false, fromTodayDeck);
     }, true)
     .onTabBarClick((index: number) => {
       this.requestDockClick(index);
@@ -3431,8 +3441,11 @@ struct Home {
   private todayLearningTaskEntry() {
     if (this.todayTaskDeck.length > 1) {
       Stack({ alignContent: Alignment.Top }) {
-        if (this.todayDeckDrag > 0) {
-          this.todayTaskLayer(2);
+        if (this.todayTaskDeck.length > 2 && this.todayDeckDrag > 0) {
+          this.todayTaskBackingLayer(3);
+        }
+        if (this.todayTaskDeck.length > 2 || this.todayDeckDrag > 0) {
+          this.todayTaskBackingLayer(2);
         }
         this.todayTaskLayer(1);
         this.todayTaskLayer(0);
@@ -3441,11 +3454,13 @@ struct Home {
         }
       }
       .width('100%')
-      .padding({ top: HitaDesign.space2xs, bottom: HitaDesign.spaceXs })
-      .accessibilityDescription('上下滑动切换待办，当前第 ' + (this.todayTaskIndex + 1).toString() + ' 项')
-      .priorityGesture(PanGesture({ direction: PanDirection.Vertical, distance: HitaDesign.spaceXs })
-        .onActionStart(() => { this.beginTodayDeckDrag(); })
-        .onActionUpdate((event: GestureEvent) => { this.dragTodayDeck(event.offsetY); })
+      .padding({ bottom: this.todayTaskDeck.length > 2 ? HitaDesign.spaceMd : HitaDesign.spaceXs })
+      .clip(true)
+      .accessibilityDescription('左右滑动切换待办，当前第 ' + (this.todayTaskIndex + 1).toString() + ' 项')
+      .gesture(PanGesture({ fingers: 1, direction: PanDirection.Horizontal, distance: HitaDesign.spaceXs })
+        .tag(TODAY_TASK_DECK_PAN)
+        .onActionStart((event: GestureEvent) => { this.beginTodayDeckDrag(event); })
+        .onActionUpdate((event: GestureEvent) => { this.dragTodayDeck(event.offsetX); })
         .onActionEnd((event: GestureEvent) => { this.finishTodayDeckDrag(event); })
         .onActionCancel(() => { this.settleTodayDeck(0); }))
       .onDisAppear(() => { this.resetTodayDeckMotion(); });
@@ -3455,18 +3470,26 @@ struct Home {
   }
 
   @Builder
+  private todayTaskBackingLayer(slot: number) {
+    Row()
+      .width('100%')
+      .height(this.todayDeckHeight)
+      .position({ x: 0, y: 0 })
+      .backgroundColor(COLOR_CARD)
+      .borderRadius(HitaDesign.cardRadius)
+      .border({ width: 1, color: $r('app.color.hita_divider_edf1f7') })
+      .scale({ x: 1, y: 1, centerX: '0%', centerY: '0%' })
+      .transform3D(taskFlipProjection(slot - this.todayDeckDrag, this.getUIContext().vp2px(this.todayDeckWidth),
+        this.getUIContext().vp2px(this.todayDeckHeight), this.getUIContext().vp2px(HitaDesign.spaceXs)))
+      .opacity(taskFlipOpacity(slot - this.todayDeckDrag, Math.min(2, this.todayTaskDeck.length - 1)))
+      .accessibilityLevel('no')
+      .hitTestBehavior(HitTestMode.None);
+  }
+
+  @Builder
   private todayTaskLayer(slot: number) {
     Stack() {
       this.todayLearningTaskFace(slot);
-      if (slot - this.todayDeckDrag > 0) {
-        Row()
-          .width('100%').height(this.todayDeckHeight)
-          .position({ x: 0, y: 0 })
-          .backgroundColor(COLOR_TEXT_SECONDARY)
-          .opacity(0.30 * Math.min(1, slot - this.todayDeckDrag))
-          .accessibilityLevel('no')
-          .hitTestBehavior(HitTestMode.None);
-      }
     }
     .width('100%')
     .backgroundColor(COLOR_CARD)
@@ -3480,22 +3503,27 @@ struct Home {
         this.todayDeckHeight = height;
       }
     })
-    // The quadrilateral is expressed in local pixels from the top-left corner.
     .scale({ x: 1, y: 1, centerX: '0%', centerY: '0%' })
     .transform3D(taskFlipProjection(slot - this.todayDeckDrag, this.getUIContext().vp2px(this.todayDeckWidth),
-      this.getUIContext().vp2px(this.todayDeckHeight)))
-    .opacity(taskFlipOpacity(slot - this.todayDeckDrag))
+      this.getUIContext().vp2px(this.todayDeckHeight), this.getUIContext().vp2px(HitaDesign.spaceXs)))
+    .opacity(taskFlipOpacity(slot - this.todayDeckDrag, Math.min(2, this.todayTaskDeck.length - 1)))
     .hitTestBehavior(slot === 0 && !this.todayDeckMoving ? HitTestMode.Default : HitTestMode.None)
     .accessibilityLevel(slot === 0 ? 'auto' : 'no-hide-descendants');
   }
 
   @Builder
   private todayLearningTaskFace(slot: number) {
-    if (CompatibleSheetMaterial.isEnabled()) {
-      ImmersiveEventCard({ content: () => { this.todayLearningTaskRow(slot, true); } })
-    } else {
-      this.todayLearningTaskRow(slot);
+    Stack() {
+      if (CompatibleSheetMaterial.isEnabled()) {
+        ImmersiveEventCard({ content: () => { this.todayLearningTaskRow(slot, true); } })
+      } else {
+        this.todayLearningTaskRow(slot);
+      }
     }
+    .width('100%')
+    .onClick(() => {
+      if (slot === 0 && !this.todayDeckMoving) this.openAcademicPanel(5);
+    });
   }
 
   @Builder
@@ -3529,8 +3557,7 @@ struct Home {
     .borderRadius(HitaDesign.cardRadius)
     .border({ width: 1, color: $r('app.color.hita_divider_edf1f7') })
     .clip(true)
-    .hitTestBehavior(immersive ? HitTestMode.Transparent : HitTestMode.Default)
-    .onClick(() => this.openAcademicPanel(5));
+    .hitTestBehavior(immersive ? HitTestMode.Transparent : HitTestMode.Default);
   }
 
   @Builder

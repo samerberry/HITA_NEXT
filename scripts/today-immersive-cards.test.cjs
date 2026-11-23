@@ -98,10 +98,59 @@ test('Today lists the exam section between the schedule and the always-visible t
   const entry = home.slice(home.indexOf('  private todayLearningTaskEntry('), home.indexOf('  private todayExamRow('));
   assert.match(entry, /ImmersiveEventCard\(\{ content: \(\) => \{ this\.todayLearningTaskRow\(slot, true\);/);
   assert.match(entry, /Text\(this\.todayDeckTaskAt\(slot\)\?\.title \?\?/);
-  assert.match(entry, /\.onClick\(\(\) => this\.openAcademicPanel\(5\)\)/);
+  assert.match(entry, /\.onClick\(\(\) => \{\s*if \(slot === 0 && !this\.todayDeckMoving\) this\.openAcademicPanel\(5\);/);
   assert.match(home, /LearningTasksPanel\(\{\s*initialTaskId: this\.pendingLearningTask/);
   const editor = read('feature/learning/LearningTaskEditor.ets');
   assert.match(editor, /this\.field\('提醒'[\s\S]*Text\('显示在今日页'\)[\s\S]*Toggle\(\{ type: ToggleType\.Switch, isOn: this\.draft\.showInToday \}\)[\s\S]*next\.showInToday = value/);
+});
+
+test('task cards use a horizontal gesture and a continuous sideways transition', () => {
+  const home = read('pages/Home.ets');
+  const entry = home.slice(home.indexOf('  private todayLearningTaskEntry('), home.indexOf('  private todayExamRow('));
+  assert.match(entry, /if \(this\.todayTaskDeck\.length > 1\) \{/);
+  assert.match(entry, /\.gesture\(PanGesture\(\{ fingers: 1, direction: PanDirection\.Horizontal[^\n]*\n\s*\.tag\(TODAY_TASK_DECK_PAN\)/);
+  assert.match(entry, /this\.dragTodayDeck\(event\.offsetX\)/);
+  assert.match(entry, /onActionCancel\(\(\) => \{ this\.settleTodayDeck\(0\); \}\)/);
+  assert.doesNotMatch(entry, /priorityGesture|offsetY|PanDirection\.Vertical/);
+
+  assert.match(entry, /\.transform3D\(taskFlipProjection\(slot - this\.todayDeckDrag,/);
+  assert.doesNotMatch(entry, /todayTaskIncomingLayer/);
+  const motion = read('feature/learning/TodayTaskFlip.ets');
+  const compiled = ts.transpileModule(motion, {
+    compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS }
+  }).outputText;
+  const deck = {};
+  new Function('exports', 'require', compiled)(deck, () => ({
+    matrix4: { identity: () => ({ setPolyToPoly: ({ dst }) => dst }) }
+  }));
+  const { taskFlipTarget, taskFlipProjection, taskFlipOpacity, taskFlipRelease } = deck;
+  assert.equal(taskFlipTarget(-80, 360, 0, 16), -1);
+  assert.equal(taskFlipTarget(80, 360, 0, 16), 1);
+  assert.equal(taskFlipTarget(45, 360, 0, 16), 0);
+  assert.equal(taskFlipTarget(8, 360, 650, 16), 0);
+  assert.equal(taskFlipTarget(24, 360, 650, 16), 1);
+  assert.equal(taskFlipTarget(24, 360, -650, 16), 0);
+  assert.equal(taskFlipTarget(-100, 720, 0, 16), -1);
+
+  const halfFold = taskFlipProjection(-0.5, 360, 80, 8);
+  const incoming = taskFlipProjection(0.5, 360, 80, 8);
+  assert.ok(halfFold[0].x < 0 && halfFold[1].x < 220, 'the outgoing card folds to the left');
+  assert.ok(halfFold[1].y > halfFold[0].y, 'the far edge narrows in perspective');
+  assert.ok((incoming[0].x + incoming[1].x) / 2 > 180, 'the card behind moves in from the right');
+  assert.equal(taskFlipProjection(1, 360, 80, 8)[3].y, 88);
+  assert.equal(taskFlipOpacity(-1, 2), 0);
+  assert.equal(taskFlipOpacity(2, 2), 1);
+  assert.equal(taskFlipOpacity(3, 2), 0);
+  const almostFlat = taskFlipProjection(-0.001, 360, 80, 8);
+  assert.ok(Math.abs(almostFlat[0].x) < 1 && Math.abs(almostFlat[1].x - 360) < 1);
+
+  let last = 0;
+  for (let frame = 0; frame <= 30; frame++) {
+    const progress = taskFlipRelease(frame / 30, 2.4);
+    assert.ok(progress >= last && progress <= 1);
+    last = progress;
+  }
+  assert.equal(last, 1);
 });
 
 test('exam rows keep all of today’s exams plus the nearest reminder without duplicating the schedule', () => {
