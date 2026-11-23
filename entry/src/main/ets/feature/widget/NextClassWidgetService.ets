@@ -7,7 +7,6 @@ import { EasEventItem, EasTimetable } from '../../common/model/timetable/Timetab
 import { ScheduleChangeSignal } from '../../common/util/ScheduleChangeSignal';
 import { TimetableSelectionStore } from '../timetable/data/TimetableSelectionStore';
 import { TimetableResolver } from '../timetable/data/TimetableResolver';
-import { timetableBlockColor } from '../timetable/views/TimetableWeekDraw';
 import { NextClassModel, NextClassSnapshot } from './NextClassModel';
 import { WidgetAgenda } from './WidgetAgenda';
 import { WidgetWeek } from './WidgetWeek';
@@ -75,18 +74,7 @@ export class NextClassWidgetService {
       const events: EasEventItem[] = timetable === undefined ? [] : await rdb.getEventsOfTimetable(timetable.id, true);
       snapshot = NextClassModel.snapshot(events, timetable !== undefined, now,
         timetable === undefined ? '' : timetable.id);
-      if (includeWeek) {
-        const railColors = new Map<string, number>();
-        if (timetable !== undefined) {
-          try {
-            const subjects = await rdb.getSubjectsOfTimetable(timetable.id);
-            for (const subject of subjects) railColors.set(subject.id, timetableBlockColor(subject.color));
-          } catch (_) {
-            hilog.warn(0x0000, 'NextClassWidget', 'course colors unavailable');
-          }
-        }
-        snapshot.weekJson = WidgetWeek.pack(events, now, railColors);
-      }
+      if (includeWeek) snapshot.weekJson = WidgetWeek.pack(events, now, timetable);
     } catch (error) {
       hilog.warn(0x0000, 'NextClassWidget', 'load failed: %{public}s', String(error));
       snapshot.dataState = 'error';

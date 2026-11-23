@@ -575,7 +575,9 @@ export struct WidgetBackgroundPage {
         if (this.activeSize === SIZE_WIDE) {
           Row() { this.mockTabs() }.layoutWeight(1).margin({ left: HitaDesign.spaceSm * this.mockScale() })
         } else {
-          Row() { this.mockTabs() }.width('80%').constraintSize({ maxWidth: 112 * this.mockScale() })
+          Row() {
+            Row() { this.mockTabs() }.width('100%').constraintSize({ maxWidth: 112 * this.mockScale() })
+          }.layoutWeight(1).margin({ left: HitaDesign.spaceXs * this.mockScale() }).justifyContent(FlexAlign.End)
         }
       }.width('100%').justifyContent(this.activeSize === SIZE_WIDE ? FlexAlign.Start : FlexAlign.SpaceBetween)
       if (this.activeSize === SIZE_WIDE) {

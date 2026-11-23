@@ -17,10 +17,11 @@ export enum HitaTagTone {
 export struct HitaTag {
   @Prop text: string = '';
   @Prop tone: HitaTagTone = HitaTagTone.BRAND;
+  @Prop compact: boolean = false;
 
   build() {
     Text(this.text)
-      .fontSize(HitaDesign.label)
+      .fontSize(this.compact ? HitaDesign.widgetLabel : HitaDesign.label)
       .fontWeight(FontWeight.Medium)
       .fontColor(HitaTag.foreground(this.tone))
       .backgroundColor(HitaTag.background(this.tone))

@@ -22,6 +22,7 @@ function load(file, overrides = {}, cache = new Map()) {
 }
 const { NextClassModel } = load('feature/widget/NextClassModel.ets');
 const { WidgetAgenda, WidgetTab } = load('feature/widget/WidgetAgenda.ets');
+const { WidgetWeek } = load('feature/widget/WidgetWeek.ets');
 const now = new Date(2026, 9, 16, 8, 0).getTime();
 const minute = 60000;
 const course = (id, offset, overrides = {}) => ({
@@ -32,6 +33,104 @@ function view(events, at = now, exists = true) {
   const data = NextClassModel.snapshot(events, exists, now);
   return NextClassModel.view(data.scheduleJson, data.hasTimetable, data.dataState, at);
 }
+test('the large picker starts on Sunday and includes empty days, while the compact picker keeps Monday first', () => {
+  const at = new Date(2026, 10, 30, 10).getTime(); // Monday, crossing into December
+  const time = (day, hour) => new Date(2026, 10, 30 + day, hour).getTime();
+  const event = (id, day, start, end, type = 'CLASS') =>
+    course(id, 0, { from: time(day, start), to: time(day, end), type });
+  const packet = WidgetWeek.pack([event('sunday', -1, 8, 9), event('finished', 0, 8, 10),
+    event('exam', 1, 14, 16, 'EXAM'), event('active', 0, 9, 11), event('first', 1, 8, 10)], at);
+  const large = (time) => WidgetWeek.view(packet, true, 'ready', time, true);
+  const view = large(at);
+  assert.equal(view.today, 1);
+  assert.deepEqual(view.days.map(d => d.numeral), ['29', '30', '1', '2', '3', '4', '5']);
+  assert.deepEqual(view.days.map(d => d.items.map(i => i.id)),
+    [['sunday'], ['finished', 'active'], ['first', 'exam'], [], [], [], []]);
+  assert.deepEqual(view.days[1].items.map(i => i.status), ['已结束', '进行中']);
+  assert.equal(view.days[2].items[1].exam, true);
+  assert.equal(view.nextChange, time(0, 11));
+  const ended = large(time(0, 11));
+  assert.equal(ended.days[1].hasEvents, true);
+  assert.deepEqual(ended.days[1].items.map(i => [i.id, i.status]), [['finished', '已结束'], ['active', '已结束']]);
+  assert.equal(ended.nextChange, time(1, 0));
+  assert.equal(ended.days[3].hasEvents, false);
+  const compact = WidgetWeek.view(packet, true, 'ready', at);
+  assert.equal(compact.today, 0);
+  assert.deepEqual(compact.days.map(d => d.numeral), ['30', '1', '2', '3', '4', '5', '6']);
+  assert.deepEqual(compact.days[0].items.map(i => i.id), ['finished', 'active']);
+});
+test('periods belong only to classes with valid numbers and the teaching week follows each selected date', () => {
+  const { EasTimetable } = load('common/model/timetable/TimetableModels.ets');
+  const term = new EasTimetable();
+  term.startTime = WidgetWeek.monday(now);
+  term.endTime = WidgetWeek.dayOffset(term.startTime, 90);
+  const events = [[1, 1], [3, 4], [3, 0], [0, 1], [4, 3], [2, 2], [2.5, 3]].map(([fromNumber, lastNumber], i) =>
+    course(String(i), 10 * (i + 1), { fromNumber, lastNumber, type: i === 5 ? 'EXAM' : 'CLASS' }));
+  const week = WidgetWeek.view(WidgetWeek.pack(events, now, term), true, 'ready', now, true);
+  assert.deepEqual(week.days[week.today].items.map(item => item.period), ['第1节', '第3–4节', '', '', '', '', '']);
+  assert.equal(week.days[0].teachingWeek, 0); // Sunday before term
+  assert.equal(week.days[1].teachingWeek, 1);
+  const saturday = WidgetWeek.dayOffset(term.startTime, 12);
+  const following = WidgetWeek.view(WidgetWeek.pack([], saturday, term), true, 'ready', saturday, true);
+  assert.deepEqual(following.days.map(d => d.teachingWeek), [1, 2, 2, 2, 2, 2, 2]);
+  const sunday = WidgetWeek.view(WidgetWeek.pack([], saturday, term), true, 'ready', WidgetWeek.dayOffset(saturday, 1), true);
+  assert.deepEqual(sunday.days.map(d => d.teachingWeek), [2, 3, 3, 3, 3, 3, 3]);
+  assert.equal(WidgetWeek.view(WidgetWeek.pack([], now), true, 'ready', now, true).days[1].teachingWeek, 0);
+});
+test('the course block joins only recorded room and teacher, and changes state at the start and end', () => {
+  const past = WidgetWeek.dayOffset(now, -1);
+  const packet = WidgetWeek.pack([
+    course('past', 0, { from: past + minute, to: past + 2 * minute, place: ' A509 ', teacher: ' 张彪 ' }),
+    course('soon', 10, { teacher: ' NULL ' }), course('later', 80, { place: ' ' })
+  ], now);
+  const viewAt = t => WidgetWeek.view(packet, true, 'ready', t, true);
+  const initial = viewAt(now);
+  const previous = initial.days[initial.today - 1].items[0];
+  assert.equal(previous.status, '已结束');
+  assert.equal(WidgetWeek.subtitle(previous), 'A509 · 张彪');
+  const [soon, later] = initial.days[initial.today].items;
+  assert.equal(soon.status, '未开始');
+  assert.equal(WidgetWeek.subtitle(soon), '正心楼 101');
+  assert.equal(WidgetWeek.subtitle(later), '王老师');
+  assert.equal(initial.nextChange, soon.start);
+  const started = viewAt(soon.start);
+  assert.equal(started.days[started.today].items[0].status, '进行中');
+  assert.equal(started.nextChange, soon.end);
+  const ended = viewAt(soon.end);
+  assert.deepEqual(ended.days[ended.today].items.map(i => [i.id, i.status]), [['soon', '已结束'], ['later', '未开始']]);
+  assert.equal(ended.nextChange, later.start);
+});
+test('Saturday keeps seven dates and the strip rolls over at midnight across the new year', () => {
+  const at = new Date(2022, 11, 31, 23).getTime();
+  const tomorrow = WidgetWeek.dayOffset(at, 1);
+  const packet = WidgetWeek.pack([course('newyear', 0, { from: tomorrow, to: tomorrow + minute }),
+    course('overnight', 0, { from: at - minute, to: tomorrow + 2 * minute })], at);
+  const saturday = WidgetWeek.view(packet, true, 'ready', at, true);
+  assert.equal(saturday.today, 6);
+  assert.equal(saturday.nextChange, tomorrow);
+  assert.deepEqual(saturday.days.map(d => d.numeral), ['25', '26', '27', '28', '29', '30', '31']);
+  const sunday = WidgetWeek.view(packet, true, 'ready', tomorrow, true);
+  assert.deepEqual(sunday.days.map(d => d.numeral), ['1', '2', '3', '4', '5', '6', '7']);
+  assert.deepEqual(sunday.days[0].items.map(i => i.id), ['overnight', 'newyear']);
+  const rollover = WidgetWeek.view(packet, true, 'ready', tomorrow + minute, true);
+  assert.equal(rollover.today, 0);
+  assert.deepEqual(rollover.days[0].items.map(i => [i.id, i.status]), [['overnight', '进行中'], ['newyear', '已结束']]);
+  assert.equal(rollover.nextChange, tomorrow + 2 * minute);
+});
+test('calendar keeps seven selectable dates for an empty week, pending data and read errors', () => {
+  const at = new Date(2026, 10, 29).getTime(); // Sunday
+  const packet = WidgetWeek.pack([], at);
+  const large = (json, exists = true, state = 'ready') => WidgetWeek.view(json, exists, state, at, true);
+  assert.ok(large(packet).days.every(d => !d.hasEvents && d.items.length === 0));
+  assert.equal(large(packet, false).message, '还没有课表');
+  assert.equal(large(packet, true, 'loading').message, '正在读取课表');
+  assert.equal(large('{').message, '课表暂不可用');
+  assert.equal(large('{').days.length, 7);
+  assert.equal(WidgetWeek.view(packet, true, 'ready', WidgetWeek.dayOffset(at, 1), true).stale, true);
+  const oldPacket = JSON.stringify({ monday: WidgetWeek.monday(at), items: [] });
+  assert.equal(large(oldPacket).stale, true);
+  assert.equal(WidgetWeek.view(oldPacket, true, 'ready', at).stale, false);
+});
 test('prefers an ongoing class over the next class and excludes exams and invalid events', () => {
   const result = view([course('late', 90), course('exam', 1, { type: 'EXAM' }),
     course('started', -10, { name: '当前课程', teacher: '李老师', place: '博学楼 101' }),

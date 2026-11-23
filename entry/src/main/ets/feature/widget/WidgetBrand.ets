@@ -7,14 +7,15 @@ export struct WidgetBrand {
   @Prop showName: boolean = true;
 
   build() {
-    Row({ space: HitaDesign.space2xs * this.scaleFactor }) {
+    Row({ space: HitaDesign.spaceXs * this.scaleFactor }) {
       Image($r('app.media.app_icon'))
-        .width(HitaDesign.iconSm * this.scaleFactor).height(HitaDesign.iconSm * this.scaleFactor)
-        .objectFit(ImageFit.Contain)
+        .width(HitaDesign.iconLg * this.scaleFactor).height(HitaDesign.iconLg * this.scaleFactor)
+        .borderRadius(HitaDesign.radiusSm * this.scaleFactor).clip(true).objectFit(ImageFit.Cover)
+        .accessibilityText($r('app.string.app_name')).accessibilityLevel(this.showName ? 'no' : 'yes')
       if (this.showName) {
         Text($r('app.string.app_name'))
-          .fontSize(HitaDesign.dockLabel * this.scaleFactor).fontWeight(FontWeight.Medium)
-          .fontColor(this.followsSystemSurface ? $r('app.color.hita_text_secondary') : $r('app.color.widget_muted'))
+          .fontSize(HitaDesign.caption * this.scaleFactor).fontWeight(FontWeight.Bold)
+          .fontColor(this.followsSystemSurface ? $r('app.color.hita_text') : $r('app.color.widget_ink'))
           .maxLines(1)
       }
     }

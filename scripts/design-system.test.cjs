@@ -85,7 +85,8 @@ test('shared components use tokens only and never pair white text with an untint
   assert.match(action, /new CompatibleMaterialModifier\(HitaColors\.selected, false, this\.materialEnabled\)/);
   const tag = read('common/components/HitaTag.ets');
   // 12 fp text with 4 vp above and below is 24 vp tall; radiusMd is half of that.
-  assert.match(tag, /\.fontSize\(HitaDesign\.label\)/);
+  assert.match(tag, /@Prop compact: boolean = false/);
+  assert.match(tag, /\.fontSize\(this\.compact \? HitaDesign\.widgetLabel : HitaDesign\.label\)/);
   assert.match(tag, /top: HitaDesign\.space2xs,\s*bottom: HitaDesign\.space2xs/);
   assert.match(tag, /\.borderRadius\(HitaDesign\.radiusMd\)/);
 });

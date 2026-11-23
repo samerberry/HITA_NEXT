@@ -7,6 +7,8 @@ const storage: LocalStorage = new LocalStorage();
 const MARQUEE_STEP: number = 2.5;
 const COMPACT_COUNTDOWN_SIZE: number = 32;
 const COMPACT_RING_DIAMETER: number = 48;
+// Space below the visible 后下课 glyphs inside the compact caption's 14 vp line.
+const COMPACT_CAPTION_BOTTOM_INSET: number = 2.5;
 
 @Entry(storage)
 @Component
@@ -128,7 +130,9 @@ struct NextClassCard {
         if (this.dimension === 3) {
           Row() { this.tabHeader() }.layoutWeight(1).margin({ left: HitaDesign.spaceSm })
         } else {
-          Row() { this.tabHeader() }.width('80%').constraintSize({ maxWidth: 112 })
+          Row() {
+            Row() { this.tabHeader() }.width('100%').constraintSize({ maxWidth: 112 })
+          }.layoutWeight(1).margin({ left: HitaDesign.spaceXs }).justifyContent(FlexAlign.End)
         }
       }
     }
@@ -196,6 +200,7 @@ struct NextClassCard {
       Progress({ value: this.progressPercent, total: 100, type: ProgressType.Ring })
         .width('100%').height('100%')
         .color('#2365B2')
+        .backgroundColor(compact ? $r('app.color.widget_ring_track') : undefined)
       Text(Math.floor(this.progressPercent).toString() + '%')
         .fontSize(HitaDesign.label)
         .fontWeight(FontWeight.Bold)
@@ -206,6 +211,7 @@ struct NextClassCard {
     }
     .width(compact ? COMPACT_RING_DIAMETER : 52)
     .height(compact ? COMPACT_RING_DIAMETER : 52)
+    .margin({ bottom: compact ? COMPACT_CAPTION_BOTTOM_INSET : 0 })
     .flexShrink(0)
   }
 

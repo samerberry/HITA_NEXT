@@ -9,25 +9,15 @@ export enum HitaButtonVariant {
   NEUTRAL = 3
 }
 
-class HitaButtonStyle implements AttributeModifier<ButtonAttribute> {
-  private variant: HitaButtonVariant;
-  private buttonHeight: number;
-  private disabled: boolean;
-
-  constructor(variant: HitaButtonVariant, buttonHeight: number, disabled: boolean) {
-    this.variant = variant;
-    this.buttonHeight = buttonHeight;
-    this.disabled = disabled;
-  }
-
-  applyNormalAttribute(instance: ButtonAttribute): void {
-    instance.height(this.buttonHeight)
-      .fontSize(this.buttonHeight >= HitaDesign.buttonHeight ? HitaDesign.body : HitaDesign.caption)
-      .fontWeight(FontWeight.Medium)
-      .fontColor(HitaButton.foreground(this.variant))
-      .backgroundColor(HitaButton.fill(this.variant))
-      .enabled(!this.disabled);
-  }
+// Native attributes also run in the launcher form renderer, where attributeModifier is unavailable.
+@Extend(Button)
+function hitaButtonStyle(variant: HitaButtonVariant, buttonHeight: number, disabled: boolean) {
+  .height(buttonHeight)
+  .fontSize(buttonHeight >= HitaDesign.buttonHeight ? HitaDesign.body : HitaDesign.caption)
+  .fontWeight(FontWeight.Medium)
+  .fontColor(HitaButton.foreground(variant))
+  .backgroundColor(HitaButton.fill(variant))
+  .enabled(!disabled)
 }
 
 /**
@@ -48,14 +38,14 @@ export struct HitaButton {
     if (this.fitContent) {
       Button(this.label, { type: ButtonType.Capsule })
         .padding({ left: HitaDesign.spaceLg, right: HitaDesign.spaceLg })
-        .attributeModifier(new HitaButtonStyle(this.variant, this.buttonHeight, this.disabled))
+        .hitaButtonStyle(this.variant, this.buttonHeight, this.disabled)
         .onClick(() => {
           this.onTap();
         });
     } else {
       Button(this.label, { type: ButtonType.Capsule })
         .width('100%')
-        .attributeModifier(new HitaButtonStyle(this.variant, this.buttonHeight, this.disabled))
+        .hitaButtonStyle(this.variant, this.buttonHeight, this.disabled)
         .onClick(() => {
           this.onTap();
         });

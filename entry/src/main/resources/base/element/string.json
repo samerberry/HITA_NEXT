@@ -3,7 +3,7 @@
     { "name": "lesson_countdown_name", "value": "课程进度" },
     { "name": "lesson_countdown_description", "value": "查看下一节课的时间和地点，上课后显示课程进度与下课倒计时" },
     { "name": "week_timetable_name", "value": "课表" },
-    { "name": "week_timetable_description", "value": "查看今日课程与考试，点日期切换当天安排，或切换到待办查看截止时间" },
+    { "name": "week_timetable_description", "value": "点击一周中的日期，查看当天的课程和考试。小卡也可切换到待办。" },
     {
       "name": "next_class_widget_name",
       "value": "学习日程"

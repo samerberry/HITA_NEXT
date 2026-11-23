@@ -11,6 +11,8 @@ export class HitaDesign {
   static readonly label: number = 12;
   /** Compact native bottom-tab captions, shared by all four Dock items. */
   static readonly dockLabel: number = 11;
+  /** Short labels inside space-constrained launcher timetable cells. */
+  static readonly widgetLabel: number = 11;
   /** Match the native bottom tab's compact icon-to-label gap (Dock only). */
   static readonly dockIconLabelGap: number = 2;
   static readonly iconXs: number = 12;
