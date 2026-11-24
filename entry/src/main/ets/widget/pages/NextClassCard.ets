@@ -1,12 +1,17 @@
 import { NextClassModel, NextClassView } from '../../feature/widget/NextClassModel';
 import { WidgetBrand } from '../../feature/widget/WidgetBrand';
 import { AgendaRow, AgendaView, WidgetAgenda, WidgetTab } from '../../feature/widget/WidgetAgenda';
+import { WidgetDayAgenda } from '../../feature/widget/WidgetDayAgenda';
+import { WidgetWeek } from '../../feature/widget/WidgetWeek';
 import { HitaDesign } from '../../common/theme/HitaDesign';
 
 const storage: LocalStorage = new LocalStorage();
 const MARQUEE_STEP: number = 2.5;
 const COMPACT_COUNTDOWN_SIZE: number = 32;
 const COMPACT_RING_DIAMETER: number = 48;
+const SMALL_FORM: number = 2;
+const WIDE_FORM: number = 3;
+const LARGE_FORM: number = 4;
 // Space below the visible 后下课 glyphs inside the compact caption's 14 vp line.
 const COMPACT_CAPTION_BOTTOM_INSET: number = 2.5;
 
@@ -14,12 +19,13 @@ const COMPACT_CAPTION_BOTTOM_INSET: number = 2.5;
 @Component
 struct NextClassCard {
   @LocalStorageProp('scheduleJson') @Watch('refreshDisplay') scheduleJson: string = '[]';
+  @LocalStorageProp('weekJson') @Watch('refreshDisplay') weekJson: string = '';
   @LocalStorageProp('examJson') @Watch('refreshDisplay') examJson: string = '';
   @LocalStorageProp('taskJson') @Watch('refreshDisplay') taskJson: string = '';
   @LocalStorageProp('hasTimetable') @Watch('refreshDisplay') hasTimetable: boolean = false;
   @LocalStorageProp('dataState') @Watch('refreshDisplay') dataState: string = 'loading';
-  @LocalStorageProp('formDimension') dimension: number = 2;
-  @LocalStorageProp('courseOnly') courseOnly: boolean = false;
+  @LocalStorageProp('formDimension') dimension: number = SMALL_FORM;
+  @LocalStorageProp('courseOnly') @Watch('refreshDisplay') courseOnly: boolean = false;
   // Images the app baked at each card's aspect ratio; empty keeps the plain white surface.
   @LocalStorageProp('bgCompact') bgCompact: string = '';
   @LocalStorageProp('bgWide') bgWide: string = '';
@@ -28,6 +34,7 @@ struct NextClassCard {
   @State minutes: string = '';
   @State activeTab: WidgetTab = WidgetTab.COURSE;
   @State agenda: AgendaView = new AgendaView();
+  @State todaySchedule: WidgetWeek = new WidgetWeek();
   @State title: string = '还没有课表';
   @State timeLabel: string = '';
   @State place: string = '地点待定';
@@ -38,6 +45,7 @@ struct NextClassCard {
   @State progressPercent: number = 0;
   // TextTimer never runs on its own: without start() onTimer is never dispatched.
   private ticker: TextTimerController = new TextTimerController();
+  private requestedWeek: number = -1;
 
   aboutToAppear(): void {
     this.refreshDisplay();
@@ -49,19 +57,24 @@ struct NextClassCard {
   }
 
   private onTick(elapsedTime: number): void {
-    if (this.activeTab === WidgetTab.COURSE || Date.now() >= this.agenda.nextChange) this.refreshDisplay();
+    const nextChange = this.activeTab === WidgetTab.COURSE ? this.todaySchedule.nextChange : this.agenda.nextChange;
+    if (this.courseOnly || Date.now() >= nextChange) this.refreshDisplay();
     // A count-up timer is not meant to run for days on a launcher; restart it periodically.
     if (elapsedTime >= 43200) this.startTicker();
   }
 
   private refreshDisplay(): void {
+    const now = Date.now();
     if (this.activeTab !== WidgetTab.COURSE) {
       this.agenda = WidgetAgenda.view(this.activeTab, this.activeTab === WidgetTab.EXAM ? this.examJson : this.taskJson,
-        this.dataState === 'loading', Date.now());
+        this.dataState === 'loading', now);
       return;
     }
-    const nextView: NextClassView = NextClassModel.view(
-      this.scheduleJson, this.hasTimetable, this.dataState, Date.now());
+    if (!this.courseOnly) {
+      this.refreshToday(now);
+      return;
+    }
+    const nextView: NextClassView = NextClassModel.view(this.scheduleJson, this.hasTimetable, this.dataState, now);
     // Name, place, teacher and time are switched together from the same selected course.
     this.title = nextView.title;
     this.timeLabel = nextView.timeLabel;
@@ -76,15 +89,26 @@ struct NextClassCard {
     this.minutes = nextView.minutes;
   }
 
+  private refreshToday(now: number): void {
+    // An existing card from before the update may still have only the countdown data.
+    const needsWeek = !this.weekJson && this.hasTimetable && this.dataState === 'ready';
+    this.todaySchedule = WidgetWeek.view(this.weekJson, this.hasTimetable, needsWeek ? 'loading' : this.dataState,
+      now, true);
+    const monday = WidgetWeek.monday(now);
+    if ((needsWeek || this.todaySchedule.stale) && this.requestedWeek !== monday) {
+      this.requestedWeek = monday;
+      postCardAction(this, { action: 'message', params: { refresh: 'week' } });
+    }
+  }
+
   private backgroundSource(): string {
-    const name: string = this.dimension === 3 ? this.bgWide : this.bgCompact;
+    const name: string = this.dimension === WIDE_FORM ? this.bgWide : this.bgCompact;
     return name.length > 0 ? 'memory://' + name : '';
   }
 
   private openApp(id: string = ''): void {
     const params: Record<string, string> = {};
-    if (id && this.activeTab === WidgetTab.EXAM) params['hitaReminderEventId'] = id;
-    if (id && this.activeTab === WidgetTab.TASK) params['hitaLearningTaskId'] = id;
+    if (id) params[this.activeTab === WidgetTab.TASK ? 'hitaLearningTaskId' : 'hitaReminderEventId'] = id;
     postCardAction(this, {
       action: 'router',
       abilityName: 'EntryAbility',
@@ -125,9 +149,9 @@ struct NextClassCard {
   @Builder
   cardHeader() {
     Row() {
-      WidgetBrand({ showName: this.courseOnly || this.dimension === 3 })
+      WidgetBrand({ showName: this.courseOnly || this.dimension !== SMALL_FORM })
       if (!this.courseOnly) {
-        if (this.dimension === 3) {
+        if (this.dimension !== SMALL_FORM) {
           Row() { this.tabHeader() }.layoutWeight(1).margin({ left: HitaDesign.spaceSm })
         } else {
           Row() {
@@ -137,7 +161,7 @@ struct NextClassCard {
       }
     }
     .width('100%')
-    .justifyContent(!this.courseOnly && this.dimension !== 3 ? FlexAlign.SpaceBetween : FlexAlign.Start)
+    .justifyContent(!this.courseOnly && this.dimension === SMALL_FORM ? FlexAlign.SpaceBetween : FlexAlign.Start)
   }
 
   @Builder
@@ -302,7 +326,7 @@ struct NextClassCard {
   @Builder
   coursePage() {
     Column() {
-      if (this.dimension === 3) {
+      if (this.dimension === WIDE_FORM) {
         Row({ space: HitaDesign.spaceXs }) {
           Column() { this.countdownHero(false) }.layoutWeight(this.hours && this.minutes ? 1.65 : 1)
           if (this.isOngoing) {
@@ -323,12 +347,32 @@ struct NextClassCard {
     }
     .width('100%')
     .layoutWeight(1)
-    .justifyContent(this.dimension === 3 ? FlexAlign.Center : FlexAlign.SpaceAround)
+    .justifyContent(this.dimension === WIDE_FORM ? FlexAlign.Center : FlexAlign.SpaceAround)
     .onClick((): void => this.openApp())
   }
 
   @Builder
-  taskList() {
+  todayPage() {
+    if (this.todaySchedule.days.length) {
+      if (this.dimension === LARGE_FORM) {
+        Row() {
+          Text('今日课表').fontSize(HitaDesign.caption).fontWeight(FontWeight.Medium)
+            .fontColor($r('app.color.widget_ink'))
+          Text(WidgetWeek.shortDate(this.todaySchedule.days[this.todaySchedule.today].date))
+            .fontSize(HitaDesign.label).fontColor($r('app.color.widget_muted'))
+        }
+        .width('100%').justifyContent(FlexAlign.SpaceBetween)
+        .padding({ top: HitaDesign.space2xs, bottom: HitaDesign.space2xs })
+      }
+      WidgetDayAgenda({ day: this.todaySchedule.days[this.todaySchedule.today],
+        message: this.todaySchedule.stale ? '正在更新今日课表' : this.todaySchedule.message,
+        emptyLabel: '今天没有课程或考试', compact: this.dimension !== LARGE_FORM, followsSystemSurface: false,
+        openItem: (id: string): void => this.openApp(id) })
+    }
+  }
+
+  @Builder
+  agendaList() {
     List({ space: HitaDesign.space2xs }) {
       ForEach(this.agenda.rows, (row: AgendaRow) => {
         ListItem() {
@@ -339,11 +383,13 @@ struct NextClassCard {
               .fontColor($r('app.color.widget_ink'))
               .maxLines(1)
               .textOverflow({ overflow: TextOverflow.Ellipsis })
-            Text((row.status === '已逾期' ? '逾期 · ' : '') + row.when)
+            Text((this.activeTab === WidgetTab.EXAM ? row.status + ' · ' :
+              row.status === '已逾期' ? '逾期 · ' : '') + row.when)
               .fontSize(HitaDesign.dockLabel)
-              .fontColor(row.status === '已逾期' ? $r('app.color.widget_exam') : $r('app.color.widget_task'))
+              .fontColor(this.activeTab === WidgetTab.EXAM || row.status === '已逾期' ?
+                $r('app.color.widget_exam') : $r('app.color.widget_task'))
               .maxLines(1)
-            if (this.dimension === 3) {
+            if (this.dimension !== SMALL_FORM) {
               Text(row.detail)
                 .fontSize(HitaDesign.dockLabel)
                 .fontColor($r('app.color.widget_muted'))
@@ -379,7 +425,7 @@ struct NextClassCard {
         .alignItems(HorizontalAlign.Start)
         .onClick((): void => this.openApp())
       } else {
-        ForEach(this.agenda.rows.slice(0, this.dimension === 3 ? 2 : 1), (row: AgendaRow) => {
+        ForEach(this.agenda.rows.slice(0, this.dimension === SMALL_FORM ? 1 : 2), (row: AgendaRow) => {
           Column({ space: HitaDesign.space2xs }) {
             Text(row.status)
               .fontSize(HitaDesign.dockLabel)
@@ -421,9 +467,13 @@ struct NextClassCard {
       Column({ space: HitaDesign.space2xs }) {
         this.cardHeader()
         if (this.activeTab === WidgetTab.COURSE) {
-          this.coursePage()
-        } else if (this.activeTab === WidgetTab.TASK && this.agenda.rows.length > 0) {
-          this.taskList()
+          if (this.courseOnly) {
+            this.coursePage()
+          } else {
+            this.todayPage()
+          }
+        } else if (this.agenda.rows.length > 0 && (this.activeTab === WidgetTab.TASK || this.dimension === LARGE_FORM)) {
+          this.agendaList()
         } else {
           this.agendaPage()
         }

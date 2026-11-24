@@ -31,7 +31,6 @@ export class WidgetDay {
 
 export class WidgetWeek {
   days: WidgetDay[] = [];
-  range: string = '';
   today: number = 0;
   message: string = '';
   stale: boolean = false;
@@ -54,6 +53,12 @@ export class WidgetWeek {
   static shortDate(time: number): string {
     const d = new Date(time);
     return (d.getMonth() + 1) + '/' + d.getDate();
+  }
+
+  static termLabel(day: WidgetDay | undefined): string {
+    if (!day) return '';
+    const month = new Date(day.date).getMonth() + 1;
+    return month + '月' + (day.teachingWeek > 0 ? '  ·  第' + day.teachingWeek + '周' : '');
   }
 
   static subtitle(item: WeekItem): string {
@@ -103,7 +108,6 @@ export class WidgetWeek {
     const today = WidgetWeek.dayOffset(now, 0);
     const first = calendar ? WidgetWeek.dayOffset(today, -weekday) : monday;
     week.nextChange = WidgetWeek.dayOffset(today, 1);
-    week.range = WidgetWeek.shortDate(monday) + ' – ' + WidgetWeek.shortDate(WidgetWeek.dayOffset(monday, 6));
     for (let i = 0; i < 7; i++) {
       const day = new WidgetDay();
       day.index = i;

@@ -80,11 +80,16 @@ test('card uses the documented background attributes; More expands into two sing
   assert.match(service, /payload\.formImages = images/);
   assert.match(service, /finally \{\s*NextClassWidgetService\.close\(opened\)/);
   const home = read('pages/Home.ets');
-  const menu = home.slice(home.indexOf('  desktopWidgetSettings() {'), home.indexOf('  appearanceSettings() {'));
+  const menu = home.slice(home.indexOf('  desktopWidgetSettings() {'), home.indexOf('  assistantDockSettings() {'));
   assert.match(menu, /this\.widgetMenuExpanded = !this\.widgetMenuExpanded/);
   assert.ok(menu.indexOf("'设置桌面服务卡片'") < menu.indexOf("'自定义背景'"));
   assert.match(menu, /this\.openWidgetBackgroundSheet\(\)/);
   assert.match(menu, /this\.openDesktopWidgetManager\(\)/);
+  const manager = home.slice(home.indexOf('  private openDesktopWidgetManager(): void {'),
+    home.indexOf('  desktopWidgetSettings() {'));
+  assert.match(manager, /formProvider\.openFormManager\(/);
+  assert.match(manager, /'ohos\.extra\.param\.key\.form_name': 'LessonCountdownCard'/);
+  assert.doesNotMatch(manager, /showActionMenu/);
   assert.doesNotMatch(read('feature/widget/WidgetBackgroundPage.ets'), /bindSheet/);
 });
 

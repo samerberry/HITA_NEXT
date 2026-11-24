@@ -1,32 +1,27 @@
 import { HitaDesign } from '../../common/theme/HitaDesign';
-import { WeekCalendar } from '../../feature/widget/WeekCalendar';
-import { WidgetBrand } from '../../feature/widget/WidgetBrand';
-import { AgendaRow, AgendaView, WidgetAgenda, WidgetTab } from '../../feature/widget/WidgetAgenda';
+import { WeekCalendar, WeekCalendarHeader } from '../../feature/widget/WeekCalendar';
 import { WeekItem, WidgetDay, WidgetWeek } from '../../feature/widget/WidgetWeek';
 
 const storage = new LocalStorage();
 const weekdays: string[] = ['一', '二', '三', '四', '五', '六', '日'];
 const COMPACT_FORM: number = 3;
-const COMPACT_TRACK_INSET: number = HitaDesign.space2xs / 2;
+const DATE_GAP: number = HitaDesign.space2xs / 2;
 
 @Entry(storage)
 @Component
 struct WeekTimetableCard {
   @LocalStorageProp('formDimension') @Watch('changeDimension') dimension: number = 4;
   @LocalStorageProp('weekJson') @Watch('updateWeek') weekJson: string = '';
-  @LocalStorageProp('hasTimetable') @Watch('refresh') hasTimetable: boolean = false;
-  @LocalStorageProp('dataState') @Watch('refresh') dataState: string = 'loading';
-  @LocalStorageProp('taskJson') @Watch('updateTasks') taskJson: string = '';
+  @LocalStorageProp('hasTimetable') @Watch('updateWeek') hasTimetable: boolean = false;
+  @LocalStorageProp('dataState') @Watch('updateWeek') dataState: string = 'loading';
   @State week: WidgetWeek = new WidgetWeek();
-  @State agenda: AgendaView = new AgendaView();
-  @State tasks: boolean = false;
   @State selectedDay: number = 0;
   private lastDay: number = -1;
   private requestedWeek: number = -1;
   private ticker: TextTimerController = new TextTimerController();
 
   aboutToAppear(): void {
-    this.refresh();
+    this.updateWeek();
   }
 
   private updateWeek(): void {
@@ -43,61 +38,18 @@ struct WeekTimetableCard {
     }
   }
 
-  private updateTasks(): void {
-    if (this.dimension !== COMPACT_FORM) return;
-    this.agenda = WidgetAgenda.view(WidgetTab.TASK, this.taskJson, this.dataState === 'loading', Date.now());
-  }
-
-  private refresh(): void {
-    this.updateWeek();
-    this.updateTasks();
-  }
-
   private changeDimension(): void {
     this.lastDay = -1;
-    this.refresh();
+    this.updateWeek();
   }
 
-  private openItem(id: string, task: boolean): void {
-    const params: Record<string, string> = {};
-    params[task ? 'hitaLearningTaskId' : 'hitaReminderEventId'] = id;
-    postCardAction(this, { action: 'router', abilityName: 'EntryAbility', params: params });
-  }
-
-  @Builder
-  segment(label: string, tasks: boolean) {
-    Text(label)
-      .fontSize(HitaDesign.label)
-      .fontWeight(this.tasks === tasks ? FontWeight.Bold : FontWeight.Medium)
-      .fontColor(this.tasks === tasks ? $r('app.color.hita_primary') : $r('app.color.hita_text_secondary'))
-      .backgroundColor(this.tasks === tasks ? $r('app.color.hita_surface') : Color.Transparent)
-      .borderRadius(HitaDesign.radiusSm)
-      .padding({ left: 12, right: 12 })
-      .height('100%')
-      .textAlign(TextAlign.Center)
-      .onClick((): void => { this.tasks = tasks; })
-  }
-
-  @Builder
-  header() {
-    Row() {
-      WidgetBrand({ followsSystemSurface: true })
-      Text(this.tasks ? (this.agenda.rows.length > 0 ? this.agenda.rows.length + ' 项未完成' : '') : this.week.range)
-        .fontSize(HitaDesign.label).fontColor($r('app.color.hita_text_secondary')).maxLines(1)
-        .layoutWeight(1).textAlign(TextAlign.Center)
-      Row() {
-        Row() {
-          this.segment('课表', false)
-          this.segment('待办', true)
-        }.padding(COMPACT_TRACK_INSET).height(28).borderRadius(HitaDesign.radiusMd).backgroundColor($r('app.color.hita_control'))
-      }.justifyContent(FlexAlign.End)
-    }.width('100%')
-    .padding({ left: HitaDesign.spaceSm, right: HitaDesign.spaceSm })
+  private openItem(id: string): void {
+    postCardAction(this, { action: 'router', abilityName: 'EntryAbility', params: { hitaReminderEventId: id } });
   }
 
   @Builder
   notice() {
-    Text(this.tasks ? this.agenda.message : (this.week.message || '当天没有课程或考试'))
+    Text(this.week.message || '当天没有课程或考试')
       .fontSize(HitaDesign.caption)
       .fontColor($r('app.color.hita_text_secondary'))
       .textAlign(TextAlign.Center)
@@ -106,7 +58,7 @@ struct WeekTimetableCard {
 
   @Builder
   dates() {
-    Row({ space: COMPACT_TRACK_INSET }) {
+    Row({ space: DATE_GAP }) {
       ForEach(this.week.days, (day: WidgetDay) => {
         Column() {
           Text(weekdays[day.index]).fontSize(HitaDesign.dockLabel)
@@ -138,7 +90,7 @@ struct WeekTimetableCard {
         Text(item.place).constraintSize({ maxWidth: '28%' }).fontSize(HitaDesign.label)
           .fontColor($r('app.color.hita_text_secondary')).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
       }
-    }.width('100%').constraintSize({ minHeight: 28 }).onClick((): void => this.openItem(item.id, false))
+    }.width('100%').constraintSize({ minHeight: 28 }).onClick((): void => this.openItem(item.id))
   }
 
   @Builder
@@ -151,44 +103,22 @@ struct WeekTimetableCard {
     .padding({ left: HitaDesign.spaceSm, right: HitaDesign.spaceSm })
   }
 
-  @Builder
-  taskAgenda() {
-    List({ space: 4 }) {
-      ForEach(this.agenda.rows, (row: AgendaRow) => {
-        ListItem() {
-          Column({ space: 4 }) {
-            Text(row.title).fontSize(HitaDesign.caption).fontWeight(FontWeight.Medium)
-              .fontColor($r('app.color.hita_text')).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
-            Text((row.status === '已逾期' ? '逾期 · ' : '') + row.when + ' · ' + row.detail)
-              .fontSize(HitaDesign.label).fontColor(row.status === '已逾期' ?
-                $r('app.color.hita_error') : $r('app.color.hita_text_secondary'))
-              .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
-          }.alignItems(HorizontalAlign.Start).width('100%').padding({ top: 4, bottom: 4 })
-          .onClick((): void => this.openItem(row.id, true))
-        }
-      }, (row: AgendaRow): string => JSON.stringify(row))
-    }.width('100%').layoutWeight(1).scrollBar(BarState.Auto)
-    .padding({ left: HitaDesign.spaceSm, right: HitaDesign.spaceSm })
-  }
-
   build() {
     Stack() {
       if (this.dimension !== COMPACT_FORM) {
         WeekCalendar({ week: this.week, selectedDay: this.selectedDay,
           selectDay: (index: number): void => { this.selectedDay = index; },
-          openItem: (id: string): void => this.openItem(id, false) })
+          openItem: (id: string): void => this.openItem(id) })
       } else {
-        Column({ space: 4 }) {
-          this.header()
-          if (this.tasks) {
-            if (this.agenda.rows.length) { this.taskAgenda() } else { this.notice() }
+        Column({ space: HitaDesign.space2xs }) {
+          Row() {
+            WeekCalendarHeader({ termLabel: WidgetWeek.termLabel(this.week.days[this.selectedDay]) })
+          }.width('100%').padding({ left: HitaDesign.spaceSm, right: HitaDesign.spaceSm })
+          this.dates()
+          if (!this.week.message && this.week.days[this.selectedDay]?.items.length) {
+            this.dayAgenda()
           } else {
-            this.dates()
-            if (!this.week.message && this.week.days[this.selectedDay]?.items.length) {
-              this.dayAgenda()
-            } else {
-              this.notice()
-            }
+            this.notice()
           }
         }.width('100%').height('100%').padding({ top: HitaDesign.spaceXs, bottom: HitaDesign.spaceXs })
       }
@@ -199,12 +129,11 @@ struct WeekTimetableCard {
         .onTimer((): void => {
           const now = Date.now();
           if (now >= this.week.nextChange || this.lastDay !== WidgetWeek.dayOffset(now, 0)) this.updateWeek();
-          if (this.dimension === COMPACT_FORM && now >= this.agenda.nextChange) this.updateTasks();
         })
     }
     .width('100%').height('100%')
     .backgroundColor($r('app.color.hita_surface'))
     .borderRadius($r('sys.float.ohos_id_corner_radius_card')).clip(true)
-    .onAppear((): void => this.refresh())
+    .onAppear((): void => this.updateWeek())
   }
 }

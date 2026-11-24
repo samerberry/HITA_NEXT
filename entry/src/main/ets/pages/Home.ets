@@ -10,7 +10,7 @@ import { CourseDetailContent } from '../feature/timetable/views/CourseDetailCont
  * timetable/session data layer already used by the app.
  */
 import { common } from '@kit.AbilityKit';
-import { formProvider } from '@kit.FormKit';
+import { formInfo, formProvider } from '@kit.FormKit';
 import { deviceInfo } from '@kit.BasicServicesKit';
 import { AnimatorResult, curves, FrameCallback, FrameNode, KeyboardAvoidMode, SymbolGlyphModifier } from '@kit.ArkUI';
 import { HeaderBackButton } from '../common/components/HeaderBackButton';
@@ -4215,29 +4215,13 @@ struct Home {
   }
 
   private openDesktopWidgetManager(): void {
-    this.getUIContext().getPromptAction().showActionMenu({
-      title: '选择服务卡片',
-      buttons: [
-        { text: '学习日程', color: COLOR_PRIMARY },
-        { text: $r('app.string.lesson_countdown_name'), color: COLOR_PRIMARY },
-        { text: '课表', color: COLOR_PRIMARY }
-      ]
-    }).then(result => {
-      const names: string[] = ['NextClassCard', 'LessonCountdownCard', 'WeekTimetableCard'];
-      if (result.index >= 0 && result.index < names.length) {
-        this.openDesktopWidgetFamily(names[result.index], result.index === 2 ? 4 : 2);
-      }
-    }).catch(() => {});
-  }
-
-  private openDesktopWidgetFamily(name: string, dimension: number): void {
     try {
       formProvider.openFormManager({
         bundleName: 'cn.berry.hitanext',
         abilityName: 'NextClassFormAbility',
         parameters: {
-          'ohos.extra.param.key.form_dimension': dimension,
-          'ohos.extra.param.key.form_name': name,
+          'ohos.extra.param.key.form_dimension': formInfo.FormDimension.Dimension_2_2,
+          'ohos.extra.param.key.form_name': 'LessonCountdownCard',
           'ohos.extra.param.key.module_name': 'entry'
         }
       });

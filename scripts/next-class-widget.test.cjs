@@ -35,11 +35,15 @@ function view(events, at = now, exists = true) {
 }
 test('the large picker starts on Sunday and includes empty days, while the compact picker keeps Monday first', () => {
   const at = new Date(2026, 10, 30, 10).getTime(); // Monday, crossing into December
+  const { EasTimetable } = load('common/model/timetable/TimetableModels.ets');
+  const timetable = new EasTimetable();
+  timetable.startTime = WidgetWeek.monday(at);
+  timetable.endTime = WidgetWeek.dayOffset(at, 35);
   const time = (day, hour) => new Date(2026, 10, 30 + day, hour).getTime();
   const event = (id, day, start, end, type = 'CLASS') =>
     course(id, 0, { from: time(day, start), to: time(day, end), type });
   const packet = WidgetWeek.pack([event('sunday', -1, 8, 9), event('finished', 0, 8, 10),
-    event('exam', 1, 14, 16, 'EXAM'), event('active', 0, 9, 11), event('first', 1, 8, 10)], at);
+    event('exam', 1, 14, 16, 'EXAM'), event('active', 0, 9, 11), event('first', 1, 8, 10)], at, timetable);
   const large = (time) => WidgetWeek.view(packet, true, 'ready', time, true);
   const view = large(at);
   assert.equal(view.today, 1);
@@ -58,6 +62,10 @@ test('the large picker starts on Sunday and includes empty days, while the compa
   assert.equal(compact.today, 0);
   assert.deepEqual(compact.days.map(d => d.numeral), ['30', '1', '2', '3', '4', '5', '6']);
   assert.deepEqual(compact.days[0].items.map(i => i.id), ['finished', 'active']);
+  assert.equal(WidgetWeek.termLabel(view.days[0]), '11月');
+  assert.equal(WidgetWeek.termLabel(compact.days[0]), '11月  ·  第1周');
+  assert.equal(WidgetWeek.termLabel(compact.days[1]), '12月  ·  第1周');
+  assert.equal(WidgetWeek.termLabel(compact.days[1]), WidgetWeek.termLabel(view.days[2]));
 });
 test('periods belong only to classes with valid numbers and the teaching week follows each selected date', () => {
   const { EasTimetable } = load('common/model/timetable/TimetableModels.ets');
@@ -419,28 +427,45 @@ test('connects saved timetable changes to the card refresh pipeline', () => {
   }
 });
 test('publishes edited teacher and place fields so the card follows the saved schedule', async () => {
-  const published = [];
+  const published = new Map();
   const { NextClassWidgetService: service } = load('feature/widget/NextClassWidgetService.ets', {
     '@kit.FormKit': {
       formBindingData: { createFormBindingData: value => value },
       formProvider: {
         getPublishedRunningFormInfos: async () => [
-          { formId: 'card', formName: 'NextClassCard', moduleName: 'entry' }
+          { formId: 'study', formName: 'NextClassCard', moduleName: 'entry' },
+          { formId: 'progress', formName: 'LessonCountdownCard', moduleName: 'entry' }
         ],
-        updateForm: async (_id, data) => published.push(data)
+        updateForm: async (id, data) => published.set(id, data)
       }
     }
   });
   service.context = {};
   service.backgroundFiles = () => undefined;
-  let currentEvents = [course('active', -10, { place: '创建时地点', teacher: '创建时教师' })];
-  service.load = async () => NextClassModel.snapshot(currentEvents, true, now);
+  const finished = course('finished', -80);
+  const tomorrow = WidgetWeek.dayOffset(now, 1);
+  const nextDay = course('tomorrow', 0, { from: tomorrow, to: tomorrow + minute });
+  let currentEvents = [finished, course('active', -10, { place: '创建时地点', teacher: '创建时教师' }), nextDay];
+  service.load = async (_context, _fromCardProcess, includeWeek) => {
+    const snapshot = NextClassModel.snapshot(currentEvents, true, now);
+    if (includeWeek) snapshot.weekJson = WidgetWeek.pack(currentEvents, now);
+    return snapshot;
+  };
   await service.refreshAll();
-  currentEvents = [course('active', -10, { place: '编辑后地点', teacher: '编辑后教师' })];
+  currentEvents = [finished, course('active', -10, { place: '编辑后地点', teacher: '编辑后教师' }), nextDay];
   await service.refreshAll();
 
-  assert.equal(published.length, 2);
-  const latest = NextClassModel.view(published[1].scheduleJson, true, 'ready', now);
+  const study = published.get('study');
+  assert.equal(study.courseOnly, false);
+  const week = WidgetWeek.view(study.weekJson, study.hasTimetable, study.dataState, now, true);
+  const today = week.days[week.today].items;
+  assert.deepEqual(today.map(item => [item.id, item.status]), [['finished', '已结束'], ['active', '进行中']]);
+  assert.equal(WidgetWeek.subtitle(today[1]), '编辑后地点 · 编辑后教师');
+
+  const progress = published.get('progress');
+  assert.equal(progress.courseOnly, true);
+  assert.equal(progress.weekJson, '');
+  const latest = NextClassModel.view(progress.scheduleJson, true, 'ready', now);
   assert.equal(latest.place, '编辑后地点');
   assert.equal(latest.teacher, '编辑后教师');
 });
@@ -461,9 +486,13 @@ test('publishes the latest schedule when edits race a slow database read', async
   await service.refreshAll();
   assert.deepEqual(published, ['new']);
 });
-test('registers both sizes, second-level timer updates and periodic provider refresh', () => {
-  const config = JSON.parse(fs.readFileSync(path.join(root, 'resources/base/profile/next_class_form_config.json'))).forms[0];
+test('registers each card in the intended order and keeps the countdown timer', () => {
+  const { forms } = JSON.parse(fs.readFileSync(path.join(root, 'resources/base/profile/next_class_form_config.json')));
+  const [config, study] = forms;
+  assert.deepEqual(forms.map(form => form.name), ['LessonCountdownCard', 'NextClassCard', 'WeekTimetableCard']);
+  assert.deepEqual(forms.filter(form => form.isDefault).map(form => form.name), ['LessonCountdownCard']);
   assert.deepEqual(config.supportDimensions, ['2*2', '2*4']);
+  assert.deepEqual(study.supportDimensions, ['2*2', '2*4', '4*4']);
   assert.equal(config.isDynamic, true);
   assert.equal(config.updateEnabled, true);
   assert.equal(config.updateDuration, 1);
@@ -477,6 +506,7 @@ test('registers both sizes, second-level timer updates and periodic provider ref
   assert.match(ui, /\.format\('ss'\)/);
   assert.match(ui, /\.onTimer\(\(_utc: number, elapsedTime: number\): void => this\.onTick\(elapsedTime\)\)/);
   assert.match(ui, /private onTick\(elapsedTime: number\): void \{[\s\S]*?this\.refreshDisplay\(\)/);
+  assert.match(ui, /WidgetDayAgenda\(\{ day: this\.todaySchedule\.days\[this\.todaySchedule\.today\]/);
   assert.doesNotMatch(ui, /\.width\(1\)\s*\.height\(1\)/);
   assert.match(ui, /\.fontColor\('#01000001'\)/);
   assert.doesNotMatch(ui, /\.opacity\(0\)/);
@@ -524,7 +554,7 @@ test('passes each requested widget size to initial storage without resetting it 
     '@kit.FormKit': {
       FormExtensionAbility: class {},
       formBindingData: { createFormBindingData: value => value },
-      formInfo: { FormParam: { IDENTITY_KEY: 'id', DIMENSION_KEY: 'dimension' } }
+      formInfo: { FormParam: { IDENTITY_KEY: 'id', DIMENSION_KEY: 'dimension', NAME_KEY: 'name' } }
     },
     '../feature/widget/NextClassWidgetService': {
       NextClassWidgetService: { refreshForm: async (_context, id) => refreshed.push(id) }
@@ -533,7 +563,11 @@ test('passes each requested widget size to initial storage without resetting it 
   const ability = new Ability();
   assert.equal(ability.onAddForm({ parameters: { id: 'compact', dimension: 2 } }).formDimension, 2);
   assert.equal(ability.onAddForm({ parameters: { id: 'wide', dimension: 3 } }).formDimension, 3);
-  assert.deepEqual(refreshed, ['compact', 'wide']);
+  const large = ability.onAddForm({ parameters: { id: 'large', dimension: 4, name: 'NextClassCard' } });
+  assert.equal(large.formDimension, 4);
+  assert.equal(large.courseOnly, false);
+  assert.deepEqual(refreshed, ['compact', 'wide', 'large']);
+  assert.equal(ability.onAddForm({ parameters: { dimension: 2, name: 'LessonCountdownCard' } }).courseOnly, true);
   assert.equal(Object.hasOwn(NextClassModel.snapshot([], false, now), 'formDimension'), false);
 });
 

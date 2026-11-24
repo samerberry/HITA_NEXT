@@ -1,9 +1,9 @@
 {
   "forms": [
     {
-      "name": "NextClassCard",
-      "displayName": "$string:next_class_widget_name",
-      "description": "$string:next_class_widget_description",
+      "name": "LessonCountdownCard",
+      "displayName": "$string:lesson_countdown_name",
+      "description": "$string:lesson_countdown_description",
       "src": "./ets/widget/pages/NextClassCard.ets",
       "uiSyntax": "arkts",
       "window": { "designWidth": 720, "autoDesignWidth": true },
@@ -16,9 +16,9 @@
       "supportDimensions": ["2*2", "2*4"]
     },
     {
-      "name": "LessonCountdownCard",
-      "displayName": "$string:lesson_countdown_name",
-      "description": "$string:lesson_countdown_description",
+      "name": "NextClassCard",
+      "displayName": "$string:next_class_widget_name",
+      "description": "$string:next_class_widget_description",
       "src": "./ets/widget/pages/NextClassCard.ets",
       "uiSyntax": "arkts",
       "window": { "designWidth": 720, "autoDesignWidth": true },
@@ -28,7 +28,7 @@
       "updateEnabled": true,
       "updateDuration": 1,
       "defaultDimension": "2*2",
-      "supportDimensions": ["2*2", "2*4"]
+      "supportDimensions": ["2*2", "2*4", "4*4"]
     },
     {
       "name": "WeekTimetableCard",

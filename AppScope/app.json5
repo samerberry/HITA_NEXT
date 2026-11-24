@@ -2,8 +2,8 @@
   "app": {
     "bundleName": "cn.berry.hitanext",
     "vendor": "hitanext",
-    "versionCode": 100000000,
-    "versionName": "1.0.0",
+    "versionCode": 101000000,
+    "versionName": "1.1.0",
     "icon": "$media:app_icon",
     "label": "$string:app_name"
   }

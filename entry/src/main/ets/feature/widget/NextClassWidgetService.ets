@@ -99,8 +99,8 @@ export class NextClassWidgetService {
     let snapshot: NextClassSnapshot;
     do {
       revision = NextClassWidgetService.revision;
-      snapshot = await NextClassWidgetService.load(context, true, !formName || formName === 'WeekTimetableCard',
-        formName === 'LessonCountdownCard');
+      const onlyCourse = formName === 'LessonCountdownCard';
+      snapshot = await NextClassWidgetService.load(context, true, !onlyCourse, onlyCourse);
     } while (revision !== NextClassWidgetService.revision);
     await NextClassWidgetService.publish(context, formId, snapshot, formName);
   }
@@ -116,8 +116,8 @@ export class NextClassWidgetService {
         const forms = (await formProvider.getPublishedRunningFormInfos()).filter((form): boolean =>
           form.moduleName === 'entry' && ['NextClassCard', 'LessonCountdownCard', 'WeekTimetableCard'].includes(form.formName));
         if (forms.length === 0) continue;
-        const snapshot = await NextClassWidgetService.load(NextClassWidgetService.context, false,
-          forms.some(form => form.formName === 'WeekTimetableCard'), forms.every(form => form.formName === 'LessonCountdownCard'));
+        const onlyCourse = forms.every(form => form.formName === 'LessonCountdownCard');
+        const snapshot = await NextClassWidgetService.load(NextClassWidgetService.context, false, !onlyCourse, onlyCourse);
         if (revision !== NextClassWidgetService.revision) {
           NextClassWidgetService.pending = true;
           continue;
@@ -141,9 +141,11 @@ export class NextClassWidgetService {
     const payload = new NextClassPayload();
     if (formName) payload.courseOnly = formName === 'LessonCountdownCard';
     if (formName !== 'WeekTimetableCard') payload.scheduleJson = snapshot.scheduleJson;
-    if (!formName || formName === 'NextClassCard') payload.examJson = snapshot.examJson;
-    if (formName !== 'LessonCountdownCard') payload.taskJson = snapshot.taskJson;
-    if (!formName || formName === 'WeekTimetableCard') payload.weekJson = snapshot.weekJson;
+    if (!formName || formName === 'NextClassCard') {
+      payload.examJson = snapshot.examJson;
+      payload.taskJson = snapshot.taskJson;
+    }
+    if (formName !== 'LessonCountdownCard') payload.weekJson = snapshot.weekJson;
     payload.hasTimetable = snapshot.hasTimetable;
     payload.dataState = snapshot.dataState;
     const opened: fileIo.File[] = [];
