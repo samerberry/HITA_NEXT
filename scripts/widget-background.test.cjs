@@ -17,6 +17,40 @@ function load(file) {
 const { WidgetBackgroundModel: M } = load('feature/widget/WidgetBackgroundModel.ets');
 const near = (a, b) => assert.ok(Math.abs(a - b) < 1e-6, `${a} != ${b}`);
 
+test('the card surface and custom-image preview use a readable light and dark palette', () => {
+  const card = read('widget/pages/NextClassCard.ets');
+  const preview = read('feature/widget/WidgetBackgroundPage.ets');
+  assert.match(card, /\.backgroundColor\(\$r\('app\.color\.widget_background'\)\)\s*(?:\/\/[^\n]*\n\s*)?\.backgroundImage/);
+  assert.match(card, /if \(this\.backgroundSource\(\)\) \{[\s\S]*?app\.color\.widget_image_scrim[\s\S]*?this\.cardHeader/);
+  assert.match(preview, /\.opacity\(this\.veil \/ 100\)[\s\S]*?app\.color\.widget_image_scrim[\s\S]*?this\.cardMock/);
+  assert.doesNotMatch(card, /'#(?:FFFFFFFF|182230|515A67|687180|2365B2)'/i);
+
+  const palette = mode => Object.fromEntries(JSON.parse(read('../resources/' + mode + '/element/color.json'))
+    .color.map(({ name, value }) => [name, value]));
+  const channels = color => color.slice(-6).match(/../g).map(value => parseInt(value, 16) / 255);
+  const luminance = rgb => rgb.reduce((sum, channel, index) =>
+    sum + [0.2126, 0.7152, 0.0722][index] * (channel <= 0.04045 ?
+      channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4), 0);
+  const contrast = (text, background) => {
+    const a = luminance(channels(text));
+    const b = luminance(background);
+    return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+  };
+  const light = palette('base');
+  const dark = palette('dark');
+  assert.equal(light.widget_image_scrim.slice(0, 3), '#00');
+  assert.notEqual(light.widget_background, dark.widget_background);
+  const alpha = parseInt(dark.widget_image_scrim.slice(1, 3), 16) / 255;
+  const brightestPhoto = channels(dark.widget_image_scrim).map(channel => channel * alpha + (1 - alpha));
+  for (const colors of [light, dark]) {
+    for (const name of ['widget_ink', 'widget_muted', 'widget_exam', 'widget_task']) {
+      assert.ok(contrast(colors[name], channels(colors.widget_background)) >= 4.5, name);
+      if (colors === dark) assert.ok(contrast(colors[name], brightestPhoto) >= 4.5, name + ' over a white image');
+    }
+    assert.ok(contrast(colors.widget_accent, channels(colors.widget_selected)) >= 4.5);
+  }
+});
+
 test('placement keeps the image ratio: cover fills the card, contain shows the whole image', () => {
   const cover = M.place(M.coverFrame(), 400, 200, 100, 100);
   near(cover.width / cover.height, 2);

@@ -1,12 +1,15 @@
 {
   "color": [
     { "name": "hita_press_glow_edge", "value": "#00FFFFFF" },
-    { "name": "widget_ink", "value": "#182230" },
-    { "name": "widget_muted", "value": "#515A67" },
-    { "name": "widget_accent", "value": "#0068D9" },
-    { "name": "widget_selected", "value": "#E8F3FF" },
-    { "name": "widget_exam", "value": "#994219" },
-    { "name": "widget_task", "value": "#14644F" },
+    { "name": "widget_background", "value": "#101214" },
+    { "name": "widget_image_scrim", "value": "#CC101214" },
+    { "name": "widget_ink", "value": "#ECEFF4" },
+    { "name": "widget_muted", "value": "#BDC5D1" },
+    { "name": "widget_accent", "value": "#91BFFF" },
+    { "name": "widget_selected", "value": "#223B58" },
+    { "name": "widget_ring_track", "value": "#414B58" },
+    { "name": "widget_exam", "value": "#FFB48E" },
+    { "name": "widget_task", "value": "#83DBC3" },
     {
       "name": "hita_widget_accent",
       "value": "#91BFFF"

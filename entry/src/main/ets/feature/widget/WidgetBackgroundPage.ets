@@ -325,7 +325,7 @@ export struct WidgetBackgroundPage {
     }
     this.getUIContext().getPromptAction().showDialog({
       title: '移除卡片背景',
-      message: '桌面服务卡片将恢复默认白色背景。',
+      message: '桌面服务卡片将恢复默认背景。',
       buttons: [
         { text: '取消', color: $r('app.color.hita_text_secondary_7b8190') },
         { text: '移除', color: HitaColors.error }
@@ -522,6 +522,10 @@ export struct WidgetBackgroundPage {
         .height('100%')
         .backgroundColor(Color.White)
         .opacity(this.veil / 100)
+      Column()
+        .width('100%').height('100%')
+        .backgroundColor($r('app.color.widget_image_scrim'))
+        .hitTestBehavior(HitTestMode.None)
       this.cardMock()
     }
     .width(this.frameWidth())
@@ -624,10 +628,10 @@ export struct WidgetBackgroundPage {
       .fontSize((this.activeSize === SIZE_WIDE ? 40 : 32) * this.mockScale())
       .maxLines(1)
       .fontWeight(FontWeight.Bold)
-      .fontColor('#182230')
+      .fontColor($r('app.color.widget_ink'))
     Text('后上课')
       .fontSize(10 * this.mockScale())
-      .fontColor('#515A67')
+      .fontColor($r('app.color.widget_muted'))
   }
 
   @Builder
@@ -635,15 +639,15 @@ export struct WidgetBackgroundPage {
     Text('高等数学')
       .fontSize(14 * this.mockScale())
       .fontWeight(FontWeight.Bold)
-      .fontColor('#182230')
+      .fontColor($r('app.color.widget_ink'))
     Text('正心楼 101 · 王老师')
       .fontSize(10 * this.mockScale())
-      .fontColor('#515A67')
+      .fontColor($r('app.color.widget_muted'))
       .maxLines(1)
       .margin({ top: 3 * this.mockScale() })
     Text('今天 08:00')
       .fontSize(10 * this.mockScale())
-      .fontColor('#515A67')
+      .fontColor($r('app.color.widget_muted'))
       .margin({ top: 3 * this.mockScale() })
   }
 

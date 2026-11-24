@@ -538,7 +538,8 @@ test('registers each card in the intended order and keeps the countdown timer', 
   assert.match(ui, /Progress\(\{ value: this\.progressPercent, total: 100, type: ProgressType\.Ring \}\)/);
   assert.match(ui, /\.width\(compact \? COMPACT_RING_DIAMETER : 52\)/);
   assert.match(ui, /\.height\(compact \? COMPACT_RING_DIAMETER : 52\)/);
-  assert.match(ui, /\.color\('#2365B2'\)/);
+  assert.match(ui, /\.color\(\$r\('app\.color\.hita_widget_accent'\)\)/);
+  assert.match(ui, /\.backgroundColor\(\$r\('app\.color\.widget_ring_track'\)\)/);
   assert.match(ui, /Stack\(\{ alignContent: Alignment\.Center \}\)/);
   assert.doesNotMatch(ui, /this\.view\.(place|teacher)/);
   assert.doesNotMatch(ui, /setInterval|setTimeout/);

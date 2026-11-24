@@ -11,7 +11,7 @@ export struct WeekCalendarHeader {
 
   build() {
     Row() {
-      WidgetBrand({ followsSystemSurface: true })
+      WidgetBrand()
       Text(this.termLabel).fontSize(HitaDesign.caption).fontWeight(FontWeight.Medium)
         .fontColor($r('app.color.hita_text_secondary')).maxLines(1)
     }.width('100%').justifyContent(FlexAlign.SpaceBetween)

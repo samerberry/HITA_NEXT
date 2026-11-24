@@ -26,7 +26,7 @@ struct NextClassCard {
   @LocalStorageProp('dataState') @Watch('refreshDisplay') dataState: string = 'loading';
   @LocalStorageProp('formDimension') dimension: number = SMALL_FORM;
   @LocalStorageProp('courseOnly') @Watch('refreshDisplay') courseOnly: boolean = false;
-  // Images the app baked at each card's aspect ratio; empty keeps the plain white surface.
+  // Images are baked at each card's aspect ratio; an empty name keeps the themed surface.
   @LocalStorageProp('bgCompact') bgCompact: string = '';
   @LocalStorageProp('bgWide') bgWide: string = '';
   @State hasCourse: boolean = false;
@@ -223,12 +223,12 @@ struct NextClassCard {
     Stack({ alignContent: Alignment.Center }) {
       Progress({ value: this.progressPercent, total: 100, type: ProgressType.Ring })
         .width('100%').height('100%')
-        .color('#2365B2')
-        .backgroundColor(compact ? $r('app.color.widget_ring_track') : undefined)
+        .color($r('app.color.hita_widget_accent'))
+        .backgroundColor($r('app.color.widget_ring_track'))
       Text(Math.floor(this.progressPercent).toString() + '%')
         .fontSize(HitaDesign.label)
         .fontWeight(FontWeight.Bold)
-        .fontColor('#182230')
+        .fontColor($r('app.color.widget_ink'))
         .maxLines(1)
         .textAlign(TextAlign.Center)
         .width('100%')
@@ -246,14 +246,14 @@ struct NextClassCard {
     Row({ space: compact ? 4 : 6 }) {
       SymbolGlyph(icon)
         .fontSize(compact ? 11 : 13)
-        .fontColor(['#687180'])
+        .fontColor([$r('app.color.widget_muted')])
         .width(compact ? 14 : 17)
         .height(compact ? 14 : 18)
       Marquee({ src: isTeacher ? this.teacher : this.place, start: true, step: MARQUEE_STEP })
         .fontSize(compact ? 10 : 12)
         .allowScale(true)
         .fontWeight(FontWeight.Medium)
-        .fontColor('#515A67')
+        .fontColor($r('app.color.widget_muted'))
         .align(Alignment.Start)
         .layoutWeight(1)
     }
@@ -268,14 +268,14 @@ struct NextClassCard {
       Row({ space: compact ? 4 : 6 }) {
         SymbolGlyph($r('sys.symbol.calendar'))
           .fontSize(compact ? 12 : 14)
-          .fontColor(['#687180'])
+          .fontColor([$r('app.color.widget_muted')])
           .width(compact ? 14 : 17)
           .height(compact ? 18 : 20)
         Marquee({ src: this.title, start: true, step: MARQUEE_STEP })
           .fontSize(compact ? 14 : 16)
           .allowScale(true)
           .fontWeight(FontWeight.Bold)
-          .fontColor('#182230')
+          .fontColor($r('app.color.widget_ink'))
           .align(Alignment.Start)
           .layoutWeight(1)
       }
@@ -303,14 +303,14 @@ struct NextClassCard {
         Row({ space: compact ? 4 : 6 }) {
           SymbolGlyph($r('sys.symbol.clock'))
             .fontSize(compact ? 11 : 13)
-            .fontColor(['#687180'])
+            .fontColor([$r('app.color.widget_muted')])
             .width(compact ? 14 : 17)
             .height(compact ? 14 : 16)
           Marquee({ src: this.timeLabel, start: true, step: MARQUEE_STEP })
             .fontSize(compact ? 10 : 11)
             .allowScale(true)
             .fontWeight(FontWeight.Medium)
-            .fontColor('#515A67')
+            .fontColor($r('app.color.widget_muted'))
             .align(Alignment.Start)
             .layoutWeight(1)
         }
@@ -366,7 +366,7 @@ struct NextClassCard {
       }
       WidgetDayAgenda({ day: this.todaySchedule.days[this.todaySchedule.today],
         message: this.todaySchedule.stale ? '正在更新今日课表' : this.todaySchedule.message,
-        emptyLabel: '今天没有课程或考试', compact: this.dimension !== LARGE_FORM, followsSystemSurface: false,
+        emptyLabel: '今天没有课程或考试', compact: this.dimension !== LARGE_FORM,
         openItem: (id: string): void => this.openApp(id) })
     }
   }
@@ -464,6 +464,12 @@ struct NextClassCard {
 
   build() {
     Stack({ alignContent: Alignment.TopStart }) {
+      if (this.backgroundSource()) {
+        Column()
+          .width('100%').height('100%')
+          .backgroundColor($r('app.color.widget_image_scrim'))
+          .hitTestBehavior(HitTestMode.None)
+      }
       Column({ space: HitaDesign.space2xs }) {
         this.cardHeader()
         if (this.activeTab === WidgetTab.COURSE) {
@@ -498,7 +504,7 @@ struct NextClassCard {
     }
     .width('100%')
     .height('100%')
-    .backgroundColor('#FFFFFFFF')
+    .backgroundColor($r('app.color.widget_background'))
     // The framing is already baked to this card's ratio: Cover only absorbs launcher rounding.
     .backgroundImage(this.backgroundSource())
     .backgroundImageSize(ImageSize.Cover)

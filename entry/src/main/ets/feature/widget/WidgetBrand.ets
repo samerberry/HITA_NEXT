@@ -3,7 +3,6 @@ import { HitaDesign } from '../../common/theme/HitaDesign';
 @Component
 export struct WidgetBrand {
   @Prop scaleFactor: number = 1;
-  @Prop followsSystemSurface: boolean = false;
   @Prop showName: boolean = true;
 
   build() {
@@ -15,7 +14,7 @@ export struct WidgetBrand {
       if (this.showName) {
         Text($r('app.string.app_name'))
           .fontSize(HitaDesign.caption * this.scaleFactor).fontWeight(FontWeight.Bold)
-          .fontColor(this.followsSystemSurface ? $r('app.color.hita_text') : $r('app.color.widget_ink'))
+          .fontColor($r('app.color.widget_ink'))
           .maxLines(1)
       }
     }

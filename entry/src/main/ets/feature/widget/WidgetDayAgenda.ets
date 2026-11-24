@@ -8,7 +8,6 @@ export struct WidgetDayAgenda {
   @Prop message: string = '';
   @Prop emptyLabel: string = '这一天没有课程或考试';
   @Prop compact: boolean = false;
-  @Prop followsSystemSurface: boolean = true;
   openItem: (id: string) => void = (): void => {};
 
   @Builder
@@ -86,7 +85,7 @@ export struct WidgetDayAgenda {
               .objectFit(ImageFit.Contain).accessibilityLevel('no')
           }
           Text(this.message || this.emptyLabel).fontSize(HitaDesign.caption).textAlign(TextAlign.Center)
-            .fontColor(this.followsSystemSurface ? $r('app.color.hita_text_secondary') : $r('app.color.widget_muted'))
+            .fontColor($r('app.color.hita_text_secondary'))
         }.width('100%').layoutWeight(1).justifyContent(FlexAlign.Center)
       } else {
         List({ space: this.compact ? HitaDesign.space2xs : HitaDesign.spaceXs }) {
